@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "MarkdownEditor",
+    name: "md",
     platforms: [.macOS(.v13)],
     targets: [
         .target(name: "MarkdownEditorCore"),
