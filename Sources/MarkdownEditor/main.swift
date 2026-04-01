@@ -9,28 +9,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
 
+        let windowWidth: CGFloat = 400
+        let windowHeight: CGFloat = 500
+
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 640),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        window.title = "Markdown Editor"
+        window.title = ""
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
         window.center()
+        window.minSize = NSSize(width: 320, height: 400)
 
-        // Build the text system chain properly:
+        // Match window background to editor — adapts to dark mode automatically
+        window.backgroundColor = NSColor.textBackgroundColor
+
+        // Empty toolbar gives the titlebar extra height (roomy traffic lights,
+        // like iTerm minimal). The .unified style keeps it compact.
+        let toolbar = NSToolbar(identifier: "MainToolbar")
+        toolbar.showsBaselineSeparator = false
+        window.toolbar = toolbar
+        window.toolbarStyle = .unified
+
+        // Build the text system chain:
         //   NSTextStorage → NSLayoutManager → NSTextContainer → NSTextView
         let textStorage = NSTextStorage()
         let layoutManager = NSLayoutManager()
         textStorage.addLayoutManager(layoutManager)
 
-        let contentSize = NSSize(width: 720, height: CGFloat.greatestFiniteMagnitude)
+        let contentSize = NSSize(width: windowWidth, height: CGFloat.greatestFiniteMagnitude)
         let textContainer = NSTextContainer(size: contentSize)
         textContainer.widthTracksTextView = true
         layoutManager.addTextContainer(textContainer)
 
         let editor = EditorTextView(
-            frame: NSRect(x: 0, y: 0, width: 720, height: 640),
+            frame: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
             textContainer: textContainer
         )
         editor.minSize = NSSize(width: 0, height: 0)
@@ -39,11 +56,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         editor.isVerticallyResizable = true
         editor.isHorizontallyResizable = false
         editor.autoresizingMask = [.width]
-        editor.textContainerInset = NSSize(width: 48, height: 32)
+        // Top padding clears the transparent titlebar + toolbar area
+        editor.textContainerInset = NSSize(width: 24, height: 52)
 
         let scrollView = NSScrollView(frame: window.contentView!.bounds)
         scrollView.autoresizingMask = [.width, .height]
         scrollView.hasVerticalScroller = true
+        scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
         scrollView.documentView = editor
 
@@ -69,7 +88,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // App menu (required for Cmd+Q)
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "Quit Markdown Editor",
+        appMenu.addItem(withTitle: "Quit md",
                         action: #selector(NSApplication.terminate(_:)),
                         keyEquivalent: "q")
         appMenuItem.submenu = appMenu

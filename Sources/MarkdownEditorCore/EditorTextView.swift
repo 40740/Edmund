@@ -52,9 +52,17 @@ public class EditorTextView: NSTextView {
     /// Must match what BlockParser splits on.
     private let blockSeparator = "\n"
 
-    // MARK: - Colors
+    // MARK: - Colors (semantic — adapts to light/dark mode)
 
-    private let accentBlue = NSColor(calibratedRed: 0.2, green: 0.4, blue: 0.9, alpha: 1.0)
+    private let accentColor = NSColor(calibratedRed: 0.2, green: 0.4, blue: 0.9, alpha: 1.0)
+
+    /// Foreground color for all body text. Uses the system text color so it
+    /// flips automatically between near-black (light) and near-white (dark).
+    private var foregroundColor: NSColor { .textColor }
+
+    /// Background color for the editor surface. `.textBackgroundColor` is the
+    /// standard semantic color for text-editing backgrounds (white / dark gray).
+    private var editorBackgroundColor: NSColor { .textBackgroundColor }
 
     // MARK: - Fonts & Style
 
@@ -73,7 +81,7 @@ public class EditorTextView: NSTextView {
     private var baseAttributes: [NSAttributedString.Key: Any] {
         [
             .font: bodyFont,
-            .foregroundColor: NSColor.black,
+            .foregroundColor: foregroundColor,
             .paragraphStyle: bodyParagraphStyle,
         ]
     }
@@ -105,11 +113,11 @@ public class EditorTextView: NSTextView {
         isAutomaticSpellingCorrectionEnabled = false
         allowsUndo = false
 
-        backgroundColor = .white
-        insertionPointColor = .black
+        backgroundColor = editorBackgroundColor
+        insertionPointColor = foregroundColor
         selectedTextAttributes = [
-            .backgroundColor: accentBlue.withAlphaComponent(0.3),
-            .foregroundColor: NSColor.black,
+            .backgroundColor: accentColor.withAlphaComponent(0.3),
+            .foregroundColor: foregroundColor,
         ]
         typingAttributes = baseAttributes
 
@@ -127,6 +135,22 @@ public class EditorTextView: NSTextView {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Appearance
+
+    /// Re-render when the system appearance (light ↔ dark) changes.
+    public override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        backgroundColor = editorBackgroundColor
+        insertionPointColor = foregroundColor
+        selectedTextAttributes = [
+            .backgroundColor: accentColor.withAlphaComponent(0.3),
+            .foregroundColor: foregroundColor,
+        ]
+        typingAttributes = baseAttributes
+        // Re-render all blocks so text color updates
+        recompose(cursorInRaw: currentCursorInRaw())
     }
 
     // MARK: - Undo / Redo
@@ -496,7 +520,7 @@ public class EditorTextView: NSTextView {
             }
             let fullRange = NSRange(location: 0, length: ns.length)
             ns.addAttribute(.paragraphStyle, value: bodyParagraphStyle, range: fullRange)
-            ns.addAttribute(.foregroundColor, value: NSColor.black, range: fullRange)
+            ns.addAttribute(.foregroundColor, value: foregroundColor, range: fullRange)
             return ns
         }
 
