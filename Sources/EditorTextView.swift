@@ -7,15 +7,21 @@ import AppKit
 /// ## Architecture
 ///
 /// `rawSource` is the **sole source of truth** for the document content.
-/// The text storage is a **display-only output** rebuilt from rawSource.
+/// The text storage is a display output rebuilt from rawSource.
 ///
-/// **Edits** are intercepted in `shouldChangeText(in:replacementString:)`,
-/// applied to `rawSource`, then the display is recomposed.
+/// **Edits** flow through NSTextView's normal path:
+///   1. `shouldChangeText` records an undo snapshot (coalesced), returns `true`
+///   2. NSTextView applies the edit to the text storage
+///   3. `didChangeText` fires — we sync `rawSource` from the text storage
 ///
-/// **Cursor movement** (clicks, arrow keys, etc.) is detected via the
-/// `NSTextView.didChangeSelectionNotification`.  When the active block
-/// changes, we schedule an async recompose so it runs after the current
-/// event is fully processed.
+/// **Cursor movement** is detected via `didChangeSelectionNotification`.
+/// When the cursor moves to a different block, we do a full recompose
+/// (async, after the event finishes) to render/unrender blocks.
+///
+/// **Undo/Redo** uses custom stacks of `rawSource` snapshots, completely
+/// bypassing NSTextView's built-in undo.  This avoids the fundamental
+/// problem where `recompose` (which replaces the entire text storage)
+/// invalidates NSUndoManager's position-based undo actions.
 class EditorTextView: NSTextView {
 
     // MARK: - State
@@ -27,7 +33,26 @@ class EditorTextView: NSTextView {
     private var displayRanges: [NSRange] = []
     private var pendingRecompose = false
 
-    // MARK: - Colors (white, black, blue)
+    // MARK: - Custom Undo/Redo
+
+    private struct UndoSnapshot {
+        let rawSource: String
+        let cursorInRaw: Int
+    }
+
+    private enum EditType { case insert, delete, other }
+
+    private var undoStack: [UndoSnapshot] = []
+    private var redoStack: [UndoSnapshot] = []
+    private var lastEditBlockID: UUID? = nil
+    private var lastEditType: EditType = .other
+    private var isUndoRedoing = false
+
+    /// The separator between blocks in the display.
+    /// Must match what BlockParser splits on.
+    private let blockSeparator = "\n"
+
+    // MARK: - Colors
 
     private let accentBlue = NSColor(calibratedRed: 0.2, green: 0.4, blue: 0.9, alpha: 1.0)
 
@@ -53,6 +78,8 @@ class EditorTextView: NSTextView {
         ]
     }
 
+    private var separatorLength: Int { (blockSeparator as NSString).length }
+
     // MARK: - Initialization
 
     override init(frame frameRect: NSRect) {
@@ -76,7 +103,7 @@ class EditorTextView: NSTextView {
         isAutomaticDashSubstitutionEnabled = false
         isAutomaticTextReplacementEnabled = false
         isAutomaticSpellingCorrectionEnabled = false
-        allowsUndo = true
+        allowsUndo = false
 
         backgroundColor = .white
         insertionPointColor = .black
@@ -102,42 +129,187 @@ class EditorTextView: NSTextView {
         NotificationCenter.default.removeObserver(self)
     }
 
-    // MARK: - Intercept User Edits
+    // MARK: - Undo / Redo
+    //
+    // Custom undo stack operating on rawSource snapshots.  Completely bypasses
+    // NSTextView's built-in undo (allowsUndo = false) because recompose
+    // replaces the entire text storage, invalidating position-based undo.
+
+    @objc func undo(_ sender: Any?) {
+        performUndo()
+    }
+
+    @objc func redo(_ sender: Any?) {
+        performRedo()
+    }
+
+    private func currentCursorInRaw() -> Int {
+        let sel = selectedRange()
+        return displayOffsetToRawOffset(sel.location)
+    }
+
+    private func classifyEdit(range: NSRange, replacement: String) -> EditType {
+        if replacement.count == 1 && range.length == 0 { return .insert }
+        if replacement.isEmpty && range.length == 1 { return .delete }
+        return .other
+    }
+
+    /// Push an undo snapshot if this edit starts a new coalescing group.
+    private func recordUndoIfNeeded(editRange: NSRange, replacement: String) {
+        let editType = classifyEdit(range: editRange, replacement: replacement)
+        let currentBlockID = activeBlockIndex.flatMap { $0 < blocks.count ? blocks[$0].id : nil }
+
+        let shouldPush = undoStack.isEmpty
+            || editType == .other
+            || editType != lastEditType
+            || currentBlockID != lastEditBlockID
+
+        if shouldPush {
+            undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: currentCursorInRaw()))
+            redoStack.removeAll()
+        }
+
+        lastEditType = editType
+        lastEditBlockID = currentBlockID
+    }
+
+    private func performUndo() {
+        guard let snapshot = undoStack.popLast() else { return }
+        // Save current state for redo
+        redoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: currentCursorInRaw()))
+        restoreSnapshot(snapshot)
+    }
+
+    private func performRedo() {
+        guard let snapshot = redoStack.popLast() else { return }
+        // Save current state for undo
+        undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: currentCursorInRaw()))
+        restoreSnapshot(snapshot)
+    }
+
+    private func restoreSnapshot(_ snapshot: UndoSnapshot) {
+        isUndoRedoing = true
+        rawSource = snapshot.rawSource
+        blocks = BlockParser.parse(rawSource, previous: blocks)
+        recompose(cursorInRaw: snapshot.cursorInRaw)
+        isUndoRedoing = false
+        // Reset coalescing so the next edit starts a fresh group
+        lastEditType = .other
+        lastEditBlockID = nil
+    }
+
+    // MARK: - Edit Flow
 
     override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
-        guard !isUpdating else { return false }
+        if isUpdating { return false }
+        if let replacement = replacementString, !isUndoRedoing {
+            recordUndoIfNeeded(editRange: affectedCharRange, replacement: replacement)
+        }
+        return true
+    }
 
-        // nil replacement = "can I edit here?" query (mouse click, etc.)
-        // Must return true or NSTextView won't place the cursor.
-        guard let replacement = replacementString else { return true }
+    override func didChangeText() {
+        super.didChangeText()
+        guard !isUpdating, !isUndoRedoing else { return }
+        syncRawSourceFromDisplay()
+    }
 
-        let rawRange = displayRangeToRawRange(affectedCharRange)
+    /// Reads the active block's content from the text storage and rebuilds rawSource.
+    private func syncRawSourceFromDisplay() {
+        guard let ts = textStorage else { return }
+        let displayString = ts.string as NSString
 
-        let startIdx = rawSource.utf16Index(at: rawRange.location)
-        let endIdx = rawSource.utf16Index(at: rawRange.location + rawRange.length)
-        rawSource.replaceSubrange(startIdx..<endIdx, with: replacement)
+        if blocks.isEmpty || displayRanges.isEmpty {
+            rawSource = ts.string
+            blocks = BlockParser.parse(rawSource)
+            return
+        }
 
-        let newCursorInRaw = rawRange.location + (replacement as NSString).length
+        guard let activeIdx = activeBlockIndex, activeIdx < displayRanges.count else {
+            rawSource = ts.string
+            blocks = BlockParser.parse(rawSource)
+            return
+        }
+
+        // Compute the active block's current display range.
+        // It starts after the separator following the previous block,
+        // and ends before the separator preceding the next block.
+        let activeDisplayStart: Int
+        if activeIdx == 0 {
+            activeDisplayStart = 0
+        } else {
+            activeDisplayStart = displayRanges[activeIdx - 1].upperBound + separatorLength
+        }
+
+        let activeDisplayEnd: Int
+        if activeIdx == displayRanges.count - 1 {
+            activeDisplayEnd = displayString.length
+        } else {
+            // Use suffix lengths — non-active block lengths are correct even
+            // though their positions are stale after the active block changed size.
+            var suffixLength = 0
+            for i in (activeIdx + 1)..<displayRanges.count {
+                suffixLength += separatorLength + displayRanges[i].length
+            }
+            activeDisplayEnd = displayString.length - suffixLength
+        }
+
+        let safeStart = max(0, activeDisplayStart)
+        let safeEnd = max(safeStart, min(activeDisplayEnd, displayString.length))
+        let activeDisplayRange = NSRange(location: safeStart, length: safeEnd - safeStart)
+
+        let newActiveContent = displayString.substring(with: activeDisplayRange)
+
+        // Compute raw cursor offset while the block mapping is still valid.
+        let sel = selectedRange()
+        let cursorInBlock = max(0, sel.location - safeStart)
+        let rawCursor = blocks[activeIdx].range.location
+            + min(cursorInBlock, (newActiveContent as NSString).length)
+
+        // Rebuild rawSource by replacing the active block's content.
+        var parts: [String] = []
+        for (i, block) in blocks.enumerated() {
+            if i == activeIdx {
+                parts.append(newActiveContent)
+            } else {
+                parts.append(block.content)
+            }
+        }
+        rawSource = parts.joined(separator: blockSeparator)
 
         blocks = BlockParser.parse(rawSource, previous: blocks)
-        recompose(cursorInRaw: newCursorInRaw)
+        recalcDisplayRanges()
 
-        return false
+        // If the cursor is now in a different block (e.g., Enter split a block
+        // or Backspace merged blocks), recompose to update rendering.
+        let clampedRawCursor = min(rawCursor, (rawSource as NSString).length)
+        let newBlockIndex = blockIndexForRawOffset(clampedRawCursor)
+        if newBlockIndex != activeBlockIndex {
+            recompose(cursorInRaw: clampedRawCursor)
+        }
+    }
+
+    /// Recalculates displayRanges from current blocks without touching textStorage.
+    private func recalcDisplayRanges() {
+        displayRanges = []
+        var offset = 0
+        for (i, block) in blocks.enumerated() {
+            if i > 0 {
+                offset += separatorLength
+            }
+            let displayLen: Int
+            if i == activeBlockIndex {
+                displayLen = (block.content as NSString).length
+            } else {
+                let rendered = renderMarkdown(block.content)
+                displayLen = rendered.length
+            }
+            displayRanges.append(NSRange(location: offset, length: displayLen))
+            offset += displayLen
+        }
     }
 
     // MARK: - Selection Change Detection
-    //
-    // Handles ALL cursor movement: clicks, drag selection, arrow keys,
-    // Cmd+A, Home/End, etc.  No mouseDown override needed.
-    //
-    // We defer the recompose to the next run loop turn so it never interferes
-    // with the event that caused the selection change.  This is safe because:
-    //   - For clicks: NSTextView finishes its full mouseDown tracking loop,
-    //     places the cursor, then our async fires.
-    //   - For drag: notifications fire during drag, but we coalesce — only
-    //     the last one triggers a recompose.
-    //   - For arrow keys: the key event finishes, selection is updated, then
-    //     our async fires.
 
     @objc private func selectionDidChange(_ notification: Notification) {
         guard !isUpdating else { return }
@@ -152,7 +324,6 @@ class EditorTextView: NSTextView {
                 guard let self = self, !self.isUpdating else { return }
                 self.pendingRecompose = false
 
-                // Re-read selection — it may have changed since we scheduled.
                 let currentSel = self.selectedRange()
                 let rawStart = self.displayOffsetToRawOffset(currentSel.location)
                 let rawEnd = self.displayOffsetToRawOffset(currentSel.location + currentSel.length)
@@ -162,7 +333,9 @@ class EditorTextView: NSTextView {
         }
     }
 
-    // MARK: - Display Composition
+    // MARK: - Display Composition (full recompose)
+    //
+    // Called when the active block changes.  Replaces the entire text storage.
 
     private func recompose(cursorInRaw: Int, selectionInRaw: NSRange? = nil) {
         isUpdating = true
@@ -174,7 +347,7 @@ class EditorTextView: NSTextView {
 
         for (i, block) in blocks.enumerated() {
             if i > 0 {
-                composed.append(NSAttributedString(string: "\n\n", attributes: baseAttributes))
+                composed.append(NSAttributedString(string: blockSeparator, attributes: baseAttributes))
             }
 
             let blockDisplayStart = composed.length
@@ -194,7 +367,6 @@ class EditorTextView: NSTextView {
         textStorage?.replaceCharacters(in: fullRange, with: composed)
         textStorage?.endEditing()
 
-        // Restore selection mapped to the new display layout.
         if let rawSel = selectionInRaw, rawSel.length > 0 {
             let displayStart = rawOffsetToDisplayOffset(rawSel.location)
             let displayEnd = rawOffsetToDisplayOffset(rawSel.location + rawSel.length)
@@ -211,10 +383,11 @@ class EditorTextView: NSTextView {
         }
 
         typingAttributes = baseAttributes
+
         isUpdating = false
     }
 
-    // MARK: - Coordinate Mapping (display ↔ rawSource)
+    // MARK: - Coordinate Mapping
 
     private func blockIndexForRawOffset(_ rawOffset: Int) -> Int? {
         for (i, block) in blocks.enumerated() {
