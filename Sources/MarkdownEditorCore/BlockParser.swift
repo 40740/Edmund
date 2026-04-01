@@ -8,9 +8,9 @@ import Foundation
 ///   2. Compute each paragraph's `NSRange` within the full string.
 ///   3. Match new paragraphs to previous blocks by content equality to
 ///      preserve UUIDs.  Unmatched paragraphs get fresh UUIDs.
-enum BlockParser {
+public enum BlockParser {
 
-    static func parse(_ text: String, previous: [Block] = []) -> [Block] {
+    public static func parse(_ text: String, previous: [Block] = []) -> [Block] {
         let nsText = text as NSString
         let paragraphs = splitParagraphs(text)
 

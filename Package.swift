@@ -5,7 +5,12 @@ let package = Package(
     name: "MarkdownEditor",
     platforms: [.macOS(.v13)],
     targets: [
+        .target(name: "MarkdownEditorCore"),
         .executableTarget(
-            name: "MarkdownEditor"),
+            name: "MarkdownEditor",
+            dependencies: ["MarkdownEditorCore"]),
+        .testTarget(
+            name: "MarkdownEditorTests",
+            dependencies: ["MarkdownEditorCore"]),
     ]
 )

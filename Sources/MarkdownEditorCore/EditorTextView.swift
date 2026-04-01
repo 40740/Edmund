@@ -22,29 +22,29 @@ import AppKit
 /// bypassing NSTextView's built-in undo.  This avoids the fundamental
 /// problem where `recompose` (which replaces the entire text storage)
 /// invalidates NSUndoManager's position-based undo actions.
-class EditorTextView: NSTextView {
+public class EditorTextView: NSTextView {
 
-    // MARK: - State
+    // MARK: - State (internal for @testable import)
 
-    private var rawSource: String = ""
-    private var blocks: [Block] = []
-    private var activeBlockIndex: Int? = nil
+    var rawSource: String = ""
+    var blocks: [Block] = []
+    var activeBlockIndex: Int? = nil
     private var isUpdating = false
-    private var displayRanges: [NSRange] = []
+    var displayRanges: [NSRange] = []
     private var pendingRecompose = false
 
     // MARK: - Custom Undo/Redo
 
-    private struct UndoSnapshot {
+    struct UndoSnapshot {
         let rawSource: String
         let cursorInRaw: Int
     }
 
-    private enum EditType { case insert, delete, other }
+    enum EditType { case insert, delete, other }
 
-    private var undoStack: [UndoSnapshot] = []
-    private var redoStack: [UndoSnapshot] = []
-    private var lastEditBlockID: UUID? = nil
+    var undoStack: [UndoSnapshot] = []
+    var redoStack: [UndoSnapshot] = []
+    private var lastEditBlockIndex: Int? = nil
     private var lastEditType: EditType = .other
     private var isUndoRedoing = false
 
@@ -82,17 +82,17 @@ class EditorTextView: NSTextView {
 
     // MARK: - Initialization
 
-    override init(frame frameRect: NSRect) {
+    public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         commonInit()
     }
 
-    override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
+    public override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
         super.init(frame: frameRect, textContainer: container)
         commonInit()
     }
 
-    required init?(coder: NSCoder) {
+    public required init?(coder: NSCoder) {
         super.init(coder: coder)
         commonInit()
     }
@@ -149,6 +149,7 @@ class EditorTextView: NSTextView {
     }
 
     private func classifyEdit(range: NSRange, replacement: String) -> EditType {
+        if replacement == "\n" { return .other }  // Enter always starts a new group
         if replacement.count == 1 && range.length == 0 { return .insert }
         if replacement.isEmpty && range.length == 1 { return .delete }
         return .other
@@ -157,12 +158,11 @@ class EditorTextView: NSTextView {
     /// Push an undo snapshot if this edit starts a new coalescing group.
     private func recordUndoIfNeeded(editRange: NSRange, replacement: String) {
         let editType = classifyEdit(range: editRange, replacement: replacement)
-        let currentBlockID = activeBlockIndex.flatMap { $0 < blocks.count ? blocks[$0].id : nil }
 
         let shouldPush = undoStack.isEmpty
             || editType == .other
             || editType != lastEditType
-            || currentBlockID != lastEditBlockID
+            || activeBlockIndex != lastEditBlockIndex
 
         if shouldPush {
             undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: currentCursorInRaw()))
@@ -170,7 +170,7 @@ class EditorTextView: NSTextView {
         }
 
         lastEditType = editType
-        lastEditBlockID = currentBlockID
+        lastEditBlockIndex = activeBlockIndex
     }
 
     private func performUndo() {
@@ -195,12 +195,12 @@ class EditorTextView: NSTextView {
         isUndoRedoing = false
         // Reset coalescing so the next edit starts a fresh group
         lastEditType = .other
-        lastEditBlockID = nil
+        lastEditBlockIndex = nil
     }
 
     // MARK: - Edit Flow
 
-    override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
+    public override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
         if isUpdating { return false }
         if let replacement = replacementString, !isUndoRedoing {
             recordUndoIfNeeded(editRange: affectedCharRange, replacement: replacement)
@@ -208,7 +208,7 @@ class EditorTextView: NSTextView {
         return true
     }
 
-    override func didChangeText() {
+    public override func didChangeText() {
         super.didChangeText()
         guard !isUpdating, !isUndoRedoing else { return }
         syncRawSourceFromDisplay()
@@ -337,7 +337,7 @@ class EditorTextView: NSTextView {
     //
     // Called when the active block changes.  Replaces the entire text storage.
 
-    private func recompose(cursorInRaw: Int, selectionInRaw: NSRange? = nil) {
+    func recompose(cursorInRaw: Int, selectionInRaw: NSRange? = nil) {
         isUpdating = true
 
         activeBlockIndex = blockIndexForRawOffset(cursorInRaw)
@@ -389,7 +389,7 @@ class EditorTextView: NSTextView {
 
     // MARK: - Coordinate Mapping
 
-    private func blockIndexForRawOffset(_ rawOffset: Int) -> Int? {
+    func blockIndexForRawOffset(_ rawOffset: Int) -> Int? {
         for (i, block) in blocks.enumerated() {
             if rawOffset >= block.range.location && rawOffset <= block.range.upperBound {
                 return i
@@ -398,7 +398,7 @@ class EditorTextView: NSTextView {
         return blocks.isEmpty ? nil : blocks.count - 1
     }
 
-    private func displayOffsetToRawOffset(_ displayOffset: Int) -> Int {
+    func displayOffsetToRawOffset(_ displayOffset: Int) -> Int {
         for (i, displayRange) in displayRanges.enumerated() {
             guard i < blocks.count else { break }
             let block = blocks[i]
@@ -433,7 +433,7 @@ class EditorTextView: NSTextView {
         return (rawSource as NSString).length
     }
 
-    private func rawOffsetToDisplayOffset(_ rawOffset: Int) -> Int {
+    func rawOffsetToDisplayOffset(_ rawOffset: Int) -> Int {
         for (i, block) in blocks.enumerated() {
             guard i < displayRanges.count else { break }
             let displayRange = displayRanges[i]
@@ -474,7 +474,7 @@ class EditorTextView: NSTextView {
 
     // MARK: - Markdown Rendering
 
-    private func renderMarkdown(_ markdown: String) -> NSAttributedString {
+    func renderMarkdown(_ markdown: String) -> NSAttributedString {
         if let attrStr = try? AttributedString(
             markdown: markdown,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
