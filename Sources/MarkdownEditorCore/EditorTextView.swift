@@ -29,11 +29,11 @@ public class EditorTextView: NSTextView {
     var rawSource: String = ""
     var blocks: [Block] = []
     var activeBlockIndex: Int? = nil
-    private var isUpdating = false
+    var isUpdating = false
     var displayRanges: [NSRange] = []
     private var pendingRecompose = false
 
-    // MARK: - Custom Undo/Redo
+    // MARK: - Custom Undo/Redo State
 
     struct UndoSnapshot {
         let rawSource: String
@@ -44,13 +44,13 @@ public class EditorTextView: NSTextView {
 
     var undoStack: [UndoSnapshot] = []
     var redoStack: [UndoSnapshot] = []
-    private var lastEditBlockIndex: Int? = nil
-    private var lastEditType: EditType = .other
-    private var isUndoRedoing = false
+    var lastEditBlockIndex: Int? = nil
+    var lastEditType: EditType = .other
+    var isUndoRedoing = false
 
     /// The separator between blocks in the display.
     /// Must match what BlockParser splits on.
-    private let blockSeparator = "\n"
+    let blockSeparator = "\n"
 
     // MARK: - Colors (semantic — adapts to light/dark mode)
 
@@ -58,7 +58,7 @@ public class EditorTextView: NSTextView {
 
     /// Foreground color for all body text. Uses the system text color so it
     /// flips automatically between near-black (light) and near-white (dark).
-    private var foregroundColor: NSColor { .textColor }
+    var foregroundColor: NSColor { .textColor }
 
     /// Background color for the editor surface. `.textBackgroundColor` is the
     /// standard semantic color for text-editing backgrounds (white / dark gray).
@@ -66,19 +66,19 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Fonts & Style
 
-    private let bodyFont: NSFont = {
+    let bodyFont: NSFont = {
         if let ia = NSFont(name: "iA Writer Mono S", size: 16) { return ia }
         return NSFont.monospacedSystemFont(ofSize: 16, weight: .regular)
     }()
 
-    private let bodyParagraphStyle: NSParagraphStyle = {
+    let bodyParagraphStyle: NSParagraphStyle = {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = 6
         ps.paragraphSpacing = 0
         return ps
     }()
 
-    private var baseAttributes: [NSAttributedString.Key: Any] {
+    var baseAttributes: [NSAttributedString.Key: Any] {
         [
             .font: bodyFont,
             .foregroundColor: foregroundColor,
@@ -86,7 +86,7 @@ public class EditorTextView: NSTextView {
         ]
     }
 
-    private var separatorLength: Int { (blockSeparator as NSString).length }
+    var separatorLength: Int { (blockSeparator as NSString).length }
 
     // MARK: - Initialization
 
@@ -149,77 +149,7 @@ public class EditorTextView: NSTextView {
             .foregroundColor: foregroundColor,
         ]
         typingAttributes = baseAttributes
-        // Re-render all blocks so text color updates
         recompose(cursorInRaw: currentCursorInRaw())
-    }
-
-    // MARK: - Undo / Redo
-    //
-    // Custom undo stack operating on rawSource snapshots.  Completely bypasses
-    // NSTextView's built-in undo (allowsUndo = false) because recompose
-    // replaces the entire text storage, invalidating position-based undo.
-
-    @objc func undo(_ sender: Any?) {
-        performUndo()
-    }
-
-    @objc func redo(_ sender: Any?) {
-        performRedo()
-    }
-
-    private func currentCursorInRaw() -> Int {
-        let sel = selectedRange()
-        return displayOffsetToRawOffset(sel.location)
-    }
-
-    private func classifyEdit(range: NSRange, replacement: String) -> EditType {
-        if replacement == "\n" { return .other }  // Enter always starts a new group
-        if replacement.count == 1 && range.length == 0 { return .insert }
-        if replacement.isEmpty && range.length == 1 { return .delete }
-        return .other
-    }
-
-    /// Push an undo snapshot if this edit starts a new coalescing group.
-    private func recordUndoIfNeeded(editRange: NSRange, replacement: String) {
-        let editType = classifyEdit(range: editRange, replacement: replacement)
-
-        let shouldPush = undoStack.isEmpty
-            || editType == .other
-            || editType != lastEditType
-            || activeBlockIndex != lastEditBlockIndex
-
-        if shouldPush {
-            undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: currentCursorInRaw()))
-            redoStack.removeAll()
-        }
-
-        lastEditType = editType
-        lastEditBlockIndex = activeBlockIndex
-    }
-
-    private func performUndo() {
-        guard let snapshot = undoStack.popLast() else { return }
-        // Save current state for redo
-        redoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: currentCursorInRaw()))
-        restoreSnapshot(snapshot)
-    }
-
-    private func performRedo() {
-        guard let snapshot = redoStack.popLast() else { return }
-        // Save current state for undo
-        undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: currentCursorInRaw()))
-        restoreSnapshot(snapshot)
-    }
-
-    private func restoreSnapshot(_ snapshot: UndoSnapshot) {
-        isUndoRedoing = true
-        rawSource = snapshot.rawSource
-        blocks = BlockParser.parse(rawSource, previous: blocks)
-        recompose(cursorInRaw: snapshot.cursorInRaw)
-        isUndoRedoing = false
-        // Reset coalescing so the next edit starts a fresh group
-        lastEditType = .other
-        lastEditBlockIndex = nil
     }
 
     // MARK: - Edit Flow
@@ -230,10 +160,6 @@ public class EditorTextView: NSTextView {
             if !isUndoRedoing {
                 recordUndoIfNeeded(editRange: affectedCharRange, replacement: replacement)
             }
-            // If the edit touches a separator between blocks (e.g. backspace
-            // at start of a block deleting the \n), handle it directly on
-            // rawSource. NSTextView can't sync this back through the normal
-            // didChangeText path because displayRanges become stale.
             if editTouchesSeparator(range: affectedCharRange) {
                 handleSeparatorEdit(displayRange: affectedCharRange, replacement: replacement)
                 return false
@@ -294,9 +220,6 @@ public class EditorTextView: NSTextView {
             return
         }
 
-        // Compute the active block's current display range.
-        // It starts after the separator following the previous block,
-        // and ends before the separator preceding the next block.
         let activeDisplayStart: Int
         if activeIdx == 0 {
             activeDisplayStart = 0
@@ -308,8 +231,6 @@ public class EditorTextView: NSTextView {
         if activeIdx == displayRanges.count - 1 {
             activeDisplayEnd = displayString.length
         } else {
-            // Use suffix lengths — non-active block lengths are correct even
-            // though their positions are stale after the active block changed size.
             var suffixLength = 0
             for i in (activeIdx + 1)..<displayRanges.count {
                 suffixLength += separatorLength + displayRanges[i].length
@@ -323,13 +244,11 @@ public class EditorTextView: NSTextView {
 
         let newActiveContent = displayString.substring(with: activeDisplayRange)
 
-        // Compute raw cursor offset while the block mapping is still valid.
         let sel = selectedRange()
         let cursorInBlock = max(0, sel.location - safeStart)
         let rawCursor = blocks[activeIdx].range.location
             + min(cursorInBlock, (newActiveContent as NSString).length)
 
-        // Rebuild rawSource by replacing the active block's content.
         var parts: [String] = []
         for (i, block) in blocks.enumerated() {
             if i == activeIdx {
@@ -343,32 +262,10 @@ public class EditorTextView: NSTextView {
         blocks = BlockParser.parse(rawSource, previous: blocks)
         recalcDisplayRanges()
 
-        // If the cursor is now in a different block (e.g., Enter split a block
-        // or Backspace merged blocks), recompose to update rendering.
         let clampedRawCursor = min(rawCursor, (rawSource as NSString).length)
         let newBlockIndex = blockIndexForRawOffset(clampedRawCursor)
         if newBlockIndex != activeBlockIndex {
             recompose(cursorInRaw: clampedRawCursor)
-        }
-    }
-
-    /// Recalculates displayRanges from current blocks without touching textStorage.
-    private func recalcDisplayRanges() {
-        displayRanges = []
-        var offset = 0
-        for (i, block) in blocks.enumerated() {
-            if i > 0 {
-                offset += separatorLength
-            }
-            let displayLen: Int
-            if i == activeBlockIndex {
-                displayLen = (block.content as NSString).length
-            } else {
-                let rendered = renderMarkdown(block.content)
-                displayLen = rendered.length
-            }
-            displayRanges.append(NSRange(location: offset, length: displayLen))
-            offset += displayLen
         }
     }
 
@@ -396,334 +293,11 @@ public class EditorTextView: NSTextView {
         }
     }
 
-    // MARK: - Display Composition (full recompose)
-    //
-    // Called when the active block changes.  Replaces the entire text storage.
+    // MARK: - Helpers
 
-    func recompose(cursorInRaw: Int, selectionInRaw: NSRange? = nil) {
-        isUpdating = true
-
-        activeBlockIndex = blockIndexForRawOffset(cursorInRaw)
-
-        let composed = NSMutableAttributedString()
-        displayRanges = []
-
-        for (i, block) in blocks.enumerated() {
-            if i > 0 {
-                composed.append(NSAttributedString(string: blockSeparator, attributes: baseAttributes))
-            }
-
-            let blockDisplayStart = composed.length
-
-            if i == activeBlockIndex {
-                composed.append(highlightSyntax(block.content))
-            } else {
-                composed.append(renderMarkdown(block.content))
-            }
-
-            let blockDisplayLength = composed.length - blockDisplayStart
-            displayRanges.append(NSRange(location: blockDisplayStart, length: blockDisplayLength))
-        }
-
-        let fullRange = NSRange(location: 0, length: textStorage!.length)
-        textStorage?.beginEditing()
-        textStorage?.replaceCharacters(in: fullRange, with: composed)
-        textStorage?.endEditing()
-
-        if let rawSel = selectionInRaw, rawSel.length > 0 {
-            let displayStart = rawOffsetToDisplayOffset(rawSel.location)
-            let displayEnd = rawOffsetToDisplayOffset(rawSel.location + rawSel.length)
-            let len = textStorage!.length
-            let displaySel = NSRange(
-                location: min(displayStart, len),
-                length: max(0, min(displayEnd, len) - min(displayStart, len))
-            )
-            setSelectedRange(displaySel)
-        } else {
-            let displayCursor = rawOffsetToDisplayOffset(cursorInRaw)
-            let clamped = min(displayCursor, textStorage!.length)
-            setSelectedRange(NSRange(location: clamped, length: 0))
-        }
-
-        typingAttributes = baseAttributes
-
-        isUpdating = false
-    }
-
-    // MARK: - Coordinate Mapping
-
-    func blockIndexForRawOffset(_ rawOffset: Int) -> Int? {
-        for (i, block) in blocks.enumerated() {
-            if rawOffset >= block.range.location && rawOffset <= block.range.upperBound {
-                return i
-            }
-        }
-        return blocks.isEmpty ? nil : blocks.count - 1
-    }
-
-    func displayOffsetToRawOffset(_ displayOffset: Int) -> Int {
-        for (i, displayRange) in displayRanges.enumerated() {
-            guard i < blocks.count else { break }
-            let block = blocks[i]
-
-            if displayOffset <= displayRange.upperBound {
-                let offsetInBlock = max(0, displayOffset - displayRange.location)
-
-                if i == activeBlockIndex {
-                    let clampedOffset = min(offsetInBlock, (block.content as NSString).length)
-                    return block.range.location + clampedOffset
-                } else {
-                    let displayLen = displayRange.length
-                    let rawLen = (block.content as NSString).length
-                    if displayLen > 0 {
-                        let proportion = Double(offsetInBlock) / Double(displayLen)
-                        let mapped = Int(proportion * Double(rawLen))
-                        return block.range.location + min(mapped, rawLen)
-                    }
-                    return block.range.location
-                }
-            }
-
-            let separatorEnd = (i + 1 < displayRanges.count)
-                ? displayRanges[i + 1].location
-                : (textStorage?.length ?? displayRange.upperBound)
-            if displayOffset < separatorEnd {
-                let sepOffset = displayOffset - displayRange.upperBound
-                return block.range.upperBound + sepOffset
-            }
-        }
-
-        return (rawSource as NSString).length
-    }
-
-    func rawOffsetToDisplayOffset(_ rawOffset: Int) -> Int {
-        for (i, block) in blocks.enumerated() {
-            guard i < displayRanges.count else { break }
-            let displayRange = displayRanges[i]
-
-            if rawOffset <= block.range.upperBound {
-                let offsetInBlock = max(0, rawOffset - block.range.location)
-
-                if i == activeBlockIndex {
-                    return displayRange.location + min(offsetInBlock, displayRange.length)
-                } else {
-                    let rawLen = (block.content as NSString).length
-                    if rawLen > 0 {
-                        let proportion = Double(offsetInBlock) / Double(rawLen)
-                        let mapped = Int(proportion * Double(displayRange.length))
-                        return displayRange.location + min(mapped, displayRange.length)
-                    }
-                    return displayRange.location
-                }
-            }
-
-            let nextRawStart = (i + 1 < blocks.count)
-                ? blocks[i + 1].range.location
-                : (rawSource as NSString).length
-            if rawOffset < nextRawStart {
-                let sepOffset = rawOffset - block.range.upperBound
-                return displayRange.upperBound + sepOffset
-            }
-        }
-
-        return textStorage?.length ?? 0
-    }
-
-    private func displayRangeToRawRange(_ displayRange: NSRange) -> NSRange {
-        let rawStart = displayOffsetToRawOffset(displayRange.location)
-        let rawEnd = displayOffsetToRawOffset(displayRange.location + displayRange.length)
-        return NSRange(location: rawStart, length: max(0, rawEnd - rawStart))
-    }
-
-    // MARK: - Active Block Syntax Highlighting
-
-    /// Color for dimmed syntax delimiters (*, **, `, #, etc.)
-    private var syntaxDimColor: NSColor { .tertiaryLabelColor }
-
-    /// Builds an NSAttributedString of the raw markdown with syntax highlighting.
-    ///
-    /// Uses `swift-markdown` (cmark-gfm) to parse the source, then maps the
-    /// AST's source ranges back onto the raw text: bold/italic font traits on
-    /// content, dimmed color on delimiters.  Because the same parser powers
-    /// `AttributedString(markdown:)`, the active block's highlighting is
-    /// consistent with rendered (non-active) blocks — including edge cases
-    /// like mismatched delimiters (`**hi*`).
-    func highlightSyntax(_ markdown: String) -> NSAttributedString {
-        let result = NSMutableAttributedString(string: markdown, attributes: baseAttributes)
-        let spans = SyntaxHighlighter.parse(markdown)
-
-        for span in spans {
-            // Dim delimiter characters
-            for dr in span.delimiterRanges {
-                guard dr.upperBound <= result.length else { continue }
-                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
-            }
-
-            switch span.kind {
-            case .bold:
-                guard span.contentRange.upperBound <= result.length else { continue }
-                let bold = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
-                result.addAttribute(.font, value: bold, range: span.contentRange)
-
-            case .italic:
-                guard span.contentRange.upperBound <= result.length else { continue }
-                let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
-                result.addAttribute(.font, value: italic, range: span.contentRange)
-
-            case .boldItalic:
-                guard span.contentRange.upperBound <= result.length else { continue }
-                let bi = NSFontManager.shared.convert(bodyFont, toHaveTrait: [.boldFontMask, .italicFontMask])
-                result.addAttribute(.font, value: bi, range: span.contentRange)
-
-            case .code:
-                break
-
-            case .heading(let level):
-                guard span.fullRange.upperBound <= result.length else { continue }
-                let scale: CGFloat = level == 1 ? 1.5 : level == 2 ? 1.3 : level == 3 ? 1.15 : 1.0
-                let sized = NSFont(descriptor: bodyFont.fontDescriptor,
-                                   size: bodyFont.pointSize * scale) ?? bodyFont
-                let heading = NSFontManager.shared.convert(sized, toHaveTrait: .boldFontMask)
-                result.addAttribute(.font, value: heading, range: span.fullRange)
-                // Re-dim delimiters (they got heading font above)
-                for dr in span.delimiterRanges {
-                    guard dr.upperBound <= result.length else { continue }
-                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
-                }
-            }
-        }
-
-        return result
-    }
-
-    /// Re-applies syntax highlighting to the active block in the text storage.
-    /// Called after each keystroke to keep formatting in sync with content.
-    private func applySyntaxHighlighting() {
-        guard let ts = textStorage,
-              let activeIdx = activeBlockIndex,
-              activeIdx < displayRanges.count,
-              activeIdx < blocks.count else { return }
-
-        let displayRange = displayRanges[activeIdx]
-        guard displayRange.upperBound <= ts.length else { return }
-
-        let content = blocks[activeIdx].content
-        let highlighted = highlightSyntax(content)
-        let offset = displayRange.location
-
-        isUpdating = true
-        ts.beginEditing()
-
-        // Transfer all attributes from the highlighted string to text storage
-        highlighted.enumerateAttributes(in: NSRange(location: 0, length: highlighted.length), options: []) { attrs, range, _ in
-            let displayR = NSRange(location: range.location + offset, length: range.length)
-            ts.setAttributes(attrs, range: displayR)
-        }
-
-        ts.endEditing()
-        isUpdating = false
-
-        typingAttributes = baseAttributes
-    }
-
-    // MARK: - Markdown Rendering
-
-    /// Computes the exact delimiter ranges to strip for a rendered (inactive) block.
-    ///
-    /// Unlike `span.delimiterRanges` (which uses cmark's full source range and may
-    /// include literal characters in mismatched cases like `**hi*`), this computes
-    /// delimiters from the known width per span kind, anchored on `contentRange`.
-    private func renderDelimiters(for span: SyntaxHighlighter.Span) -> [NSRange] {
-        switch span.kind {
-        case .italic:
-            return [
-                NSRange(location: span.contentRange.location - 1, length: 1),
-                NSRange(location: span.contentRange.upperBound, length: 1),
-            ]
-        case .bold:
-            return [
-                NSRange(location: span.contentRange.location - 2, length: 2),
-                NSRange(location: span.contentRange.upperBound, length: 2),
-            ]
-        case .boldItalic:
-            return [
-                NSRange(location: span.contentRange.location - 3, length: 3),
-                NSRange(location: span.contentRange.upperBound, length: 3),
-            ]
-        case .code:
-            return span.delimiterRanges
-        case .heading:
-            return span.delimiterRanges
-        }
-    }
-
-    func renderMarkdown(_ markdown: String) -> NSAttributedString {
-        let spans = SyntaxHighlighter.parse(markdown)
-
-        // Compute exact delimiter ranges for each span, sorted descending for back-to-front removal
-        var allDelimRanges: [NSRange] = []
-        for span in spans {
-            allDelimRanges.append(contentsOf: renderDelimiters(for: span))
-        }
-        allDelimRanges.sort { $0.location > $1.location }
-
-        // Build stripped text by removing delimiters
-        var stripped = markdown
-        var removals: [(location: Int, length: Int)] = []
-        for dr in allDelimRanges {
-            guard dr.location >= 0, dr.upperBound <= (stripped as NSString).length else { continue }
-            let startUTF16 = stripped.utf16.index(stripped.utf16.startIndex, offsetBy: dr.location)
-            let endUTF16 = stripped.utf16.index(startUTF16, offsetBy: dr.length)
-            stripped.removeSubrange(startUTF16..<endUTF16)
-            removals.append((location: dr.location, length: dr.length))
-        }
-        // Reverse so they're in ascending order for offset mapping
-        removals.reverse()
-
-        func mappedOffset(_ original: Int) -> Int {
-            var shift = 0
-            for r in removals {
-                if original > r.location {
-                    shift += r.length
-                }
-            }
-            return original - shift
-        }
-
-        let result = NSMutableAttributedString(string: stripped, attributes: baseAttributes)
-
-        for span in spans {
-            let start = mappedOffset(span.contentRange.location)
-            let end = mappedOffset(span.contentRange.upperBound)
-            let mappedRange = NSRange(location: start, length: max(0, end - start))
-            guard mappedRange.upperBound <= result.length else { continue }
-
-            switch span.kind {
-            case .bold:
-                let bold = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
-                result.addAttribute(.font, value: bold, range: mappedRange)
-            case .italic:
-                let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
-                result.addAttribute(.font, value: italic, range: mappedRange)
-            case .boldItalic:
-                let bi = NSFontManager.shared.convert(bodyFont, toHaveTrait: [.boldFontMask, .italicFontMask])
-                result.addAttribute(.font, value: bi, range: mappedRange)
-            case .code:
-                break
-            case .heading(let level):
-                let fullStart = mappedOffset(span.fullRange.location)
-                let fullEnd = mappedOffset(span.fullRange.upperBound)
-                let mappedFull = NSRange(location: fullStart, length: max(0, fullEnd - fullStart))
-                guard mappedFull.upperBound <= result.length else { continue }
-                let scale: CGFloat = level == 1 ? 1.5 : level == 2 ? 1.3 : level == 3 ? 1.15 : 1.0
-                let sized = NSFont(descriptor: bodyFont.fontDescriptor,
-                                   size: bodyFont.pointSize * scale) ?? bodyFont
-                let heading = NSFontManager.shared.convert(sized, toHaveTrait: .boldFontMask)
-                result.addAttribute(.font, value: heading, range: mappedFull)
-            }
-        }
-
-        return result
+    func currentCursorInRaw() -> Int {
+        let sel = selectedRange()
+        return displayOffsetToRawOffset(sel.location)
     }
 }
 
