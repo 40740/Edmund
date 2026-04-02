@@ -477,6 +477,41 @@ struct EditorMarkdownTests {
         let rendered = editor.renderMarkdown("")
         #expect(rendered.string == "")
     }
+
+    @Test("Heading renders without # prefix")
+    @MainActor func headingRendering() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("# Hello")
+        #expect(rendered.string == "Hello")
+    }
+
+    @Test("Bold italic renders without delimiters")
+    @MainActor func boldItalicRendering() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("***both***")
+        #expect(rendered.string == "both")
+    }
+
+    @Test("**hi* renders as *hi (extra * stays, matched delimiters stripped)")
+    @MainActor func mismatchedDoubleOpenSingleClose() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("**hi*")
+        #expect(rendered.string == "*hi")
+    }
+
+    @Test("*hi** renders as hi* (extra * stays, matched delimiters stripped)")
+    @MainActor func mismatchedSingleOpenDoubleClose() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("*hi**")
+        #expect(rendered.string == "hi*")
+    }
+
+    @Test("***hi** renders as *hi (extra * stays, bold delimiters stripped)")
+    @MainActor func mismatchedTripleOpenDoubleClose() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("***hi**")
+        #expect(rendered.string == "*hi")
+    }
 }
 
 // MARK: - Display Composition

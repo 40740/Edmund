@@ -628,33 +628,102 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Markdown Rendering
 
-    func renderMarkdown(_ markdown: String) -> NSAttributedString {
-        if let attrStr = try? AttributedString(
-            markdown: markdown,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        ) {
-            let ns = NSMutableAttributedString(attrStr)
-            ns.enumerateAttribute(.font, in: NSRange(location: 0, length: ns.length)) { value, range, _ in
-                let existingFont = value as? NSFont ?? bodyFont
-                let traits = existingFont.fontDescriptor.symbolicTraits
+    /// Computes the exact delimiter ranges to strip for a rendered (inactive) block.
+    ///
+    /// Unlike `span.delimiterRanges` (which uses cmark's full source range and may
+    /// include literal characters in mismatched cases like `**hi*`), this computes
+    /// delimiters from the known width per span kind, anchored on `contentRange`.
+    private func renderDelimiters(for span: SyntaxHighlighter.Span) -> [NSRange] {
+        switch span.kind {
+        case .italic:
+            return [
+                NSRange(location: span.contentRange.location - 1, length: 1),
+                NSRange(location: span.contentRange.upperBound, length: 1),
+            ]
+        case .bold:
+            return [
+                NSRange(location: span.contentRange.location - 2, length: 2),
+                NSRange(location: span.contentRange.upperBound, length: 2),
+            ]
+        case .boldItalic:
+            return [
+                NSRange(location: span.contentRange.location - 3, length: 3),
+                NSRange(location: span.contentRange.upperBound, length: 3),
+            ]
+        case .code:
+            return span.delimiterRanges
+        case .heading:
+            return span.delimiterRanges
+        }
+    }
 
-                var targetFont = bodyFont
-                if traits.contains(.bold) && traits.contains(.italic) {
-                    targetFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: [.boldFontMask, .italicFontMask])
-                } else if traits.contains(.bold) {
-                    targetFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
-                } else if traits.contains(.italic) {
-                    targetFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
+    func renderMarkdown(_ markdown: String) -> NSAttributedString {
+        let spans = SyntaxHighlighter.parse(markdown)
+
+        // Compute exact delimiter ranges for each span, sorted descending for back-to-front removal
+        var allDelimRanges: [NSRange] = []
+        for span in spans {
+            allDelimRanges.append(contentsOf: renderDelimiters(for: span))
+        }
+        allDelimRanges.sort { $0.location > $1.location }
+
+        // Build stripped text by removing delimiters
+        var stripped = markdown
+        var removals: [(location: Int, length: Int)] = []
+        for dr in allDelimRanges {
+            guard dr.location >= 0, dr.upperBound <= (stripped as NSString).length else { continue }
+            let startUTF16 = stripped.utf16.index(stripped.utf16.startIndex, offsetBy: dr.location)
+            let endUTF16 = stripped.utf16.index(startUTF16, offsetBy: dr.length)
+            stripped.removeSubrange(startUTF16..<endUTF16)
+            removals.append((location: dr.location, length: dr.length))
+        }
+        // Reverse so they're in ascending order for offset mapping
+        removals.reverse()
+
+        func mappedOffset(_ original: Int) -> Int {
+            var shift = 0
+            for r in removals {
+                if original > r.location {
+                    shift += r.length
                 }
-                ns.addAttribute(.font, value: targetFont, range: range)
             }
-            let fullRange = NSRange(location: 0, length: ns.length)
-            ns.addAttribute(.paragraphStyle, value: bodyParagraphStyle, range: fullRange)
-            ns.addAttribute(.foregroundColor, value: foregroundColor, range: fullRange)
-            return ns
+            return original - shift
         }
 
-        return NSAttributedString(string: markdown, attributes: baseAttributes)
+        let result = NSMutableAttributedString(string: stripped, attributes: baseAttributes)
+
+        for span in spans {
+            let start = mappedOffset(span.contentRange.location)
+            let end = mappedOffset(span.contentRange.upperBound)
+            let mappedRange = NSRange(location: start, length: max(0, end - start))
+            guard mappedRange.upperBound <= result.length else { continue }
+
+            switch span.kind {
+            case .bold:
+                let bold = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
+                result.addAttribute(.font, value: bold, range: mappedRange)
+            case .italic:
+                let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
+                result.addAttribute(.font, value: italic, range: mappedRange)
+            case .boldItalic:
+                let bi = NSFontManager.shared.convert(bodyFont, toHaveTrait: [.boldFontMask, .italicFontMask])
+                result.addAttribute(.font, value: bi, range: mappedRange)
+            case .code:
+                break
+            case .heading(let level):
+                let fullStart = mappedOffset(span.fullRange.location)
+                let fullEnd = mappedOffset(span.fullRange.upperBound)
+                let mappedFull = NSRange(location: fullStart, length: max(0, fullEnd - fullStart))
+                guard mappedFull.upperBound <= result.length else { continue }
+                let scale: CGFloat = level == 1 ? 1.5 : level == 2 ? 1.3 : level == 3 ? 1.15 : 1.0
+                let sized = NSFont(descriptor: bodyFont.fontDescriptor,
+                                   size: bodyFont.pointSize * scale) ?? bodyFont
+                let heading = NSFontManager.shared.convert(sized, toHaveTrait: .boldFontMask)
+                result.addAttribute(.font, value: heading, range: mappedFull)
+            }
+        }
+
+        return result
     }
 }
 
