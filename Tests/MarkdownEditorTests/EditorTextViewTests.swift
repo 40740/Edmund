@@ -627,7 +627,7 @@ struct EditorIntegrationTests {
         #expect(editor.rawSource == "hello\nworld")
     }
 
-    @Test("Backspace at start of line merges with previous block", .disabled("Known limitation: syncRawSourceFromDisplay uses stale displayRanges at block boundaries"))
+    @Test("Backspace at start of line merges with previous block")
     @MainActor func backspaceMergesBlocks() {
         let editor = makeEditor()
         type("hello", into: editor)

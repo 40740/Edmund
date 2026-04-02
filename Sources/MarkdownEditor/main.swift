@@ -56,8 +56,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         editor.isVerticallyResizable = true
         editor.isHorizontallyResizable = false
         editor.autoresizingMask = [.width]
-        // Top padding clears the transparent titlebar + toolbar area
-        editor.textContainerInset = NSSize(width: 24, height: 52)
+        editor.textContainerInset = NSSize(width: 24, height: 8)
 
         let scrollView = NSScrollView(frame: window.contentView!.bounds)
         scrollView.autoresizingMask = [.width, .height]

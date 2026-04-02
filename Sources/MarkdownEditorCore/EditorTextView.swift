@@ -226,16 +226,55 @@ public class EditorTextView: NSTextView {
 
     public override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
         if isUpdating { return false }
-        if let replacement = replacementString, !isUndoRedoing {
-            recordUndoIfNeeded(editRange: affectedCharRange, replacement: replacement)
+        if let replacement = replacementString {
+            if !isUndoRedoing {
+                recordUndoIfNeeded(editRange: affectedCharRange, replacement: replacement)
+            }
+            // If the edit touches a separator between blocks (e.g. backspace
+            // at start of a block deleting the \n), handle it directly on
+            // rawSource. NSTextView can't sync this back through the normal
+            // didChangeText path because displayRanges become stale.
+            if editTouchesSeparator(range: affectedCharRange) {
+                handleSeparatorEdit(displayRange: affectedCharRange, replacement: replacement)
+                return false
+            }
         }
         return true
+    }
+
+    /// Returns true if the edit range overlaps a separator gap between blocks.
+    private func editTouchesSeparator(range: NSRange) -> Bool {
+        guard displayRanges.count > 1 else { return false }
+        for i in 0..<(displayRanges.count - 1) {
+            let gapStart = displayRanges[i].upperBound
+            let gapEnd = displayRanges[i + 1].location
+            if range.location < gapEnd && range.upperBound > gapStart {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Applies an edit that crosses a block separator directly to rawSource,
+    /// then re-parses and recomposes.
+    private func handleSeparatorEdit(displayRange editRange: NSRange, replacement: String) {
+        let rawStart = displayOffsetToRawOffset(editRange.location)
+        let rawEnd = displayOffsetToRawOffset(editRange.location + editRange.length)
+        let rawRange = NSRange(location: rawStart, length: max(0, rawEnd - rawStart))
+
+        let nsRaw = rawSource as NSString
+        rawSource = nsRaw.replacingCharacters(in: rawRange, with: replacement)
+
+        let newCursorRaw = rawStart + (replacement as NSString).length
+        blocks = BlockParser.parse(rawSource, previous: blocks)
+        recompose(cursorInRaw: newCursorRaw)
     }
 
     public override func didChangeText() {
         super.didChangeText()
         guard !isUpdating, !isUndoRedoing else { return }
         syncRawSourceFromDisplay()
+        applySyntaxHighlighting()
     }
 
     /// Reads the active block's content from the text storage and rebuilds rawSource.
@@ -377,7 +416,7 @@ public class EditorTextView: NSTextView {
             let blockDisplayStart = composed.length
 
             if i == activeBlockIndex {
-                composed.append(NSAttributedString(string: block.content, attributes: baseAttributes))
+                composed.append(highlightSyntax(block.content))
             } else {
                 composed.append(renderMarkdown(block.content))
             }
@@ -494,6 +533,97 @@ public class EditorTextView: NSTextView {
         let rawStart = displayOffsetToRawOffset(displayRange.location)
         let rawEnd = displayOffsetToRawOffset(displayRange.location + displayRange.length)
         return NSRange(location: rawStart, length: max(0, rawEnd - rawStart))
+    }
+
+    // MARK: - Active Block Syntax Highlighting
+
+    /// Color for dimmed syntax delimiters (*, **, `, #, etc.)
+    private var syntaxDimColor: NSColor { .tertiaryLabelColor }
+
+    /// Builds an NSAttributedString of the raw markdown with syntax highlighting.
+    ///
+    /// Uses `swift-markdown` (cmark-gfm) to parse the source, then maps the
+    /// AST's source ranges back onto the raw text: bold/italic font traits on
+    /// content, dimmed color on delimiters.  Because the same parser powers
+    /// `AttributedString(markdown:)`, the active block's highlighting is
+    /// consistent with rendered (non-active) blocks — including edge cases
+    /// like mismatched delimiters (`**hi*`).
+    func highlightSyntax(_ markdown: String) -> NSAttributedString {
+        let result = NSMutableAttributedString(string: markdown, attributes: baseAttributes)
+        let spans = SyntaxHighlighter.parse(markdown)
+
+        for span in spans {
+            // Dim delimiter characters
+            for dr in span.delimiterRanges {
+                guard dr.upperBound <= result.length else { continue }
+                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+            }
+
+            switch span.kind {
+            case .bold:
+                guard span.contentRange.upperBound <= result.length else { continue }
+                let bold = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
+                result.addAttribute(.font, value: bold, range: span.contentRange)
+
+            case .italic:
+                guard span.contentRange.upperBound <= result.length else { continue }
+                let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
+                result.addAttribute(.font, value: italic, range: span.contentRange)
+
+            case .boldItalic:
+                guard span.contentRange.upperBound <= result.length else { continue }
+                let bi = NSFontManager.shared.convert(bodyFont, toHaveTrait: [.boldFontMask, .italicFontMask])
+                result.addAttribute(.font, value: bi, range: span.contentRange)
+
+            case .code:
+                break
+
+            case .heading(let level):
+                guard span.fullRange.upperBound <= result.length else { continue }
+                let scale: CGFloat = level == 1 ? 1.5 : level == 2 ? 1.3 : level == 3 ? 1.15 : 1.0
+                let sized = NSFont(descriptor: bodyFont.fontDescriptor,
+                                   size: bodyFont.pointSize * scale) ?? bodyFont
+                let heading = NSFontManager.shared.convert(sized, toHaveTrait: .boldFontMask)
+                result.addAttribute(.font, value: heading, range: span.fullRange)
+                // Re-dim delimiters (they got heading font above)
+                for dr in span.delimiterRanges {
+                    guard dr.upperBound <= result.length else { continue }
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                }
+            }
+        }
+
+        return result
+    }
+
+    /// Re-applies syntax highlighting to the active block in the text storage.
+    /// Called after each keystroke to keep formatting in sync with content.
+    private func applySyntaxHighlighting() {
+        guard let ts = textStorage,
+              let activeIdx = activeBlockIndex,
+              activeIdx < displayRanges.count,
+              activeIdx < blocks.count else { return }
+
+        let displayRange = displayRanges[activeIdx]
+        guard displayRange.upperBound <= ts.length else { return }
+
+        let content = blocks[activeIdx].content
+        let highlighted = highlightSyntax(content)
+        let offset = displayRange.location
+
+        isUpdating = true
+        ts.beginEditing()
+
+        // Transfer all attributes from the highlighted string to text storage
+        highlighted.enumerateAttributes(in: NSRange(location: 0, length: highlighted.length), options: []) { attrs, range, _ in
+            let displayR = NSRange(location: range.location + offset, length: range.length)
+            ts.setAttributes(attrs, range: displayR)
+        }
+
+        ts.endEditing()
+        isUpdating = false
+
+        typingAttributes = baseAttributes
     }
 
     // MARK: - Markdown Rendering
