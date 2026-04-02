@@ -54,7 +54,7 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Colors (semantic — adapts to light/dark mode)
 
-    private let accentColor = NSColor(calibratedRed: 0.2, green: 0.4, blue: 0.9, alpha: 1.0)
+    let accentColor = NSColor(calibratedRed: 0.2, green: 0.4, blue: 0.9, alpha: 1.0)
 
     /// Foreground color for all body text. Uses the system text color so it
     /// flips automatically between near-black (light) and near-white (dark).

@@ -23,6 +23,9 @@ public enum SyntaxHighlighter {
             case boldItalic
             case code
             case heading(Int)
+            case link(destination: String)
+            case blockquote
+            case listItem(ordered: Bool)
         }
     }
 
@@ -49,6 +52,7 @@ public enum SyntaxHighlighter {
         /// and avoid emitting duplicate spans.
         private var insideEmphasis = false
         private var insideStrong = false
+        private var insideOrderedList = false
 
         init(source: String) {
             self.source = source
@@ -254,6 +258,72 @@ public enum SyntaxHighlighter {
                 contentRange: content,
                 delimiterRanges: [openDelim, closeDelim]
             ))
+        }
+
+        // MARK: - Links
+
+        mutating func visitLink(_ link: Link) {
+            guard let range = link.range else {
+                descendInto(link)
+                return
+            }
+            let full = nsRange(for: range)
+            let delims = delimiterRanges(parent: full, children: link.children)
+            let content = contentRange(full: full, delims: delims)
+
+            spans.append(Span(
+                kind: .link(destination: link.destination ?? ""),
+                fullRange: full,
+                contentRange: content,
+                delimiterRanges: delims
+            ))
+            descendInto(link)
+        }
+
+        // MARK: - Block Quotes
+
+        mutating func visitBlockQuote(_ blockQuote: BlockQuote) {
+            guard let range = blockQuote.range else {
+                descendInto(blockQuote)
+                return
+            }
+            let full = nsRange(for: range)
+            let delims = delimiterRanges(parent: full, children: blockQuote.children)
+            let content = contentRange(full: full, delims: delims)
+
+            spans.append(Span(
+                kind: .blockquote,
+                fullRange: full,
+                contentRange: content,
+                delimiterRanges: delims
+            ))
+            descendInto(blockQuote)
+        }
+
+        // MARK: - Lists
+
+        mutating func visitOrderedList(_ orderedList: OrderedList) {
+            insideOrderedList = true
+            descendInto(orderedList)
+            insideOrderedList = false
+        }
+
+        mutating func visitListItem(_ listItem: ListItem) {
+            guard let range = listItem.range else {
+                descendInto(listItem)
+                return
+            }
+            let full = nsRange(for: range)
+            let delims = delimiterRanges(parent: full, children: listItem.children)
+            let content = contentRange(full: full, delims: delims)
+
+            spans.append(Span(
+                kind: .listItem(ordered: insideOrderedList),
+                fullRange: full,
+                contentRange: content,
+                delimiterRanges: delims
+            ))
+            descendInto(listItem)
         }
     }
 }

@@ -512,6 +512,34 @@ struct EditorMarkdownTests {
         let rendered = editor.renderMarkdown("***hi**")
         #expect(rendered.string == "*hi")
     }
+
+    @Test("Link renders as text only (delimiters stripped)")
+    @MainActor func linkRendering() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("[click here](https://example.com)")
+        #expect(rendered.string == "click here")
+    }
+
+    @Test("Blockquote renders without > prefix")
+    @MainActor func blockquoteRendering() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("> hello world")
+        #expect(rendered.string == "hello world")
+    }
+
+    @Test("Unordered list item renders with bullet")
+    @MainActor func unorderedListRendering() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("- hello")
+        #expect(rendered.string == "\u{2022} hello")
+    }
+
+    @Test("Ordered list item keeps its number")
+    @MainActor func orderedListRendering() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("1. hello")
+        #expect(rendered.string == "1. hello")
+    }
 }
 
 // MARK: - Display Composition

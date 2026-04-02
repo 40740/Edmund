@@ -273,3 +273,123 @@ struct MismatchedDelimiterTests {
         #expect(italics.count == 1)
     }
 }
+
+// MARK: - Links
+
+@Suite("SyntaxHighlighter — Links")
+struct LinkTests {
+
+    @Test("Basic link [text](url) produces a link span")
+    func basicLink() {
+        let spans = SyntaxHighlighter.parse("[hello](https://example.com)")
+        let links = spans.filter { if case .link = $0.kind { return true }; return false }
+        #expect(links.count == 1)
+        #expect(links[0].contentRange == NSRange(location: 1, length: 5))  // "hello"
+    }
+
+    @Test("Link destination is captured")
+    func linkDestination() {
+        let spans = SyntaxHighlighter.parse("[click](https://example.com)")
+        let links = spans.filter { if case .link = $0.kind { return true }; return false }
+        #expect(links.count == 1)
+        if case .link(let dest) = links[0].kind {
+            #expect(dest == "https://example.com")
+        }
+    }
+
+    @Test("Link delimiters are [ and ](url)")
+    func linkDelimiters() {
+        let spans = SyntaxHighlighter.parse("[hi](url)")
+        let links = spans.filter { if case .link = $0.kind { return true }; return false }
+        #expect(links.count == 1)
+        #expect(links[0].delimiterRanges.count == 2)
+        // First delimiter: "["
+        #expect(links[0].delimiterRanges[0] == NSRange(location: 0, length: 1))
+        // Second delimiter: "](url)"
+        #expect(links[0].delimiterRanges[1] == NSRange(location: 3, length: 6))
+    }
+
+    @Test("Bold inside link text is detected")
+    func boldInsideLink() {
+        let spans = SyntaxHighlighter.parse("[**bold**](url)")
+        let links = spans.filter { if case .link = $0.kind { return true }; return false }
+        let bolds = spans.filter { $0.kind == .bold }
+        #expect(links.count == 1)
+        #expect(bolds.count == 1)
+    }
+}
+
+// MARK: - Blockquotes
+
+@Suite("SyntaxHighlighter — Blockquotes")
+struct BlockquoteTests {
+
+    @Test("Basic blockquote > text produces a blockquote span")
+    func basicBlockquote() {
+        let spans = SyntaxHighlighter.parse("> hello")
+        let quotes = spans.filter { $0.kind == .blockquote }
+        #expect(quotes.count == 1)
+    }
+
+    @Test("Blockquote delimiter is the > prefix")
+    func blockquoteDelimiter() {
+        let spans = SyntaxHighlighter.parse("> hello")
+        let quotes = spans.filter { $0.kind == .blockquote }
+        #expect(quotes.count == 1)
+        #expect(quotes[0].delimiterRanges.count >= 1)
+        // Content should be "hello"
+        #expect(quotes[0].contentRange.length == 5)
+    }
+
+    @Test("Bold inside blockquote is detected")
+    func boldInsideBlockquote() {
+        let spans = SyntaxHighlighter.parse("> **bold**")
+        let quotes = spans.filter { $0.kind == .blockquote }
+        let bolds = spans.filter { $0.kind == .bold }
+        #expect(quotes.count == 1)
+        #expect(bolds.count == 1)
+    }
+}
+
+// MARK: - List Items
+
+@Suite("SyntaxHighlighter — List Items")
+struct ListItemTests {
+
+    @Test("Unordered list item - text produces a listItem span")
+    func unorderedListItem() {
+        let spans = SyntaxHighlighter.parse("- hello")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        if case .listItem(let ordered) = items[0].kind {
+            #expect(!ordered)
+        }
+    }
+
+    @Test("Ordered list item 1. text produces a listItem span")
+    func orderedListItem() {
+        let spans = SyntaxHighlighter.parse("1. hello")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        if case .listItem(let ordered) = items[0].kind {
+            #expect(ordered)
+        }
+    }
+
+    @Test("Unordered list delimiter is - prefix")
+    func unorderedDelimiter() {
+        let spans = SyntaxHighlighter.parse("- hello")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        #expect(items[0].contentRange.length == 5)  // "hello"
+    }
+
+    @Test("Bold inside list item is detected")
+    func boldInsideListItem() {
+        let spans = SyntaxHighlighter.parse("- **bold**")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        let bolds = spans.filter { $0.kind == .bold }
+        #expect(items.count == 1)
+        #expect(bolds.count == 1)
+    }
+}

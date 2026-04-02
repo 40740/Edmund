@@ -52,11 +52,20 @@ extension EditorTextView {
                                    size: bodyFont.pointSize * scale) ?? bodyFont
                 let heading = NSFontManager.shared.convert(sized, toHaveTrait: .boldFontMask)
                 result.addAttribute(.font, value: heading, range: span.fullRange)
-                // Re-dim delimiters (they got heading font above)
                 for dr in span.delimiterRanges {
                     guard dr.upperBound <= result.length else { continue }
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                 }
+
+            case .link:
+                guard span.contentRange.upperBound <= result.length else { continue }
+                result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
+
+            case .blockquote:
+                break  // Just dim the "> " prefix (handled by generic delimiter loop)
+
+            case .listItem:
+                break  // Just dim the "- " or "1. " marker (handled by generic delimiter loop)
             }
         }
 
@@ -96,9 +105,9 @@ extension EditorTextView {
 
     /// Computes the exact delimiter ranges to strip for a rendered (inactive) block.
     ///
-    /// Unlike `span.delimiterRanges` (which uses cmark's full source range and may
-    /// include literal characters in mismatched cases like `**hi*`), this computes
-    /// delimiters from the known width per span kind, anchored on `contentRange`.
+    /// For emphasis/strong, uses known delimiter widths to avoid stripping literal
+    /// characters in mismatched cases (e.g. `**hi*`). For other span kinds,
+    /// uses the parser's delimiter ranges directly.
     private func renderDelimiters(for span: SyntaxHighlighter.Span) -> [NSRange] {
         switch span.kind {
         case .italic:
@@ -116,10 +125,12 @@ extension EditorTextView {
                 NSRange(location: span.contentRange.location - 3, length: 3),
                 NSRange(location: span.contentRange.upperBound, length: 3),
             ]
-        case .code:
+        case .code, .heading, .link, .blockquote:
             return span.delimiterRanges
-        case .heading:
-            return span.delimiterRanges
+        case .listItem(let ordered):
+            // For unordered lists, strip the marker (it gets replaced with a bullet).
+            // For ordered lists, keep the marker as-is.
+            return ordered ? [] : span.delimiterRanges
         }
     }
 
@@ -143,24 +154,29 @@ extension EditorTextView {
             stripped.removeSubrange(startUTF16..<endUTF16)
             removals.append((location: dr.location, length: dr.length))
         }
-        // Reverse so they're in ascending order for offset mapping
         removals.reverse()
 
-        func mappedOffset(_ original: Int) -> Int {
-            var shift = 0
-            for r in removals {
-                if original > r.location {
-                    shift += r.length
-                }
-            }
-            return original - shift
+        // For unordered list items, insert bullet replacement at the start
+        let unorderedListSpans = spans.filter {
+            if case .listItem(ordered: false) = $0.kind { return true }
+            return false
         }
+        // Insert bullets from back to front to preserve earlier offsets
+        for span in unorderedListSpans.reversed() {
+            let insertPos = mappedOffset(span.contentRange.location, removals: removals)
+            let idx = stripped.utf16.index(stripped.utf16.startIndex, offsetBy: insertPos)
+            stripped.insert(contentsOf: "\u{2022} ", at: idx)
+            // Track the insertion so mappedOffset accounts for it
+            removals.append((location: span.contentRange.location, length: -2)) // negative = insertion
+        }
+        // Re-sort removals ascending after adding insertions
+        removals.sort { $0.location < $1.location }
 
         let result = NSMutableAttributedString(string: stripped, attributes: baseAttributes)
 
         for span in spans {
-            let start = mappedOffset(span.contentRange.location)
-            let end = mappedOffset(span.contentRange.upperBound)
+            let start = mappedOffset(span.contentRange.location, removals: removals)
+            let end = mappedOffset(span.contentRange.upperBound, removals: removals)
             let mappedRange = NSRange(location: start, length: max(0, end - start))
             guard mappedRange.upperBound <= result.length else { continue }
 
@@ -177,8 +193,8 @@ extension EditorTextView {
             case .code:
                 break
             case .heading(let level):
-                let fullStart = mappedOffset(span.fullRange.location)
-                let fullEnd = mappedOffset(span.fullRange.upperBound)
+                let fullStart = mappedOffset(span.fullRange.location, removals: removals)
+                let fullEnd = mappedOffset(span.fullRange.upperBound, removals: removals)
                 let mappedFull = NSRange(location: fullStart, length: max(0, fullEnd - fullStart))
                 guard mappedFull.upperBound <= result.length else { continue }
                 let scale: CGFloat = level == 1 ? 1.5 : level == 2 ? 1.3 : level == 3 ? 1.15 : 1.0
@@ -186,9 +202,33 @@ extension EditorTextView {
                                    size: bodyFont.pointSize * scale) ?? bodyFont
                 let heading = NSFontManager.shared.convert(sized, toHaveTrait: .boldFontMask)
                 result.addAttribute(.font, value: heading, range: mappedFull)
+            case .link:
+                result.addAttribute(.foregroundColor, value: accentColor, range: mappedRange)
+                result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: mappedRange)
+            case .blockquote:
+                result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: mappedRange)
+            case .listItem(let ordered):
+                if !ordered {
+                    // The bullet was inserted; style the bullet character
+                    let bulletRange = NSRange(location: mappedRange.location - 2, length: 2)
+                    if bulletRange.location >= 0 {
+                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: bulletRange)
+                    }
+                }
             }
         }
 
         return result
+    }
+
+    /// Maps an offset in the original text to the stripped/modified text.
+    private func mappedOffset(_ original: Int, removals: [(location: Int, length: Int)]) -> Int {
+        var shift = 0
+        for r in removals {
+            if original > r.location {
+                shift += r.length  // positive = removal, negative = insertion
+            }
+        }
+        return original - shift
     }
 }
