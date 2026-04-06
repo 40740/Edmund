@@ -540,6 +540,116 @@ struct EditorMarkdownTests {
         let rendered = editor.renderMarkdown("1. hello")
         #expect(rendered.string == "1. hello")
     }
+
+    @Test("Inline code renders in dark red")
+    @MainActor func inlineCodeColor() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("`code`")
+        #expect(rendered.string == "code")
+        var foundCodeColor = false
+        rendered.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
+            if let color = val as? NSColor {
+                // Check it's approximately #8a2425
+                if color.redComponent > 0.5 && color.greenComponent < 0.2 && color.blueComponent < 0.2 {
+                    foundCodeColor = true
+                }
+            }
+        }
+        #expect(foundCodeColor)
+    }
+
+    @Test("Active block inline code has dark red content")
+    @MainActor func activeCodeColor() {
+        let editor = makeEditor()
+        let highlighted = editor.highlightSyntax("`code`")
+        #expect(highlighted.string == "`code`")
+        // Check the content range (chars 1-4) has the code color
+        var foundCodeColor = false
+        highlighted.enumerateAttribute(.foregroundColor, in: NSRange(location: 1, length: 4)) { val, _, _ in
+            if let color = val as? NSColor {
+                if color.redComponent > 0.5 && color.greenComponent < 0.2 && color.blueComponent < 0.2 {
+                    foundCodeColor = true
+                }
+            }
+        }
+        #expect(foundCodeColor)
+    }
+
+    @Test("Link rendered text has underline attribute")
+    @MainActor func linkUnderline() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("[text](url)")
+        #expect(rendered.string == "text")
+        var hasUnderline = false
+        rendered.enumerateAttribute(.underlineStyle, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
+            if val != nil { hasUnderline = true }
+        }
+        #expect(hasUnderline)
+    }
+
+    @Test("Blockquote rendered text has secondary label color")
+    @MainActor func blockquoteColor() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("> text")
+        var hasSecondaryColor = false
+        rendered.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
+            if let color = val as? NSColor, color == NSColor.secondaryLabelColor {
+                hasSecondaryColor = true
+            }
+        }
+        #expect(hasSecondaryColor)
+    }
+
+    @Test("List items have indented paragraph style")
+    @MainActor func listIndentation() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("- hello")
+        var hasIndent = false
+        rendered.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
+            if let ps = val as? NSParagraphStyle, ps.firstLineHeadIndent > 0 {
+                hasIndent = true
+            }
+        }
+        #expect(hasIndent)
+    }
+
+    @Test("Active list items have indented paragraph style")
+    @MainActor func activeListIndentation() {
+        let editor = makeEditor()
+        let highlighted = editor.highlightSyntax("- hello")
+        var hasIndent = false
+        highlighted.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: highlighted.length)) { val, _, _ in
+            if let ps = val as? NSParagraphStyle, ps.firstLineHeadIndent > 0 {
+                hasIndent = true
+            }
+        }
+        #expect(hasIndent)
+    }
+
+    @Test("Ordered list number is dimmed")
+    @MainActor func orderedListNumberDimmed() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("1. hello")
+        // The "1. " should have the dim color
+        var hasDimColor = false
+        rendered.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: 3)) { val, _, _ in
+            if val is NSColor { hasDimColor = true }
+        }
+        #expect(hasDimColor)
+    }
+
+    @Test("Blockquote has paragraph style with text block")
+    @MainActor func blockquoteTextBlock() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("> text")
+        var hasTextBlock = false
+        rendered.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
+            if let ps = val as? NSParagraphStyle, !ps.textBlocks.isEmpty {
+                hasTextBlock = true
+            }
+        }
+        #expect(hasTextBlock)
+    }
 }
 
 // MARK: - Display Composition

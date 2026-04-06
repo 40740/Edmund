@@ -73,7 +73,8 @@ public class EditorTextView: NSTextView {
 
     let bodyParagraphStyle: NSParagraphStyle = {
         let ps = NSMutableParagraphStyle()
-        ps.lineSpacing = 6
+        ps.lineSpacing = 4
+        ps.paragraphSpacingBefore = 2
         ps.paragraphSpacing = 0
         return ps
     }()

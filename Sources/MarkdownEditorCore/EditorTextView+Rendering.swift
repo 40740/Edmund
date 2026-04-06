@@ -7,14 +7,42 @@ extension EditorTextView {
     /// Color for dimmed syntax delimiters (*, **, `, #, etc.)
     var syntaxDimColor: NSColor { .tertiaryLabelColor }
 
+    /// Color for inline code spans.
+    var codeColor: NSColor { NSColor(calibratedRed: 0.541, green: 0.141, blue: 0.145, alpha: 1.0) }
+
+    /// Indentation amount for list items (active and inactive).
+    var listIndent: CGFloat { 16 }
+
+    /// Paragraph style with indentation for list items.
+    private func listParagraphStyle() -> NSParagraphStyle {
+        let ps = NSMutableParagraphStyle()
+        ps.lineSpacing = bodyParagraphStyle.lineSpacing
+        ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
+        ps.firstLineHeadIndent = listIndent
+        ps.headIndent = listIndent
+        return ps
+    }
+
+    /// Paragraph style with a left border for blockquotes.
+    private func blockquoteParagraphStyle() -> NSParagraphStyle {
+        let ps = NSMutableParagraphStyle()
+        ps.lineSpacing = bodyParagraphStyle.lineSpacing
+        ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
+
+        let block = NSTextBlock()
+        block.setContentWidth(100, type: .percentageValueType)
+        let leftEdge = NSRectEdge(rawValue: 0)!
+        block.setWidth(2, type: .absoluteValueType, for: .border, edge: leftEdge)
+        block.setWidth(10, type: .absoluteValueType, for: .padding, edge: leftEdge)
+        block.setBorderColor(.tertiaryLabelColor, for: leftEdge)
+        ps.textBlocks = [block]
+
+        return ps
+    }
+
+    // MARK: - Active Block Syntax Highlighting
+
     /// Builds an NSAttributedString of the raw markdown with syntax highlighting.
-    ///
-    /// Uses `swift-markdown` (cmark-gfm) to parse the source, then maps the
-    /// AST's source ranges back onto the raw text: bold/italic font traits on
-    /// content, dimmed color on delimiters.  Because the same parser powers
-    /// `AttributedString(markdown:)`, the active block's highlighting is
-    /// consistent with rendered (non-active) blocks — including edge cases
-    /// like mismatched delimiters (`**hi*`).
     func highlightSyntax(_ markdown: String) -> NSAttributedString {
         let result = NSMutableAttributedString(string: markdown, attributes: baseAttributes)
         let spans = SyntaxHighlighter.parse(markdown)
@@ -43,7 +71,8 @@ extension EditorTextView {
                 result.addAttribute(.font, value: bi, range: span.contentRange)
 
             case .code:
-                break
+                guard span.contentRange.upperBound <= result.length else { continue }
+                result.addAttribute(.foregroundColor, value: codeColor, range: span.contentRange)
 
             case .heading(let level):
                 guard span.fullRange.upperBound <= result.length else { continue }
@@ -65,7 +94,8 @@ extension EditorTextView {
                 break  // Just dim the "> " prefix (handled by generic delimiter loop)
 
             case .listItem:
-                break  // Just dim the "- " or "1. " marker (handled by generic delimiter loop)
+                guard span.fullRange.upperBound <= result.length else { continue }
+                result.addAttribute(.paragraphStyle, value: listParagraphStyle(), range: span.fullRange)
             }
         }
 
@@ -104,10 +134,6 @@ extension EditorTextView {
     // MARK: - Inactive Block Rendering
 
     /// Computes the exact delimiter ranges to strip for a rendered (inactive) block.
-    ///
-    /// For emphasis/strong, uses known delimiter widths to avoid stripping literal
-    /// characters in mismatched cases (e.g. `**hi*`). For other span kinds,
-    /// uses the parser's delimiter ranges directly.
     private func renderDelimiters(for span: SyntaxHighlighter.Span) -> [NSRange] {
         switch span.kind {
         case .italic:
@@ -128,8 +154,6 @@ extension EditorTextView {
         case .code, .heading, .link, .blockquote:
             return span.delimiterRanges
         case .listItem(let ordered):
-            // For unordered lists, strip the marker (it gets replaced with a bullet).
-            // For ordered lists, keep the marker as-is.
             return ordered ? [] : span.delimiterRanges
         }
     }
@@ -156,20 +180,18 @@ extension EditorTextView {
         }
         removals.reverse()
 
-        // For unordered list items, insert bullet replacement at the start
+        // For unordered list items, insert bullet replacement at the start.
         let unorderedListSpans = spans.filter {
             if case .listItem(ordered: false) = $0.kind { return true }
             return false
         }
-        // Insert bullets from back to front to preserve earlier offsets
         for span in unorderedListSpans.reversed() {
             let insertPos = mappedOffset(span.contentRange.location, removals: removals)
             let idx = stripped.utf16.index(stripped.utf16.startIndex, offsetBy: insertPos)
             stripped.insert(contentsOf: "\u{2022} ", at: idx)
-            // Track the insertion so mappedOffset accounts for it
-            removals.append((location: span.contentRange.location, length: -2)) // negative = insertion
+            removals.append((location: span.contentRange.location - 1, length: -2))
         }
-        // Re-sort removals ascending after adding insertions
+
         removals.sort { $0.location < $1.location }
 
         let result = NSMutableAttributedString(string: stripped, attributes: baseAttributes)
@@ -191,7 +213,7 @@ extension EditorTextView {
                 let bi = NSFontManager.shared.convert(bodyFont, toHaveTrait: [.boldFontMask, .italicFontMask])
                 result.addAttribute(.font, value: bi, range: mappedRange)
             case .code:
-                break
+                result.addAttribute(.foregroundColor, value: codeColor, range: mappedRange)
             case .heading(let level):
                 let fullStart = mappedOffset(span.fullRange.location, removals: removals)
                 let fullEnd = mappedOffset(span.fullRange.upperBound, removals: removals)
@@ -207,12 +229,35 @@ extension EditorTextView {
                 result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: mappedRange)
             case .blockquote:
                 result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: mappedRange)
+                result.addAttribute(.paragraphStyle, value: blockquoteParagraphStyle(), range: mappedRange)
             case .listItem(let ordered):
+                // Apply indentation to the full line
+                let lineStart: Int
                 if !ordered {
-                    // The bullet was inserted; style the bullet character
+                    lineStart = mappedRange.location - 2  // "• " was inserted
+                } else {
+                    lineStart = mappedOffset(span.fullRange.location, removals: removals)
+                }
+                let lineEnd = mappedRange.upperBound
+                if lineStart >= 0 && lineEnd <= result.length {
+                    let lineRange = NSRange(location: lineStart, length: lineEnd - lineStart)
+                    result.addAttribute(.paragraphStyle, value: listParagraphStyle(), range: lineRange)
+                }
+                if !ordered {
+                    // Dim the bullet
                     let bulletRange = NSRange(location: mappedRange.location - 2, length: 2)
-                    if bulletRange.location >= 0 {
+                    if bulletRange.location >= 0 && bulletRange.upperBound <= result.length {
                         result.addAttribute(.foregroundColor, value: syntaxDimColor, range: bulletRange)
+                    }
+                } else {
+                    // Dim the number/marker
+                    for dr in span.delimiterRanges {
+                        let drStart = mappedOffset(dr.location, removals: removals)
+                        let drEnd = mappedOffset(dr.upperBound, removals: removals)
+                        let mappedDR = NSRange(location: drStart, length: max(0, drEnd - drStart))
+                        if mappedDR.location >= 0 && mappedDR.upperBound <= result.length {
+                            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: mappedDR)
+                        }
                     }
                 }
             }
@@ -226,7 +271,7 @@ extension EditorTextView {
         var shift = 0
         for r in removals {
             if original > r.location {
-                shift += r.length  // positive = removal, negative = insertion
+                shift += r.length
             }
         }
         return original - shift
