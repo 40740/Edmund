@@ -2,59 +2,6 @@ import Testing
 import AppKit
 @testable import MarkdownEditorCore
 
-// MARK: - Test Helpers
-
-/// Creates an EditorTextView with a proper text system chain,
-/// mirroring the setup in main.swift.
-@MainActor
-private func makeEditor() -> EditorTextView {
-    let textStorage = NSTextStorage()
-    let layoutManager = NSLayoutManager()
-    textStorage.addLayoutManager(layoutManager)
-    let textContainer = NSTextContainer(
-        size: NSSize(width: 500, height: CGFloat.greatestFiniteMagnitude)
-    )
-    textContainer.widthTracksTextView = true
-    layoutManager.addTextContainer(textContainer)
-    return EditorTextView(
-        frame: NSRect(x: 0, y: 0, width: 500, height: 300),
-        textContainer: textContainer
-    )
-}
-
-/// Simulate typing a string character-by-character through the full
-/// NSTextView pipeline (shouldChangeText → insert → didChangeText).
-@MainActor
-private func type(_ text: String, into editor: EditorTextView) {
-    for ch in text {
-        editor.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0))
-    }
-}
-
-/// Simulate typing a string as a single paste operation.
-@MainActor
-private func paste(_ text: String, into editor: EditorTextView) {
-    editor.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
-}
-
-/// Simulate pressing Enter (inserts a newline).
-@MainActor
-private func pressEnter(in editor: EditorTextView) {
-    editor.insertText("\n", replacementRange: NSRange(location: NSNotFound, length: 0))
-}
-
-/// Simulate pressing Backspace (delete backward).
-@MainActor
-private func pressBackspace(in editor: EditorTextView) {
-    let sel = editor.selectedRange()
-    if sel.length > 0 {
-        editor.insertText("", replacementRange: sel)
-    } else if sel.location > 0 {
-        let deleteRange = NSRange(location: sel.location - 1, length: 1)
-        editor.insertText("", replacementRange: deleteRange)
-    }
-}
-
 // MARK: - Initialization
 
 @Suite("EditorTextView — Initialization")
