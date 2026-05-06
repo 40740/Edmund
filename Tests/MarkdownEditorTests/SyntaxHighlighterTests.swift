@@ -276,6 +276,54 @@ struct MismatchedDelimiterTests {
 
 // MARK: - Links
 
+@Suite("SyntaxHighlighter — Strikethrough")
+struct StrikethroughTests {
+
+    @Test("~~text~~ produces a strikethrough span")
+    func basic() {
+        let spans = SyntaxHighlighter.parse("~~deleted~~")
+        #expect(spans.count == 1)
+        let s = spans[0]
+        #expect(s.kind == .strikethrough)
+        #expect(s.fullRange == NSRange(location: 0, length: 11))
+        #expect(s.contentRange == NSRange(location: 2, length: 7))
+        #expect(s.delimiterRanges.count == 2)
+        #expect(s.delimiterRanges[0] == NSRange(location: 0, length: 2))
+        #expect(s.delimiterRanges[1] == NSRange(location: 9, length: 2))
+    }
+
+    @Test("Strikethrough delimiter is ~~")
+    func delimiters() {
+        let spans = SyntaxHighlighter.parse("~~hello~~")
+        #expect(spans[0].delimiterRanges[0].length == 2)
+        #expect(spans[0].delimiterRanges[1].length == 2)
+    }
+}
+
+@Suite("SyntaxHighlighter — Highlight")
+struct HighlightTests {
+
+    @Test("==text== produces a highlight span")
+    func basic() {
+        let spans = SyntaxHighlighter.parse("==highlighted==")
+        #expect(spans.count == 1)
+        let s = spans[0]
+        #expect(s.kind == .highlight)
+        #expect(s.fullRange == NSRange(location: 0, length: 15))
+        #expect(s.contentRange == NSRange(location: 2, length: 11))
+        #expect(s.delimiterRanges.count == 2)
+        #expect(s.delimiterRanges[0] == NSRange(location: 0, length: 2))
+        #expect(s.delimiterRanges[1] == NSRange(location: 13, length: 2))
+    }
+
+    @Test("Highlight inside code is ignored")
+    func insideCode() {
+        let spans = SyntaxHighlighter.parse("`==nope==`")
+        let highlights = spans.filter { $0.kind == .highlight }
+        #expect(highlights.isEmpty)
+    }
+}
+
 @Suite("SyntaxHighlighter — Links")
 struct LinkTests {
 
@@ -361,7 +409,7 @@ struct ListItemTests {
         let spans = SyntaxHighlighter.parse("- hello")
         let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
         #expect(items.count == 1)
-        if case .listItem(let ordered) = items[0].kind {
+        if case .listItem(let ordered, _) = items[0].kind {
             #expect(!ordered)
         }
     }
@@ -371,7 +419,7 @@ struct ListItemTests {
         let spans = SyntaxHighlighter.parse("1. hello")
         let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
         #expect(items.count == 1)
-        if case .listItem(let ordered) = items[0].kind {
+        if case .listItem(let ordered, _) = items[0].kind {
             #expect(ordered)
         }
     }
@@ -391,5 +439,29 @@ struct ListItemTests {
         let bolds = spans.filter { $0.kind == .bold }
         #expect(items.count == 1)
         #expect(bolds.count == 1)
+    }
+
+    @Test("Unchecked todo item - [ ] produces listItem with unchecked checkbox")
+    func uncheckedTodo() {
+        let spans = SyntaxHighlighter.parse("- [ ] todo")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        if case .listItem(_, let checkbox) = items[0].kind {
+            #expect(checkbox == .unchecked)
+        } else {
+            #expect(Bool(false), "Expected listItem")
+        }
+    }
+
+    @Test("Checked todo item - [x] produces listItem with checked checkbox")
+    func checkedTodo() {
+        let spans = SyntaxHighlighter.parse("- [x] done")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        if case .listItem(_, let checkbox) = items[0].kind {
+            #expect(checkbox == .checked)
+        } else {
+            #expect(Bool(false), "Expected listItem")
+        }
     }
 }

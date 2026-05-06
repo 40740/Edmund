@@ -638,6 +638,54 @@ struct EditorMarkdownTests {
         #expect(hasDimColor)
     }
 
+    @Test("Strikethrough renders without ~~ delimiters")
+    @MainActor func strikethroughRendering() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("~~deleted~~")
+        #expect(rendered.string == "deleted")
+        var hasStrikethrough = false
+        rendered.enumerateAttribute(.strikethroughStyle, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
+            if val != nil { hasStrikethrough = true }
+        }
+        #expect(hasStrikethrough)
+    }
+
+    @Test("Active block strikethrough has strikethrough attribute")
+    @MainActor func activeStrikethrough() {
+        let editor = makeEditor()
+        let highlighted = editor.highlightSyntax("~~deleted~~")
+        #expect(highlighted.string == "~~deleted~~")
+        var hasStrikethrough = false
+        highlighted.enumerateAttribute(.strikethroughStyle, in: NSRange(location: 2, length: 7)) { val, _, _ in
+            if val != nil { hasStrikethrough = true }
+        }
+        #expect(hasStrikethrough)
+    }
+
+    @Test("Highlight renders without == delimiters")
+    @MainActor func highlightRendering() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("==important==")
+        #expect(rendered.string == "important")
+        var hasBackground = false
+        rendered.enumerateAttribute(.backgroundColor, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
+            if val != nil { hasBackground = true }
+        }
+        #expect(hasBackground)
+    }
+
+    @Test("Active block highlight has background color")
+    @MainActor func activeHighlight() {
+        let editor = makeEditor()
+        let highlighted = editor.highlightSyntax("==important==")
+        #expect(highlighted.string == "==important==")
+        var hasBackground = false
+        highlighted.enumerateAttribute(.backgroundColor, in: NSRange(location: 2, length: 9)) { val, _, _ in
+            if val != nil { hasBackground = true }
+        }
+        #expect(hasBackground)
+    }
+
     @Test("Blockquote has paragraph style with text block")
     @MainActor func blockquoteTextBlock() {
         let editor = makeEditor()

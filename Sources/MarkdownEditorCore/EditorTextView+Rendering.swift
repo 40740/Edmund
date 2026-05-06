@@ -74,6 +74,14 @@ extension EditorTextView {
                 guard span.contentRange.upperBound <= result.length else { continue }
                 result.addAttribute(.foregroundColor, value: codeColor, range: span.contentRange)
 
+            case .strikethrough:
+                guard span.contentRange.upperBound <= result.length else { continue }
+                result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)
+
+            case .highlight:
+                guard span.contentRange.upperBound <= result.length else { continue }
+                result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: span.contentRange)
+
             case .heading(let level):
                 guard span.fullRange.upperBound <= result.length else { continue }
                 let scale: CGFloat = level == 1 ? 1.5 : level == 2 ? 1.3 : level == 3 ? 1.15 : 1.0
@@ -151,9 +159,14 @@ extension EditorTextView {
                 NSRange(location: span.contentRange.location - 3, length: 3),
                 NSRange(location: span.contentRange.upperBound, length: 3),
             ]
+        case .strikethrough, .highlight:
+            return [
+                NSRange(location: span.contentRange.location - 2, length: 2),
+                NSRange(location: span.contentRange.upperBound, length: 2),
+            ]
         case .code, .heading, .link, .blockquote:
             return span.delimiterRanges
-        case .listItem(let ordered):
+        case .listItem(let ordered, _):
             return ordered ? [] : span.delimiterRanges
         }
     }
@@ -180,15 +193,25 @@ extension EditorTextView {
         }
         removals.reverse()
 
-        // For unordered list items, insert bullet replacement at the start.
+        // For unordered list items, insert bullet/checkbox replacement at the start.
         let unorderedListSpans = spans.filter {
-            if case .listItem(ordered: false) = $0.kind { return true }
+            if case .listItem(ordered: false, _) = $0.kind { return true }
             return false
         }
         for span in unorderedListSpans.reversed() {
             let insertPos = mappedOffset(span.contentRange.location, removals: removals)
             let idx = stripped.utf16.index(stripped.utf16.startIndex, offsetBy: insertPos)
-            stripped.insert(contentsOf: "\u{2022} ", at: idx)
+            let bullet: String
+            if case .listItem(_, let checkbox) = span.kind {
+                switch checkbox {
+                case .unchecked: bullet = "\u{25CB} "  // ○
+                case .checked:   bullet = "\u{25CF} "  // ●
+                case .none:      bullet = "\u{2022} "  // •
+                }
+            } else {
+                bullet = "\u{2022} "
+            }
+            stripped.insert(contentsOf: bullet, at: idx)
             removals.append((location: span.contentRange.location - 1, length: -2))
         }
 
@@ -214,6 +237,10 @@ extension EditorTextView {
                 result.addAttribute(.font, value: bi, range: mappedRange)
             case .code:
                 result.addAttribute(.foregroundColor, value: codeColor, range: mappedRange)
+            case .strikethrough:
+                result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: mappedRange)
+            case .highlight:
+                result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: mappedRange)
             case .heading(let level):
                 let fullStart = mappedOffset(span.fullRange.location, removals: removals)
                 let fullEnd = mappedOffset(span.fullRange.upperBound, removals: removals)
@@ -230,11 +257,11 @@ extension EditorTextView {
             case .blockquote:
                 result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: mappedRange)
                 result.addAttribute(.paragraphStyle, value: blockquoteParagraphStyle(), range: mappedRange)
-            case .listItem(let ordered):
+            case .listItem(let ordered, let checkbox):
                 // Apply indentation to the full line
                 let lineStart: Int
                 if !ordered {
-                    lineStart = mappedRange.location - 2  // "• " was inserted
+                    lineStart = mappedRange.location - 2  // "• " or checkbox was inserted
                 } else {
                     lineStart = mappedOffset(span.fullRange.location, removals: removals)
                 }
@@ -244,10 +271,15 @@ extension EditorTextView {
                     result.addAttribute(.paragraphStyle, value: listParagraphStyle(), range: lineRange)
                 }
                 if !ordered {
-                    // Dim the bullet
+                    // Dim the bullet/checkbox
                     let bulletRange = NSRange(location: mappedRange.location - 2, length: 2)
                     if bulletRange.location >= 0 && bulletRange.upperBound <= result.length {
                         result.addAttribute(.foregroundColor, value: syntaxDimColor, range: bulletRange)
+                    }
+                    // Strikethrough checked items
+                    if checkbox == .checked {
+                        result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: mappedRange)
+                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: mappedRange)
                     }
                 } else {
                     // Dim the number/marker

@@ -22,10 +22,16 @@ public enum SyntaxHighlighter {
             case italic
             case boldItalic
             case code
+            case strikethrough
+            case highlight
             case heading(Int)
             case link(destination: String)
             case blockquote
-            case listItem(ordered: Bool)
+            case listItem(ordered: Bool, checkbox: CheckboxState? = nil)
+
+            public enum CheckboxState: Equatable, Sendable {
+                case checked, unchecked
+            }
         }
     }
 
@@ -38,7 +44,39 @@ public enum SyntaxHighlighter {
         let doc = Document(parsing: text, options: [.disableSmartOpts])
         var walker = SpanCollector(source: text)
         walker.visit(doc)
+
+        // ==highlight== is not supported by swift-markdown; parse with regex.
+        parseHighlight(text, into: &walker.spans)
+
         return walker.spans.sorted { $0.fullRange.location < $1.fullRange.location }
+    }
+
+    // MARK: - Custom Parsers
+
+    /// Parses ==highlight== spans using regex (not supported by swift-markdown).
+    private static func parseHighlight(_ text: String, into spans: inout [Span]) {
+        let nsText = text as NSString
+        guard let regex = try? NSRegularExpression(pattern: "==(.+?)==", options: []) else { return }
+        let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsText.length))
+        for match in matches {
+            let full = match.range(at: 0)
+            let content = match.range(at: 1)
+            // Skip if overlapping with a code span
+            let overlaps = spans.contains { existing in
+                existing.kind == .code &&
+                existing.fullRange.location <= full.location &&
+                existing.fullRange.upperBound >= full.upperBound
+            }
+            guard !overlaps else { continue }
+            let openDelim = NSRange(location: full.location, length: 2)
+            let closeDelim = NSRange(location: full.upperBound - 2, length: 2)
+            spans.append(Span(
+                kind: .highlight,
+                fullRange: full,
+                contentRange: content,
+                delimiterRanges: [openDelim, closeDelim]
+            ))
+        }
     }
 
     // MARK: - AST Walker
@@ -260,6 +298,26 @@ public enum SyntaxHighlighter {
             ))
         }
 
+        // MARK: - Strikethrough
+
+        mutating func visitStrikethrough(_ strikethrough: Strikethrough) {
+            guard let range = strikethrough.range else {
+                descendInto(strikethrough)
+                return
+            }
+            let full = nsRange(for: range)
+            let delims = delimiterRanges(parent: full, children: strikethrough.children)
+            let content = contentRange(full: full, delims: delims)
+
+            spans.append(Span(
+                kind: .strikethrough,
+                fullRange: full,
+                contentRange: content,
+                delimiterRanges: delims
+            ))
+            descendInto(strikethrough)
+        }
+
         // MARK: - Links
 
         mutating func visitLink(_ link: Link) {
@@ -317,8 +375,15 @@ public enum SyntaxHighlighter {
             let delims = delimiterRanges(parent: full, children: listItem.children)
             let content = contentRange(full: full, delims: delims)
 
+            let checkbox: Span.Kind.CheckboxState?
+            if let cb = listItem.checkbox {
+                checkbox = cb == .checked ? .checked : .unchecked
+            } else {
+                checkbox = nil
+            }
+
             spans.append(Span(
-                kind: .listItem(ordered: insideOrderedList),
+                kind: .listItem(ordered: insideOrderedList, checkbox: checkbox),
                 fullRange: full,
                 contentRange: content,
                 delimiterRanges: delims
