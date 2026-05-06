@@ -24,9 +24,15 @@ import AppKit
 /// invalidates NSUndoManager's position-based undo actions.
 public class EditorTextView: NSTextView {
 
+    // MARK: - Document Link
+
+    /// Weak reference to the owning NSDocument, used for dirty-state tracking.
+    /// Set by Document.makeWindowControllers(). Not available in unit tests.
+    public weak var document: NSDocument?
+
     // MARK: - State (internal for @testable import)
 
-    var rawSource: String = ""
+    public var rawSource: String = ""
     var blocks: [Block] = []
     var activeBlockIndex: Int? = nil
     var isUpdating = false
@@ -66,10 +72,33 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Fonts & Style
 
-    let bodyFont: NSFont = {
-        if let ia = NSFont(name: "iA Writer Mono S", size: 16) { return ia }
-        return NSFont.monospacedSystemFont(ofSize: 16, weight: .regular)
+    // MARK: - Font Settings (persisted via UserDefaults)
+
+    private static let defaultFontName = "Hoefler Text"
+    private static let defaultFontSize: CGFloat = 16
+    private static let fontNameKey = "EditorFontName"
+    private static let fontSizeKey = "EditorFontSize"
+
+    public var bodyFont: NSFont = {
+        let name = UserDefaults.standard.string(forKey: "EditorFontName") ?? defaultFontName
+        let size = CGFloat(UserDefaults.standard.float(forKey: "EditorFontSize"))
+        let resolvedSize = size > 0 ? size : defaultFontSize
+        if let font = NSFont(name: name, size: resolvedSize) { return font }
+        return NSFont.systemFont(ofSize: resolvedSize)
     }()
+
+    /// Update the editor font and recompose. Persists to UserDefaults.
+    public func updateFont(name: String, size: CGFloat) {
+        UserDefaults.standard.set(name, forKey: Self.fontNameKey)
+        UserDefaults.standard.set(Float(size), forKey: Self.fontSizeKey)
+        if let font = NSFont(name: name, size: size) {
+            bodyFont = font
+        } else {
+            bodyFont = NSFont.systemFont(ofSize: size)
+        }
+        typingAttributes = baseAttributes
+        recompose(cursorInRaw: currentCursorInRaw())
+    }
 
     let bodyParagraphStyle: NSParagraphStyle = {
         let ps = NSMutableParagraphStyle()
@@ -202,6 +231,7 @@ public class EditorTextView: NSTextView {
         guard !isUpdating, !isUndoRedoing else { return }
         syncRawSourceFromDisplay()
         applySyntaxHighlighting()
+        document?.updateChangeCount(.changeDone)
     }
 
     /// Reads the active block's content from the text storage and rebuilds rawSource.
@@ -299,6 +329,17 @@ public class EditorTextView: NSTextView {
     func currentCursorInRaw() -> Int {
         let sel = selectedRange()
         return displayOffsetToRawOffset(sel.location)
+    }
+
+    // MARK: - Content Loading (called by Document)
+
+    /// Replace the editor's content. Used by NSDocument on file open.
+    public func loadContent(_ content: String) {
+        rawSource = content
+        blocks = BlockParser.parse(rawSource)
+        undoStack.removeAll()
+        redoStack.removeAll()
+        recompose(cursorInRaw: 0)
     }
 }
 

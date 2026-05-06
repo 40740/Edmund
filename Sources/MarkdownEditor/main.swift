@@ -4,82 +4,66 @@ import MarkdownEditorCore
 // --- App Delegate -----------------------------------------------------------
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var window: NSWindow!
+
+    var settingsWindowController: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
 
-        let windowWidth: CGFloat = 400
-        let windowHeight: CGFloat = 500
-
-        window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = ""
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
-        window.center()
-        window.minSize = NSSize(width: 320, height: 400)
-
-        // Match window background to editor — adapts to dark mode automatically
-        window.backgroundColor = NSColor.textBackgroundColor
-
-        // Empty toolbar gives the titlebar extra height (roomy traffic lights,
-        // like iTerm minimal). The .unified style keeps it compact.
-        let toolbar = NSToolbar(identifier: "MainToolbar")
-        toolbar.showsBaselineSeparator = false
-        window.toolbar = toolbar
-        window.toolbarStyle = .unified
-
-        // Build the text system chain:
-        //   NSTextStorage → NSLayoutManager → NSTextContainer → NSTextView
-        let textStorage = NSTextStorage()
-        let layoutManager = NSLayoutManager()
-        textStorage.addLayoutManager(layoutManager)
-
-        let contentSize = NSSize(width: windowWidth, height: CGFloat.greatestFiniteMagnitude)
-        let textContainer = NSTextContainer(size: contentSize)
-        textContainer.widthTracksTextView = true
-        layoutManager.addTextContainer(textContainer)
-
-        let editor = EditorTextView(
-            frame: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
-            textContainer: textContainer
-        )
-        editor.minSize = NSSize(width: 0, height: 0)
-        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
-                                height: CGFloat.greatestFiniteMagnitude)
-        editor.isVerticallyResizable = true
-        editor.isHorizontallyResizable = false
-        editor.autoresizingMask = [.width]
-        editor.textContainerInset = NSSize(width: 24, height: 8)
-
-        let scrollView = NSScrollView(frame: window.contentView!.bounds)
-        scrollView.autoresizingMask = [.width, .height]
-        scrollView.hasVerticalScroller = true
-        scrollView.scrollerStyle = .overlay
-        scrollView.drawsBackground = false
-        scrollView.documentView = editor
-
-        window.contentView = scrollView
-        window.makeKeyAndOrderFront(nil)
-        window.makeFirstResponder(editor)
+        // Open file from command-line argument.
+        // (NSDocumentController automatically opens an untitled document on launch,
+        //  so we only need to act when a file path is provided.)
+        let args = CommandLine.arguments
+        if args.count > 1 {
+            let url = URL(fileURLWithPath: args[1])
+            NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
 
+    // Reopen a new untitled document when the app is activated with no windows.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            NSDocumentController.shared.newDocument(nil)
+        }
+        return true
+    }
+
+    // MARK: - Settings
+
+    @MainActor @objc func showSettings(_ sender: Any?) {
+        if settingsWindowController == nil {
+            settingsWindowController = SettingsWindowController()
+        }
+        settingsWindowController?.showWindow(nil)
+        settingsWindowController?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: - Open Document
+
+    /// Manual Open panel — bypasses NSDocumentController's type validation
+    /// which is broken without Info.plist.
+    @MainActor @objc func openDocumentManually(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            NSDocumentController.shared.openDocument(
+                withContentsOf: url, display: true
+            ) { _, _, error in
+                if let error = error {
+                    NSAlert(error: error).runModal()
+                }
+            }
+        }
+    }
+
     // MARK: - Menu Bar
-    //
-    // macOS dispatches Cmd+C/V/X/A/Z through the Edit menu's key equivalents.
-    // Without a menu bar, these shortcuts silently do nothing.  We create a
-    // minimal menu bar with the standard Edit menu items wired to the first
-    // responder's standard actions (copy:, paste:, cut:, selectAll:, undo:, redo:).
 
     @MainActor private func setupMenuBar() {
         let mainMenu = NSMenu()
@@ -87,11 +71,62 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // App menu (required for Cmd+Q)
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Settings\u{2026}",
+                        action: #selector(AppDelegate.showSettings(_:)),
+                        keyEquivalent: ",")
+
+        appMenu.addItem(NSMenuItem.separator())
+
         appMenu.addItem(withTitle: "Quit md",
                         action: #selector(NSApplication.terminate(_:)),
                         keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
+
+        // File menu — NSDocument provides the standard actions
+        let fileMenuItem = NSMenuItem()
+        let fileMenu = NSMenu(title: "File")
+
+        fileMenu.addItem(withTitle: "New",
+                         action: #selector(NSDocumentController.newDocument(_:)),
+                         keyEquivalent: "n")
+
+        fileMenu.addItem(withTitle: "Open\u{2026}",
+                         action: #selector(AppDelegate.openDocumentManually(_:)),
+                         keyEquivalent: "o")
+
+        // Recent documents submenu
+        let recentMenuItem = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        let recentMenu = NSMenu(title: "Open Recent")
+        recentMenu.addItem(withTitle: "Clear Menu",
+                           action: #selector(NSDocumentController.clearRecentDocuments(_:)),
+                           keyEquivalent: "")
+        recentMenuItem.submenu = recentMenu
+        fileMenu.addItem(recentMenuItem)
+
+        fileMenu.addItem(NSMenuItem.separator())
+
+        fileMenu.addItem(withTitle: "Save",
+                         action: #selector(NSDocument.save(_:)),
+                         keyEquivalent: "s")
+
+        let saveAsItem = fileMenu.addItem(withTitle: "Save As\u{2026}",
+                                          action: #selector(NSDocument.saveAs(_:)),
+                                          keyEquivalent: "s")
+        saveAsItem.keyEquivalentModifierMask = [.command, .shift]
+
+        fileMenu.addItem(NSMenuItem.separator())
+
+        fileMenu.addItem(withTitle: "Rename\u{2026}",
+                         action: #selector(Document.rename(_:)),
+                         keyEquivalent: "")
+
+        fileMenu.addItem(withTitle: "Move To\u{2026}",
+                         action: #selector(Document.move(_:)),
+                         keyEquivalent: "")
+
+        fileMenuItem.submenu = fileMenu
+        mainMenu.addItem(fileMenuItem)
 
         // Edit menu (required for Cmd+C/V/X/A/Z)
         let editMenuItem = NSMenuItem()
@@ -133,6 +168,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 // --- Launch -----------------------------------------------------------------
 let app = NSApplication.shared
+
+// Must be created before NSDocumentController.shared is first accessed.
+let _ = DocumentController()
+
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.regular)
