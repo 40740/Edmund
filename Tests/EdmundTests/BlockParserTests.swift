@@ -511,4 +511,52 @@ struct BlockParserTests {
         let blocks = BlockParser.parse("- - -")
         #expect(blocks[0].kind == .thematicBreak)
     }
+
+    // MARK: - Setext headings
+
+    @Test("Paragraph + === underline merges into an h1 block")
+    func setextH1() {
+        let blocks = BlockParser.parse("Title\n===\nbody")
+        #expect(blocks.count == 2)
+        #expect(blocks[0].content == "Title\n===")
+        #expect(blocks[0].kind == .heading(level: 1))
+        #expect(blocks[1].content == "body")
+    }
+
+    @Test("Paragraph + --- underline merges into an h2 block (setext beats rule)")
+    func setextH2() {
+        let blocks = BlockParser.parse("Title\n---")
+        #expect(blocks.count == 1)
+        #expect(blocks[0].kind == .heading(level: 2))
+    }
+
+    @Test("--- after a blank line stays a thematic break")
+    func ruleAfterBlank() {
+        let blocks = BlockParser.parse("para\n\n---")
+        #expect(blocks.map(\.kind) == [.paragraph, .blank, .thematicBreak])
+    }
+
+    @Test("--- after a list item stays a thematic break")
+    func ruleAfterList() {
+        let blocks = BlockParser.parse("- item\n---")
+        #expect(blocks.map(\.kind) == [.listItem, .thematicBreak])
+    }
+
+    @Test("Spaced '- - -' after a paragraph is not a setext underline")
+    func spacedRuleNotUnderline() {
+        let blocks = BlockParser.parse("para\n- - -")
+        #expect(blocks.map(\.kind) == [.paragraph, .thematicBreak])
+    }
+
+    @Test("Underline with trailing non-space text is not a setext underline")
+    func underlineWithTrailingText() {
+        let blocks = BlockParser.parse("para\n=== x")
+        #expect(blocks.map(\.kind) == [.paragraph, .paragraph])
+    }
+
+    @Test("Setext underline can't follow a heading or blank line")
+    func underlineNeedsParagraph() {
+        let blocks = BlockParser.parse("# h\n===")
+        #expect(blocks.map(\.kind) == [.heading(level: 1), .paragraph])
+    }
 }

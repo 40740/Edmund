@@ -126,7 +126,9 @@ struct RenderingRegressionTests {
 
     @Test("Thematic break rule is drawn equidistant from the text above and below")
     @MainActor func thematicBreakBalanced() {
-        let (e, _) = windowed("Text line above the rule.\n---\nText line below the rule.")
+        // `***` not `---`: a `---` directly under a paragraph is a setext h2
+        // underline (GFM), not a rule.
+        let (e, _) = windowed("Text line above the rule.\n***\nText line below the rule.")
         guard let tlm = e.textLayoutManager else { Issue.record("no tlm"); return }
 
         // Collect the three fragments: text, rule, text.

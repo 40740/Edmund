@@ -53,7 +53,7 @@ public enum BlockParser {
     ///
     /// The window starts one block before the first affected block: every
     /// merge rule needs at most that much left context (quote-run adjacency
-    /// and the table header+separator lookahead are single-step; an unclosed
+    /// and the table-separator / setext-underline lookaheads are single-step; an unclosed
     /// fence/math opener further up would already contain the edit inside its
     /// merged block). Downstream, the re-split continues until a produced
     /// block boundary lands on an old block start at/after the edit's end —
@@ -226,8 +226,8 @@ public enum BlockParser {
     }
 
     /// Consumes one block starting at line `i`, merging multi-line constructs
-    /// (fences, display math, quote runs, tables). Returns the block's
-    /// content/kind and the index of the line after it.
+    /// (fences, display math, quote runs, tables, setext headings). Returns the
+    /// block's content/kind and the index of the line after it.
     static func consumeBlock(_ buf: inout LineBuffer, at i: Int)
         -> (content: String, kind: BlockKind, next: Int)? {
         guard let first = buf.line(at: i) else { return nil }
@@ -286,6 +286,16 @@ public enum BlockParser {
             return (merged.joined(separator: "\n"), .table, j)
         }
 
+        // Setext heading: a paragraph line underlined by `===` (h1) or `---`
+        // (h2). Consuming the underline here means a `---` after a paragraph
+        // is a heading underline (GFM setext wins over thematic break); only
+        // a `---` after a blank line / non-paragraph stays a rule.
+        if case .paragraph = classifyLine(first),
+           let underline = buf.line(at: i + 1),
+           let level = setextUnderlineLevel(underline) {
+            return (first + "\n" + underline, .heading(level: level), i + 2)
+        }
+
         return (first, classifyLine(first), i + 1)
     }
 
@@ -332,6 +342,19 @@ public enum BlockParser {
         guard !digits.isEmpty else { return false }
         let rest = trimmed.dropFirst(digits.count)
         return rest.hasPrefix(". ") || rest.hasPrefix(") ")
+    }
+
+    /// Returns the heading level if the line is a setext underline: ≤3 leading
+    /// spaces, then 1+ of the same character (`=` → level 1, `-` → level 2),
+    /// then only trailing spaces/tabs. Internal spaces (`- - -`) disqualify it,
+    /// so a spaced thematic break after a paragraph stays a rule.
+    private static func setextUnderlineLevel(_ line: String) -> Int? {
+        let trimmed = line.drop(while: { $0 == " " })
+        guard line.count - trimmed.count <= 3,
+              let first = trimmed.first, first == "=" || first == "-" else { return nil }
+        let run = trimmed.prefix(while: { $0 == first })
+        guard trimmed.dropFirst(run.count).allSatisfy({ $0 == " " || $0 == "\t" }) else { return nil }
+        return first == "=" ? 1 : 2
     }
 
     /// Returns true for a thematic break: 3+ of the same `-`/`*`/`_` character

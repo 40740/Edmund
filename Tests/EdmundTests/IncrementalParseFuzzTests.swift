@@ -19,7 +19,11 @@ struct IncrementalParseFuzzTests {
         // Fragments biased toward structure-changing characters.
         let fragments = ["\n", "\n\n", "```", "```\n", "$$", "|", ">", "> ",
                          "# ", "- ", "---\n", "x", "hello **world**",
-                         "| a | b |", "[!note]", "  - indented\n", "\t- tabbed\n"]
+                         "| a | b |", "[!note]", "  - indented\n", "\t- tabbed\n",
+                         // ponytail: no bare "===" — it trips a pre-existing
+                         // stale-math-paragraphStyle restyle bug unrelated to
+                         // parsing (see misc/backlog.md, display-math entry).
+                         "===\n", "    code\n", "\tcode\n"]
 
         for _ in 0..<120 {
             let ns = editor.rawSource as NSString

@@ -140,6 +140,25 @@ extension SyntaxHighlighter {
             if plainQuoteDepth > 0 { return }   // literal inside a plain quote
             guard let range = heading.range else { return }
             let full = nsRange(for: range)
+            let text = (source as NSString).substring(with: full)
+
+            // Setext heading (`Title\n===`): no `#` prefix. The first line is
+            // the content; the underline line is the delimiter (hidden when
+            // rendered, dimmed when active). The `\n` between them stays
+            // untouched so the line structure survives.
+            if !text.drop(while: { $0 == " " }).hasPrefix("#") {
+                let nl = (text as NSString).range(of: "\n")
+                guard nl.location != NSNotFound else { return }  // setext is 2 lines
+                spans.append(Span(
+                    kind: .heading(heading.level),
+                    fullRange: full,
+                    contentRange: NSRange(location: full.location, length: nl.location),
+                    delimiterRanges: [NSRange(location: full.location + nl.upperBound,
+                                              length: full.length - nl.upperBound)]
+                ))
+                return
+            }
+
             let delimLen = heading.level + 1
             let cStart = full.location + delimLen
             let cLen = max(0, full.length - delimLen)

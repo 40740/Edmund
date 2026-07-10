@@ -17,6 +17,12 @@ struct HTMLRendererCoreTests {
         #expect(html("###### Six") == "<h6>Six</h6>")
     }
 
+    @Test("Setext headings render h1/h2")
+    func setextHeadings() {
+        #expect(html("Title\n===") == "<h1>Title</h1>")
+        #expect(html("Title\n---") == "<h2>Title</h2>")
+    }
+
     @Test("Paragraph wraps in <p>")
     func paragraph() {
         #expect(html("hello world") == "<p>hello world</p>")
