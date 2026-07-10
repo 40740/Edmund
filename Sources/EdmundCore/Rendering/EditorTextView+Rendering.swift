@@ -121,7 +121,7 @@ extension EditorTextView {
         switch kind {
         case .bold, .italic, .boldItalic, .strikethrough, .highlight,
              .code, .link, .image, .lineBreak,
-             .heading, .blockquote, .footnoteReference, .escape:
+             .heading, .blockquote(_), .footnoteReference, .escape:
             return true
         case .listItem, .table, .codeBlock, .thematicBreak, .footnoteDefinition, .comment,
              .htmlTag, .htmlFormat:
@@ -249,26 +249,99 @@ extension EditorTextView {
                     result.addAttribute(.font, value: italic, range: span.contentRange)
                 }
 
-            case .blockquote:
+            case .blockquote(let depth):
                 guard span.fullRange.upperBound <= result.length else { continue }
                 // A block quote whose first line is `[!type]` is a callout
                 // (GitHub-flavored) — render it with an icon, colored label, and
-                // colored bar instead of the plain quote styling.
+                // colored bar instead of the plain quote styling. Only depth 0
+                // ever detects as a callout: a callout nested inside a plain
+                // quote stays literal (see SyntaxHighlighter+Walker's
+                // visitBlockQuote), so no deeper span is ever callout-shaped.
                 if let callout = calloutInfo(forBlockquote: span, markdown: markdown), !cursorInToken {
                     styleCalloutContent(result, span: span, info: callout)
                 } else {
-                    // Plain block quote — also the editing form of a callout: when
-                    // the cursor is inside a callout we fall through here so its raw
-                    // `>` / `[!type]` source shows (dimmed) and the markers can be
-                    // edited, instead of the box/header/nested chrome.
-                    // Attributes must cover fullRange so the first character of each
-                    // paragraph (the `> ` delimiter) carries the style/decoration —
-                    // the fragment vendor reads the paragraph's first character.
-                    result.addAttribute(.paragraphStyle, value: blockquoteParagraphStyle(), range: span.fullRange)
-                    result.addAttribute(.blockDecoration,
-                                        value: BlockDecoration(.leftBar(color: .tertiaryLabelColor, width: 2)),
-                                        range: span.fullRange)
-                    result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: span.contentRange)
+                    // Plain block quote (any nesting depth). Indent and draw
+                    // this level's own bar regardless of active/inactive — the
+                    // generic delimiter pass (elsewhere in this function)
+                    // separately decides whether this level's own `>` marker
+                    // is hidden (inactive) or shown dimmed (active/editing).
+                    //
+                    // Per-level indentation comes from the width-preserved
+                    // hidden `> ` markers alone (one more per level), so the
+                    // first-line indent stays constant — adding a paragraph
+                    // indent per depth too would double the step. Only the
+                    // hanging indent grows, to keep wrapped lines clear of
+                    // all this line's markers.
+                    //
+                    // A nested quote's span range is a *subset* of its
+                    // ancestors' (processed earlier, in outer-to-inner order:
+                    // the walker emits a parent before descending to its
+                    // children), so stacking here only has to keep whatever
+                    // decoration the ancestor already painted over this same
+                    // range and append this level's own bar — bar x positions
+                    // are absolute per level, independent of the line.
+                    // The fragment vendor reads paragraph-level attributes at
+                    // paragraph offset 0, but a nested span's range starts at
+                    // its *own* `>` — past the ancestors' markers on its first
+                    // line. Extend back to the line start so the line's
+                    // paragraph carries this level's decoration/indent (else
+                    // the line draws only the ancestor's single bar).
+                    let lineStart = (markdown as NSString)
+                        .lineRange(for: NSRange(location: span.fullRange.location, length: 0)).location
+                    let paraRange = NSRange(location: lineStart,
+                                            length: span.fullRange.upperBound - lineStart)
+                    let ps = blockquoteParagraphStyle().mutableCopy() as! NSMutableParagraphStyle
+                    ps.headIndent += CGFloat(depth) * quoteMarkerWidth
+                    result.addAttribute(.paragraphStyle, value: ps, range: paraRange)
+
+                    // The quote's own bar hugs the text top on its *first* line
+                    // only (see BlockDecoration.hugsTextTop) — interior lines
+                    // fill their whole fragment so the bar tiles gap-free. The
+                    // ancestor stack is read per sub-range: an ancestor's own
+                    // first line (hugging) can coincide with this span's first
+                    // line, but its interior lines never hug.
+                    let firstLineEnd = min((markdown as NSString)
+                        .lineRange(for: NSRange(location: lineStart, length: 0)).upperBound,
+                        paraRange.upperBound)
+                    let firstRange = NSRange(location: lineStart, length: firstLineEnd - lineStart)
+                    let restRange = NSRange(location: firstLineEnd,
+                                            length: paraRange.upperBound - firstLineEnd)
+                    for (range, hugs) in [(firstRange, true), (restRange, false)] {
+                        guard range.length > 0 else { continue }
+                        let ownBar = BlockDecoration(.leftBar(color: .tertiaryLabelColor, width: 2),
+                                                     inset: CGFloat(depth) * quoteMarkerWidth,
+                                                     hugsTextTop: hugs)
+                        if depth == 0 {
+                            result.addAttribute(.blockDecoration, value: ownBar, range: range)
+                        } else {
+                            let ancestor = result.attribute(.blockDecoration, at: range.location,
+                                                            effectiveRange: nil)
+                            let kept: [BlockDecoration]
+                            if let list = ancestor as? BlockDecorationList {
+                                kept = list.decorations
+                            } else if let single = ancestor as? BlockDecoration {
+                                kept = [single]
+                            } else {
+                                kept = []
+                            }
+                            result.addAttribute(.blockDecoration,
+                                                value: BlockDecorationList(kept + [ownBar]),
+                                                range: range)
+                        }
+                    }
+
+                    // Only the outermost span fills content color: `contentRange`
+                    // only trims a span's very first/last delimiter, not ones in
+                    // the middle (a nested quote's own markers on later lines) —
+                    // a nested span's fill would repaint an ancestor's marker
+                    // right back to visible, undoing that ancestor's delimiter
+                    // pass (which already ran, earlier in this same loop). The
+                    // outermost span's fill already covers all nested text, so
+                    // deeper spans don't need to (re-)apply it.
+                    if depth == 0 {
+                        result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor,
+                                            range: span.contentRange)
+                    }
                 }
 
             case .listItem(let ordered, let checkbox):
@@ -487,7 +560,7 @@ extension EditorTextView {
                 } else if cursorInToken || !isDelimiterHideable(span.kind) {
                     // Visible: dim the delimiters
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
-                } else if case .blockquote = span.kind {
+                } else if case .blockquote(_) = span.kind {
                     // Blockquote: invisible but preserve width for indentation
                     result.addAttribute(.foregroundColor, value: NSColor.clear, range: dr)
                 } else {
