@@ -182,6 +182,20 @@ extension SyntaxHighlighter {
 
             let nsSource = source as NSString
             let blockText = nsSource.substring(with: full) as NSString
+
+            // Indented code block: no fence, so no delimiters — every
+            // character (indentation included) is content.
+            let opener = (blockText as String).drop(while: { $0 == " " })
+            if !(opener.hasPrefix("```") || opener.hasPrefix("~~~")) {
+                spans.append(Span(
+                    kind: .codeBlock(language: nil),
+                    fullRange: full,
+                    contentRange: full,
+                    delimiterRanges: []
+                ))
+                return
+            }
+
             var delims: [NSRange] = []
             var cStart = full.location
             var cEnd = full.upperBound

@@ -52,8 +52,9 @@ public enum BlockParser {
     /// window — O(edit), not O(document).
     ///
     /// The window starts one block before the first affected block: every
-    /// merge rule needs at most that much left context (quote-run adjacency
-    /// and the table-separator / setext-underline lookaheads are single-step; an unclosed
+    /// merge rule needs at most that much left context (quote-run adjacency,
+    /// the indented-code prevLine check, and the table-separator /
+    /// setext-underline lookaheads are single-step; an unclosed
     /// fence/math opener further up would already contain the edit inside its
     /// merged block). Downstream, the re-split continues until a produced
     /// block boundary lands on an old block start at/after the edit's end —
@@ -86,6 +87,10 @@ public enum BlockParser {
         var cursor = windowStartOffset   // new-coords offset of the next block
         var lineIndex = 0
         var suffixStart: Int? = nil      // old block index to splice from
+        // Backward context for the indented-code rule. The block before the
+        // window is untouched by the edit, so its old content is current.
+        var prevLine: String? = windowStartIndex > 0
+            ? lastLine(of: old[windowStartIndex - 1].content) : nil
 
         while true {
             // Resync probe at this block boundary (not at the initial one).
@@ -94,12 +99,18 @@ public enum BlockParser {
                 if let j = blockIndex(in: old, forOffset: oldOffset),
                    old[j].range.location == oldOffset,
                    oldOffset >= editedOldRange.upperBound {
+                    // An indented-code-ish start depends on the line above it
+                    // (blank vs not), which the edit may have changed — the
+                    // old parse from here isn't provably identical. Bail to
+                    // the full parse (rare and cheap).
+                    if isIndentedCodeLine(firstLine(of: old[j].content)) { return nil }
                     suffixStart = j
                     break
                 }
             }
 
-            guard let (content, kind, next) = consumeBlock(&buf, at: lineIndex) else {
+            guard let (content, kind, next) = consumeBlock(&buf, at: lineIndex,
+                                                           prevLine: prevLine) else {
                 break   // end of document: the window runs to the end
             }
             let length = (content as NSString).length
@@ -107,6 +118,7 @@ public enum BlockParser {
                                 range: NSRange(location: cursor, length: length),
                                 kind: kind))
             lineIndex = next
+            prevLine = lastLine(of: content)
             cursor += length
             // Skip the `\n` separator if another line follows; otherwise this
             // was the document's final block — stop before re-probing (the
@@ -226,9 +238,12 @@ public enum BlockParser {
     }
 
     /// Consumes one block starting at line `i`, merging multi-line constructs
-    /// (fences, display math, quote runs, tables, setext headings). Returns the
-    /// block's content/kind and the index of the line after it.
-    static func consumeBlock(_ buf: inout LineBuffer, at i: Int)
+    /// (fences, display math, quote runs, tables, indented code runs, setext
+    /// headings). `prevLine` is the last line before `i` (nil at document
+    /// start) — the only backward context any rule uses: an indented code
+    /// block may start only after a blank line. Returns the block's
+    /// content/kind and the index of the line after it.
+    static func consumeBlock(_ buf: inout LineBuffer, at i: Int, prevLine: String?)
         -> (content: String, kind: BlockKind, next: Int)? {
         guard let first = buf.line(at: i) else { return nil }
 
@@ -286,6 +301,22 @@ public enum BlockParser {
             return (merged.joined(separator: "\n"), .table, j)
         }
 
+        // Indented code block (GFM): a run of lines indented 4+ spaces (or a
+        // tab), starting only after a blank line / document start so list
+        // continuation text isn't swallowed. Deeply indented list items keep
+        // priority (the indentedListRegex rescue — deliberate divergence).
+        // ponytail: an internal blank line ends the run; GFM would bridge it.
+        // Visually identical — revisit with the HTML-block pass if ever.
+        if isIndentedCodeLine(first), prevLine == nil || isBlankLine(prevLine!) {
+            var merged = [first]
+            var j = i + 1
+            while let line = buf.line(at: j), isIndentedCodeLine(line) {
+                merged.append(line)
+                j += 1
+            }
+            return (merged.joined(separator: "\n"), .indentedCode, j)
+        }
+
         // Setext heading: a paragraph line underlined by `===` (h1) or `---`
         // (h2). Consuming the underline here means a `---` after a paragraph
         // is a heading underline (GFM setext wins over thematic break); only
@@ -308,11 +339,30 @@ public enum BlockParser {
         var buf = LineBuffer(text)
         var result: [(content: String, kind: BlockKind)] = []
         var i = 0
-        while let (content, kind, next) = consumeBlock(&buf, at: i) {
+        var prevLine: String? = nil
+        while let (content, kind, next) = consumeBlock(&buf, at: i, prevLine: prevLine) {
             result.append((content, kind))
             i = next
+            prevLine = lastLine(of: content)
         }
         return result
+    }
+
+    /// The text after the last `\n` (the whole string when single-line) —
+    /// the `prevLine` context for the block that follows.
+    private static func lastLine(of content: String) -> String {
+        if let nl = content.range(of: "\n", options: .backwards) {
+            return String(content[nl.upperBound...])
+        }
+        return content
+    }
+
+    /// The text before the first `\n` (the whole string when single-line).
+    private static func firstLine(of content: String) -> String {
+        if let nl = content.range(of: "\n") {
+            return String(content[..<nl.lowerBound])
+        }
+        return content
     }
 
     // MARK: - Line Classification
@@ -355,6 +405,21 @@ public enum BlockParser {
         let run = trimmed.prefix(while: { $0 == first })
         guard trimmed.dropFirst(run.count).allSatisfy({ $0 == " " || $0 == "\t" }) else { return nil }
         return first == "=" ? 1 : 2
+    }
+
+    /// Returns true if the line opens/continues an indented code block: some
+    /// content indented by ≥4 spaces or a tab, that isn't a deeply indented
+    /// list item (the indentedListRegex rescue keeps priority).
+    static func isIndentedCodeLine(_ line: String) -> Bool {
+        guard !isBlankLine(line) else { return false }
+        let indent = line.prefix(while: { $0 == " " || $0 == "\t" })
+        guard indent.contains("\t") || indent.count >= 4 else { return false }
+        let range = NSRange(location: 0, length: (line as NSString).length)
+        return SyntaxHighlighter.indentedListRegex.firstMatch(in: line, range: range) == nil
+    }
+
+    private static func isBlankLine(_ line: String) -> Bool {
+        line.allSatisfy { $0 == " " || $0 == "\t" }
     }
 
     /// Returns true for a thematic break: 3+ of the same `-`/`*`/`_` character

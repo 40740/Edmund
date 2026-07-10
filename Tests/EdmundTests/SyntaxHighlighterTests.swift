@@ -736,6 +736,21 @@ struct CodeBlockTests {
         #expect(content == "hello")
     }
 
+    @Test("Indented code block: no delimiters, all content")
+    func indentedCode() {
+        let text = "    let x = 1\n    let y = 2"
+        let spans = SyntaxHighlighter.parse(text)
+        let codeBlocks = spans.filter {
+            if case .codeBlock = $0.kind { return true }
+            return false
+        }
+        #expect(codeBlocks.count == 1)
+        guard let span = codeBlocks.first else { return }
+        if case .codeBlock(let lang) = span.kind { #expect(lang == nil) }
+        #expect(span.contentRange == span.fullRange)
+        #expect(span.delimiterRanges.isEmpty)
+    }
+
     @Test("Code block with tilde fences")
     func tildeFence() {
         let text = "~~~\ncode\n~~~"

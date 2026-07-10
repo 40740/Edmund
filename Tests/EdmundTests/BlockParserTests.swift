@@ -559,4 +559,50 @@ struct BlockParserTests {
         let blocks = BlockParser.parse("# h\n===")
         #expect(blocks.map(\.kind) == [.heading(level: 1), .paragraph])
     }
+
+    // MARK: - Indented code blocks
+
+    @Test("A run of 4-space lines at document start merges into one code block")
+    func indentedCodeRun() {
+        let blocks = BlockParser.parse("    a\n    b")
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == "    a\n    b")
+        #expect(blocks[0].kind == .indentedCode)
+    }
+
+    @Test("Tab indentation opens a code block")
+    func tabIndentedCode() {
+        let blocks = BlockParser.parse("\tcode")
+        #expect(blocks.map(\.kind) == [.indentedCode])
+    }
+
+    @Test("Indented code needs a preceding blank line")
+    func indentedCodeNeedsBlank() {
+        let blocks = BlockParser.parse("foo\n    bar")
+        #expect(blocks.map(\.kind) == [.paragraph, .paragraph])
+    }
+
+    @Test("Indented run after a blank line is a code block")
+    func indentedCodeAfterBlank() {
+        let blocks = BlockParser.parse("foo\n\n    bar")
+        #expect(blocks.map(\.kind) == [.paragraph, .blank, .indentedCode])
+    }
+
+    @Test("An internal blank line splits the run into two code blocks")
+    func indentedCodeBlankSplits() {
+        let blocks = BlockParser.parse("    a\n\n    b")
+        #expect(blocks.map(\.kind) == [.indentedCode, .blank, .indentedCode])
+    }
+
+    @Test("A deeply indented list item is rescued as a list, not code")
+    func indentedListBeatsCode() {
+        let blocks = BlockParser.parse("    - item")
+        #expect(blocks.map(\.kind) == [.listItem])
+    }
+
+    @Test("An indented line followed by a setext-ish underline stays code + rule")
+    func indentedCodeNotSetext() {
+        let blocks = BlockParser.parse("    code\n---")
+        #expect(blocks.map(\.kind) == [.indentedCode, .thematicBreak])
+    }
 }

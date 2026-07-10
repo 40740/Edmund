@@ -10,6 +10,7 @@ public enum BlockKind: Equatable, Sendable {
     case heading(level: Int)
     case quoteRun(isCallout: Bool)
     case fence
+    case indentedCode
     case mathDisplay
     case table
     case listItem
