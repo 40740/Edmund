@@ -322,6 +322,21 @@ struct HighlightTests {
         let highlights = spans.filter { $0.kind == .highlight }
         #expect(highlights.isEmpty)
     }
+
+    @Test("Single-char ==a== highlights")
+    func singleChar() {
+        let spans = SyntaxHighlighter.parse("==a==")
+        #expect(spans.count == 1)
+        #expect(spans[0].kind == .highlight)
+        #expect(spans[0].contentRange == NSRange(location: 2, length: 1))
+    }
+
+    @Test("Whitespace-flanked content is not a highlight",
+          arguments: ["== spaced ==", "==lead ==", "== trail=="])
+    func flanking(_ text: String) {
+        let highlights = SyntaxHighlighter.parse(text).filter { $0.kind == .highlight }
+        #expect(highlights.isEmpty)
+    }
 }
 
 @Suite("SyntaxHighlighter — Links")
