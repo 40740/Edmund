@@ -557,6 +557,11 @@ extension EditorTextView {
                     } else {
                         result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                     }
+                } else if case .heading = span.kind, cursorPosition != nil {
+                    // A heading is one logical line. Keep its marker visible
+                    // while the caret is anywhere on that line so moving between
+                    // inline tokens does not make the leading `#` flicker.
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                 } else if cursorInToken || !isDelimiterHideable(span.kind) {
                     // Visible: dim the delimiters
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
@@ -674,5 +679,4 @@ extension EditorTextView {
 }
 
 // MARK: - ThematicBreakTextBlock
-
 
