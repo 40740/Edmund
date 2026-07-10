@@ -45,6 +45,18 @@ struct BlockquoteNestingTests {
         #expect(insets == [0])
     }
 
+    @Test("Bar hugs the text top on the first line only; interior lines tile full-height")
+    func firstLineHugsTextTop() {
+        let editor = makeEditor()
+        let md = "> first\n> second"
+        let s = editor.styleBlock(md)
+        let first = s.attribute(.blockDecoration, at: 0, effectiveRange: nil) as? BlockDecoration
+        #expect(first?.hugsTextTop == true)
+        let secondLoc = (md as NSString).range(of: "> second").location
+        let second = s.attribute(.blockDecoration, at: secondLoc, effectiveRange: nil) as? BlockDecoration
+        #expect(second?.hugsTextTop == false)
+    }
+
     @Test("A nested quote (> >) hides both markers and stacks two bars, outer leftmost")
     func nestedOnce() {
         let editor = makeEditor()
@@ -56,12 +68,18 @@ struct BlockquoteNestingTests {
         // Inner marker (the second '>' on line 2) hidden too.
         let innerMarker = ns.range(of: "> inner").location
         #expect(isMarkerHidden(at: innerMarker, in: s))
-        // Inner text carries two stacked bars: outer bumped out, inner at 0.
-        let innerTextLoc = ns.range(of: "inner").location
-        let insets = barInsets(decorationList(at: innerTextLoc, in: s))
-        #expect(insets.count == 2)
-        #expect(insets.contains(0))
-        #expect(insets.max() ?? 0 > 0)
+        // The nested line carries two stacked bars (outer bumped out, inner at
+        // 0) — and crucially at the *line start*, not just at the nested
+        // span's own start: the layout-fragment vendor reads `.blockDecoration`
+        // at paragraph offset 0, so a decoration starting at the inner `>`
+        // (col 2) would never draw (the missing-nested-bar bug).
+        let lineStart = ns.range(of: "> > inner").location
+        for loc in [lineStart, ns.range(of: "inner").location] {
+            let insets = barInsets(decorationList(at: loc, in: s))
+            #expect(insets.count == 2)
+            #expect(insets.contains(0))
+            #expect(insets.max() ?? 0 > 0)
+        }
     }
 
     @Test("Triple nesting stacks three bars in order; dropping back to level 1 leaves one")
@@ -71,14 +89,21 @@ struct BlockquoteNestingTests {
         let s = editor.styleBlock(md)
         let ns = md as NSString
 
-        let l3Loc = ns.range(of: "level three").location
-        let l3Insets = barInsets(decorationList(at: l3Loc, in: s))
-        #expect(l3Insets.count == 3)
-        // Sorted ascending: deepest (0) ... outermost (largest).
-        let sorted = l3Insets.sorted()
-        #expect(sorted[0] == 0)
-        #expect(sorted[1] > sorted[0])
-        #expect(sorted[2] > sorted[1])
+        // Three bars both at the line start (what the fragment vendor reads)
+        // and at the text itself. The depth-2 line's *paragraph* must carry
+        // all three even though the depth-2 span starts at col 4.
+        let l2LineStart = ns.range(of: "> > level two").location
+        #expect(barInsets(decorationList(at: l2LineStart, in: s)).count == 2)
+        let l3LineStart = ns.range(of: "> > > level three").location
+        for loc in [l3LineStart, ns.range(of: "level three").location] {
+            let l3Insets = barInsets(decorationList(at: loc, in: s))
+            #expect(l3Insets.count == 3)
+            // Sorted ascending: deepest (0) ... outermost (largest).
+            let sorted = l3Insets.sorted()
+            #expect(sorted[0] == 0)
+            #expect(sorted[1] > sorted[0])
+            #expect(sorted[2] > sorted[1])
+        }
 
         // "back to one" is only nested one level deep — a single bar at inset 0.
         let backLoc = ns.range(of: "back to one").location

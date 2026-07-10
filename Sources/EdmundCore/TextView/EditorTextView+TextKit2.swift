@@ -70,15 +70,24 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
     /// another quote's bar (e.g. `> > text`) draws further from the text,
     /// outermost quote's bar leftmost. Ignored by other kinds.
     public let inset: CGFloat
+    /// For `.leftBar`: start the bar at the first line's glyph top (baseline
+    /// minus ascender) instead of the fragment top. The line box carries its
+    /// extra spacing (lineSpacing) *above* the glyphs, so a bar over the full
+    /// fragment pokes past the text. Set only on a quote run's first line —
+    /// interior lines must fill the whole fragment so consecutive lines' bars
+    /// tile without gaps. Ignored by other kinds.
+    public let hugsTextTop: Bool
 
-    public init(_ kind: Kind, inset: CGFloat = 0) {
+    public init(_ kind: Kind, inset: CGFloat = 0, hugsTextTop: Bool = false) {
         self.kind = kind
         self.inset = inset
+        self.hugsTextTop = hugsTextTop
     }
 
     public override func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? BlockDecoration else { return false }
         return kind == other.kind && inset == other.inset
+            && hugsTextTop == other.hugsTextTop
     }
 
     public override var hash: Int {
@@ -323,6 +332,18 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                       height: overlay.bounds.height)
     }
 
+    /// Fragment-local y of the first line's glyph top (baseline minus the
+    /// line's font ascender). The line box can hold extra space above the
+    /// glyphs (lineSpacing lands there), which a text-hugging bar skips.
+    private var firstLineGlyphTop: CGFloat? {
+        guard let line = textLineFragments.first,
+              line.characterRange.length > 0,
+              let font = line.attributedString.attribute(
+                  .font, at: line.characterRange.location, effectiveRange: nil) as? NSFont
+        else { return nil }
+        return line.typographicBounds.minY + line.glyphOrigin.y - font.ascender
+    }
+
     private func drawDecoration(_ decoration: BlockDecoration, at point: CGPoint,
                                 in context: CGContext, bottomInset: CGFloat = 0) {
         let frame = layoutFragmentFrame
@@ -370,9 +391,15 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             // The bar sits immediately left of the text (the paragraph style
             // insets the text by the bar's width) — or `inset` further left,
             // for a quote nested inside another quote's bar.
+            var barTop = point.y
+            var barHeight = fillHeight
+            if decoration.hugsTextTop, let glyphTop = firstLineGlyphTop {
+                barTop += glyphTop
+                barHeight -= glyphTop
+            }
             context.setFillColor(color.cgColor)
-            context.fill(CGRect(x: point.x - width - decoration.inset, y: point.y,
-                                width: width, height: fillHeight))
+            context.fill(CGRect(x: point.x - width - decoration.inset, y: barTop,
+                                width: width, height: barHeight))
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator):
             // Offsets are text-relative; the fragment's origin is the text start.

@@ -119,7 +119,8 @@ extension EditorTextView {
     /// existed). Other decoration kinds pass through unchanged.
     private func bumpedBar(_ deco: BlockDecoration, by step: CGFloat) -> BlockDecoration {
         guard case .leftBar = deco.kind else { return deco }
-        return BlockDecoration(deco.kind, inset: deco.inset + step)
+        return BlockDecoration(deco.kind, inset: deco.inset + step,
+                               hugsTextTop: deco.hugsTextTop)
     }
 
     // MARK: - Delimiter Hiding Classification
@@ -283,28 +284,54 @@ extension EditorTextView {
                     // range — by construction that decoration only covers
                     // lines that actually nest this deep.
                     let step = 2 + quoteMarkerWidth
+                    // The fragment vendor reads paragraph-level attributes at
+                    // paragraph offset 0, but a nested span's range starts at
+                    // its *own* `>` — past the ancestors' markers on its first
+                    // line. Extend back to the line start so the line's
+                    // paragraph carries this level's decoration/indent (else
+                    // the line draws only the ancestor's single bar).
+                    let lineStart = (markdown as NSString)
+                        .lineRange(for: NSRange(location: span.fullRange.location, length: 0)).location
+                    let paraRange = NSRange(location: lineStart,
+                                            length: span.fullRange.upperBound - lineStart)
                     let ps = blockquoteParagraphStyle().mutableCopy() as! NSMutableParagraphStyle
                     ps.firstLineHeadIndent += CGFloat(depth) * step
                     ps.headIndent += CGFloat(depth) * step
-                    result.addAttribute(.paragraphStyle, value: ps, range: span.fullRange)
+                    result.addAttribute(.paragraphStyle, value: ps, range: paraRange)
 
-                    let ownBar = BlockDecoration(.leftBar(color: .tertiaryLabelColor, width: 2))
-                    if depth == 0 {
-                        result.addAttribute(.blockDecoration, value: ownBar, range: span.fullRange)
-                    } else {
-                        let ancestor = result.attribute(.blockDecoration, at: span.fullRange.location,
-                                                        effectiveRange: nil)
-                        let bumped: [BlockDecoration]
-                        if let list = ancestor as? BlockDecorationList {
-                            bumped = list.decorations.map { bumpedBar($0, by: step) }
-                        } else if let single = ancestor as? BlockDecoration {
-                            bumped = [bumpedBar(single, by: step)]
+                    // The quote's own bar hugs the text top on its *first* line
+                    // only (see BlockDecoration.hugsTextTop) — interior lines
+                    // fill their whole fragment so the bar tiles gap-free. The
+                    // ancestor stack is read per sub-range: an ancestor's own
+                    // first line (hugging) can coincide with this span's first
+                    // line, but its interior lines never hug.
+                    let firstLineEnd = min((markdown as NSString)
+                        .lineRange(for: NSRange(location: lineStart, length: 0)).upperBound,
+                        paraRange.upperBound)
+                    let firstRange = NSRange(location: lineStart, length: firstLineEnd - lineStart)
+                    let restRange = NSRange(location: firstLineEnd,
+                                            length: paraRange.upperBound - firstLineEnd)
+                    for (range, hugs) in [(firstRange, true), (restRange, false)] {
+                        guard range.length > 0 else { continue }
+                        let ownBar = BlockDecoration(.leftBar(color: .tertiaryLabelColor, width: 2),
+                                                     hugsTextTop: hugs)
+                        if depth == 0 {
+                            result.addAttribute(.blockDecoration, value: ownBar, range: range)
                         } else {
-                            bumped = []
+                            let ancestor = result.attribute(.blockDecoration, at: range.location,
+                                                            effectiveRange: nil)
+                            let bumped: [BlockDecoration]
+                            if let list = ancestor as? BlockDecorationList {
+                                bumped = list.decorations.map { bumpedBar($0, by: step) }
+                            } else if let single = ancestor as? BlockDecoration {
+                                bumped = [bumpedBar(single, by: step)]
+                            } else {
+                                bumped = []
+                            }
+                            result.addAttribute(.blockDecoration,
+                                                value: BlockDecorationList(bumped + [ownBar]),
+                                                range: range)
                         }
-                        result.addAttribute(.blockDecoration,
-                                            value: BlockDecorationList(bumped + [ownBar]),
-                                            range: span.fullRange)
                     }
 
                     // Only the outermost span fills content color: `contentRange`
