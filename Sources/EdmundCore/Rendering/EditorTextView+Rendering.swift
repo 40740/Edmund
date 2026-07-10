@@ -113,16 +113,6 @@ extension EditorTextView {
         return ps
     }
 
-    /// A `.leftBar` decoration pushed `step` further left — used when a nested
-    /// quote's own bar is stacked outside an ancestor quote's bar (which was
-    /// drawn first, at whatever inset was correct *before* this deeper level
-    /// existed). Other decoration kinds pass through unchanged.
-    private func bumpedBar(_ deco: BlockDecoration, by step: CGFloat) -> BlockDecoration {
-        guard case .leftBar = deco.kind else { return deco }
-        return BlockDecoration(deco.kind, inset: deco.inset + step,
-                               hugsTextTop: deco.hugsTextTop)
-    }
-
     // MARK: - Delimiter Hiding Classification
 
     /// Returns true if this span kind's delimiters should be hidden (not just
@@ -276,14 +266,20 @@ extension EditorTextView {
                     // separately decides whether this level's own `>` marker
                     // is hidden (inactive) or shown dimmed (active/editing).
                     //
+                    // Per-level indentation comes from the width-preserved
+                    // hidden `> ` markers alone (one more per level), so the
+                    // first-line indent stays constant — adding a paragraph
+                    // indent per depth too would double the step. Only the
+                    // hanging indent grows, to keep wrapped lines clear of
+                    // all this line's markers.
+                    //
                     // A nested quote's span range is a *subset* of its
                     // ancestors' (processed earlier, in outer-to-inner order:
                     // the walker emits a parent before descending to its
-                    // children), so stacking here only has to bump whatever
+                    // children), so stacking here only has to keep whatever
                     // decoration the ancestor already painted over this same
-                    // range — by construction that decoration only covers
-                    // lines that actually nest this deep.
-                    let step = 2 + quoteMarkerWidth
+                    // range and append this level's own bar — bar x positions
+                    // are absolute per level, independent of the line.
                     // The fragment vendor reads paragraph-level attributes at
                     // paragraph offset 0, but a nested span's range starts at
                     // its *own* `>` — past the ancestors' markers on its first
@@ -295,8 +291,7 @@ extension EditorTextView {
                     let paraRange = NSRange(location: lineStart,
                                             length: span.fullRange.upperBound - lineStart)
                     let ps = blockquoteParagraphStyle().mutableCopy() as! NSMutableParagraphStyle
-                    ps.firstLineHeadIndent += CGFloat(depth) * step
-                    ps.headIndent += CGFloat(depth) * step
+                    ps.headIndent += CGFloat(depth) * quoteMarkerWidth
                     result.addAttribute(.paragraphStyle, value: ps, range: paraRange)
 
                     // The quote's own bar hugs the text top on its *first* line
@@ -314,22 +309,23 @@ extension EditorTextView {
                     for (range, hugs) in [(firstRange, true), (restRange, false)] {
                         guard range.length > 0 else { continue }
                         let ownBar = BlockDecoration(.leftBar(color: .tertiaryLabelColor, width: 2),
+                                                     inset: CGFloat(depth) * quoteMarkerWidth,
                                                      hugsTextTop: hugs)
                         if depth == 0 {
                             result.addAttribute(.blockDecoration, value: ownBar, range: range)
                         } else {
                             let ancestor = result.attribute(.blockDecoration, at: range.location,
                                                             effectiveRange: nil)
-                            let bumped: [BlockDecoration]
+                            let kept: [BlockDecoration]
                             if let list = ancestor as? BlockDecorationList {
-                                bumped = list.decorations.map { bumpedBar($0, by: step) }
+                                kept = list.decorations
                             } else if let single = ancestor as? BlockDecoration {
-                                bumped = [bumpedBar(single, by: step)]
+                                kept = [single]
                             } else {
-                                bumped = []
+                                kept = []
                             }
                             result.addAttribute(.blockDecoration,
-                                                value: BlockDecorationList(bumped + [ownBar]),
+                                                value: BlockDecorationList(kept + [ownBar]),
                                                 range: range)
                         }
                     }

@@ -66,9 +66,13 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
     /// For `.box`: horizontal inset (points) from the text column's left and
     /// right edges, non-zero for a box nested inside another box (e.g. a
     /// callout inside a callout), so the inner box sits within the outer one.
-    /// For `.leftBar`: extra leftward shift (points) so a bar nested inside
-    /// another quote's bar (e.g. `> > text`) draws further from the text,
-    /// outermost quote's bar leftmost. Ignored by other kinds.
+    /// For `.leftBar`: rightward shift (points) from the outermost bar
+    /// position — one `quoteMarkerWidth` per nesting level, mirroring the
+    /// hidden `> ` marker that indents the text, so each nested quote's bar
+    /// (e.g. `> > text`) sits just left of its own level's text. Absolute per
+    /// level: the same level's bar lands at the same x on every line, which
+    /// keeps stacked bars tiling into continuous columns. Ignored by other
+    /// kinds.
     public let inset: CGFloat
     /// For `.leftBar`: start the bar at the first line's glyph top (baseline
     /// minus ascender) instead of the fragment top. The line box carries its
@@ -389,8 +393,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
         case .leftBar(let color, let width):
             // The bar sits immediately left of the text (the paragraph style
-            // insets the text by the bar's width) — or `inset` further left,
-            // for a quote nested inside another quote's bar.
+            // insets the text by the bar's width) — or `inset` further right,
+            // for a nested quote's bar next to its own level's text.
             var barTop = point.y
             var barHeight = fillHeight
             if decoration.hugsTextTop, let glyphTop = firstLineGlyphTop {
@@ -398,7 +402,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 barHeight -= glyphTop
             }
             context.setFillColor(color.cgColor)
-            context.fill(CGRect(x: point.x - width - decoration.inset, y: barTop,
+            context.fill(CGRect(x: point.x - width + decoration.inset, y: barTop,
                                 width: width, height: barHeight))
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator):

@@ -68,8 +68,8 @@ struct BlockquoteNestingTests {
         // Inner marker (the second '>' on line 2) hidden too.
         let innerMarker = ns.range(of: "> inner").location
         #expect(isMarkerHidden(at: innerMarker, in: s))
-        // The nested line carries two stacked bars (outer bumped out, inner at
-        // 0) — and crucially at the *line start*, not just at the nested
+        // The nested line carries two stacked bars (outer at 0, inner shifted
+        // right) — and crucially at the *line start*, not just at the nested
         // span's own start: the layout-fragment vendor reads `.blockDecoration`
         // at paragraph offset 0, so a decoration starting at the inner `>`
         // (col 2) would never draw (the missing-nested-bar bug).
@@ -98,7 +98,8 @@ struct BlockquoteNestingTests {
         for loc in [l3LineStart, ns.range(of: "level three").location] {
             let l3Insets = barInsets(decorationList(at: loc, in: s))
             #expect(l3Insets.count == 3)
-            // Sorted ascending: deepest (0) ... outermost (largest).
+            // Sorted ascending: outermost (0, leftmost) ... deepest (largest,
+            // next to its own text).
             let sorted = l3Insets.sorted()
             #expect(sorted[0] == 0)
             #expect(sorted[1] > sorted[0])
