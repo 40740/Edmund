@@ -263,6 +263,14 @@ struct EditorStylingTests {
         #expect(!isHidden(at: 0, in: styled))
     }
 
+    @Test("Heading # stays dimmed when cursor is in trailing whitespace")
+    @MainActor func headingMarkerDimmedOnActiveLine() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("# Hello   ", cursorPosition: 9)
+        #expect(isDimmed(at: 0, in: styled))
+        #expect(!isHidden(at: 0, in: styled))
+    }
+
     @Test("Heading content has bold scaled font")
     @MainActor func headingContentFont() {
         let editor = makeEditor()
