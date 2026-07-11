@@ -20,6 +20,14 @@ GFM pass: closing the gaps between Edmund and the GFM spec in both edit and read
 ### Changed
 - A `---` line directly under a paragraph is now a setext h2 underline per GFM, no longer a thematic break — put a blank line between the paragraph and `---` to keep the rule
 - `==highlight==` now follows GFM-style flanking: content can't begin or end with whitespace (`== spaced ==` stays literal)
+- Setext heading content spans the whole preceding paragraph run (`Foo\nbar\n---` is one h2), matching GFM Example 51
+- Interior blank lines stay inside an indented code block (GFM Examples 82/87)
+
+### Fixed
+- Tables whose delimiter row cell count differs from the header are no longer parsed as tables in edit mode (GFM Example 203)
+- Backslash-escaped pipes (`\|`) are cell content, not column separators (GFM Example 200)
+- The ATX heading closing sequence (`# foo ###`) hides like other delimiters instead of showing in the heading (GFM 4.2)
+- A newline inserted at a display-math block boundary no longer leaves a stray centered line (separator newlines now reset when adjacent blocks restyle)
 
 ## [0.1.4] - 2026-07-09
 
