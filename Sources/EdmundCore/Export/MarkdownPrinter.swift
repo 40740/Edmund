@@ -116,7 +116,7 @@ private final class PrintJob: NSObject, WKNavigationDelegate {
         self.showsPanel = showsPanel
         super.init()
         webView.navigationDelegate = self
-        webView.loadHTMLString(html, baseURL: nil)
+        webView.loadHTMLString(html, baseURL: ReadModeNavigationPolicy.trustedBaseURL)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
