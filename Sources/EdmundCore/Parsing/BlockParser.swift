@@ -290,8 +290,10 @@ public enum BlockParser {
             return (merged.joined(separator: "\n"), .quoteRun(isCallout: isCallout), j)
         }
 
-        // Detect table: header row followed by separator row
-        if isTableRow(first), let second = buf.line(at: i + 1), isTableSeparator(second) {
+        // Detect table: header row followed by separator row with the same
+        // cell count (GFM: a mismatched delimiter row isn't a table at all).
+        if isTableRow(first), let second = buf.line(at: i + 1), isTableSeparator(second),
+           splitTableRow(first).count == splitTableRow(second).count {
             var merged = [first]
             var j = i + 1
             while let line = buf.line(at: j), isTableRow(line) || isTableSeparator(line) {

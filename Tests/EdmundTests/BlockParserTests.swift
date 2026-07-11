@@ -263,6 +263,18 @@ struct BlockParserTests {
         #expect(blocks[0].range == NSRange(location: 0, length: (text as NSString).length))
     }
 
+    @Test("Delimiter row with fewer cells than the header is not a table")
+    func tableRejectsMismatchedDelimiterCount() {
+        let blocks = BlockParser.parse("| a | b |\n|---|")
+        #expect(blocks.map(\.kind) != [.table])
+    }
+
+    @Test("Delimiter row with matching cell count is still a table")
+    func tableAcceptsMatchingDelimiterCount() {
+        let blocks = BlockParser.parse("| a | b |\n|---|---|")
+        #expect(blocks.map(\.kind) == [.table])
+    }
+
     // MARK: - Code Fence Merging
 
     @Test("Fenced code block merges into single block")
