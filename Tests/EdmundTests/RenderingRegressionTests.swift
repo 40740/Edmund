@@ -337,3 +337,26 @@ struct RenderingRegressionTests {
     }
 
 }
+
+@Suite("Regression — separator attribute inheritance")
+struct SeparatorInheritanceTests {
+
+    /// A character inserted at a block boundary inherits its neighbor's
+    /// attributes (TextKit typing semantics). When the neighbor is a
+    /// display-math block, the inserted separator newline kept the centered
+    /// paragraph style forever: no block's restyle covers separators, so
+    /// only a full recompose would clear it. restyleBlock now resets the
+    /// separators adjacent to every block it styles.
+    @Test("Newline inserted at a $$ block boundary doesn't keep centered style")
+    @MainActor func insertAtMathBoundary() {
+        let doc = "$$\nx = 1\n$$\n\n$$\ny_{1} = 2\n$$"
+        let len = (doc as NSString).length
+        for loc in 0...len {
+            let editor = makeEditor()
+            editor.loadContent(doc)
+            editor.setSelectedRange(NSRange(location: loc, length: 0))
+            editor.insertText("\n", replacementRange: NSRange(location: loc, length: 0))
+            assertMatchesFullRecomposeOracle(editor, "insert at \(loc)")
+        }
+    }
+}

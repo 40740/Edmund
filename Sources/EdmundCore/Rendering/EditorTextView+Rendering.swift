@@ -618,6 +618,21 @@ extension EditorTextView {
             let tsRange = NSRange(location: range.location + offset, length: range.length)
             ts.setAttributes(attrs, range: tsRange)
         }
+
+        // Reset the separator newlines adjacent to the block. No block's
+        // styled range covers them, and a character inserted at a block
+        // boundary inherits its neighbor's attributes (e.g. a display-math
+        // block's centered paragraph style), which would otherwise stick
+        // forever — a full recompose leaves separators at base attributes,
+        // so the in-place path must too.
+        let nsStr = ts.string as NSString
+        if offset > 0, nsStr.character(at: offset - 1) == 0x0A {
+            ts.setAttributes(baseAttributes, range: NSRange(location: offset - 1, length: 1))
+        }
+        let after = block.range.upperBound
+        if after < nsStr.length, nsStr.character(at: after) == 0x0A {
+            ts.setAttributes(baseAttributes, range: NSRange(location: after, length: 1))
+        }
     }
 
     /// Re-applies styling to the active block. Called after each keystroke.
