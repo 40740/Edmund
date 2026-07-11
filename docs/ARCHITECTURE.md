@@ -208,7 +208,9 @@ editor parses (one parser, two back-ends: `SpanCollector` → editor attributes,
 `HTMLRenderer` → HTML), themed from the *same* `EditorTheme`/`CalloutStyle` via
 `HTMLTheme`, so the two can't drift. The webview disables JavaScript and inlines
 every asset (math/icons as data URIs) so it needs no file/network reach; external
-links open in the default browser. **File ▸ Export as PDF… / Print… (⌘P)** run
+links open in the default browser. Raw HTML passes through per GFM, filtered by
+tagfilter + hardening, and the page carries a `script-src 'none'` CSP meta
+(see §10 for the full policy). **File ▸ Export as PDF… / Print… (⌘P)** run
 the same HTML through `WKWebView.printOperation` for real vector (selectable)
 text — `MarkdownPrinter`. Math glyphs are high-DPI PNG (SwiftMath has no SVG
 path yet); callout/checkbox icons are inline Lucide SVG (vector); everything
@@ -423,21 +425,33 @@ them and route through the app's document graph without JavaScript.
 
 ## 10. Still to address
 
-- **Inline HTML renders in both modes for a fixed whitelist** —
-  `SyntaxHighlighter.htmlFormatTags` (`u`/`kbd`/`mark`/`sub`/`sup`/`small`), the
-  single source of truth. Edit: `parseHTMLTags` colors any tag (name red,
-  brackets dimmed) and renders the whitelist by hiding the tags + styling the
-  inner content. Read: `HTMLRenderer.sanitizeInlineHTML` passes the same
-  whitelist through as *bare* tags (attributes dropped — defense-in-depth; the
-  read webview also disables JS); every other inline tag and **all** block HTML
-  (`visitHTMLBlock`) stays escaped, except `<!-- comments -->` (invisible in
-  both modes) and a lone `<img src="…">` tag (rendered in both modes, with
-  optional declared `width`/`height`; double-quoted attributes only). `<br>`
-  and non-whitelisted tags are color-only in Edit / escaped in Read (a real
-  `<br>` break would need to mutate storage, breaking the storage==rawSource
-  invariant). Minor divergence: an *unpaired* whitelist tag is color-only
-  source in Edit but follows browser HTML balancing in Read. Full HTML block
-  support (type-6 multi-line blocks) is still deferred.
+- **Raw HTML (§G): Read renders it per GFM; Edit shows colored source** — the
+  GitHub split (their editor shows source too; rendered HTML in Edit is
+  impossible under the storage==rawSource invariant). Read mode passes raw
+  HTML through (GFM §6.10 inline / §4.6 blocks) filtered by
+  `HTMLRenderer.filterRawHTML` = the spec tagfilter (§6.11: the nine dangerous
+  tag names get `<` → `&lt;`) **plus** Edmund hardening beyond spec: `on*`
+  event-handler attributes stripped, `javascript:`/`vbscript:` URL schemes
+  neutralized. Defense layers behind that filter: the read webview disables
+  JS, the page carries a `script-src 'none'` CSP meta (`DocumentHTML.full` —
+  Read view and Print/PDF both consume it), and it loads with `baseURL: nil`.
+  A raw `<img src=…>` (lone or inside a block) is rewritten to the `md-image`
+  placeholder — the only way images load under `baseURL: nil`, and the
+  remote-image-policy chokepoint (`DocumentHTML.fillImages`). Edit mode:
+  `.htmlBlock` blocks (all seven §4.6 start conditions in `BlockParser`) and
+  inline tags (full §6.10 grammar in `parseHTMLTags`) render as colored
+  source; the `SyntaxHighlighter.htmlFormatTags` whitelist
+  (`u`/`kbd`/`mark`/`sub`/`sup`/`small`) is *presentation* in Edit (rendered
+  formatting), not sanitization. Deliberate divergences from spec: the HTML
+  comment regex is laxer (interior `--` allowed); a `<`-line that forms a
+  valid table header+separator becomes a table (tables win); the type-1 tag
+  set is pinned to CommonMark 0.29 (`script|pre|style`, no `textarea`); a
+  lone self-closing `<script/>` is a type-7 HTML block, not a paragraph; the
+  Edit-mode `htmlPairRegex` attr swallow breaks on `>` inside a quoted
+  attribute of a whitelist open tag (falls back to colored source). Still
+  deferred in Edit mode: reference links/definitions, blockquote lazy
+  continuation, entity-reference styling, the 2-trailing-space hard-break
+  span.
 - **Edit-mode table alignment** distributes each cell's slack via `.kern`,
   putting the right/center "before" pad on the cell's *hidden* leading pipe
   (0.01pt glyph) — kern still adds advance there. See

@@ -534,6 +534,8 @@ public enum BlockParser {
         case completeTag      // 7: a complete lone tag  — ends BEFORE a blank line; can't interrupt a paragraph
     }
 
+    // Tag set pinned to CommonMark 0.29 / GFM (script|pre|style — no textarea,
+    // which later CommonMark added); deliberate, documented in ARCHITECTURE §10.
     private static let htmlType1Regex = try! NSRegularExpression(
         pattern: #"^ {0,3}<(?:script|pre|style)(?:[ \t>]|$)"#, options: [.caseInsensitive])
 
