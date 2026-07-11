@@ -28,6 +28,11 @@ struct TableAlignmentParseTests {
         #expect(tableColumnAlignments(separatorRow: "|--:|", count: 3)
                 == [.right, .left, .left])
     }
+
+    @Test("A backslash-escaped pipe does not split a cell")
+    func escapedPipeNotSeparator() {
+        #expect(splitTableRow("| a \\| b | c |").count == 2)
+    }
 }
 
 @Suite("Table column alignment — rendering")
@@ -71,5 +76,106 @@ struct TableAlignmentRenderTests {
         let styled = editor.styleBlock(table, cursorPosition: 2)
         let start = lastRowStart(styled)
         #expect(kern(at: start, in: styled) == nil)
+    }
+
+    @Test("Column width uses the styled cell width, not the raw source width")
+    func styledWidthAlignment() {
+        let editor = makeEditor()
+        // Col 0: "**wide**" renders as bold "wide" (4 chars), so the raw
+        // 8-char source must not inflate the column. The plain data cell
+        // "wide" needs (nearly) no slack once the ** measure ~zero — its
+        // only slack is the header's bold-vs-regular width difference.
+        let styled = editor.styleBlock("| **wide** | b |\n|---|---|\n| wide | y |", cursorPosition: nil)
+        let start = lastRowStart(styled)
+        // Data cell content "wide" starts after "| " → trailing char is 'e'
+        // at start+5; its left-align kern must be tiny (bold-regular delta),
+        // far below the ~4-character width the raw `**`s would add.
+        let s = styled.string as NSString
+        let cellEnd = s.range(of: "wide", options: [], range: NSRange(location: start, length: styled.length - start))
+        #expect(cellEnd.location != NSNotFound)
+        let slack = kern(at: cellEnd.upperBound - 1, in: styled) ?? 0
+        let twoChars = "aa".size(withAttributes: [.font: editor.bodyFont]).width
+        #expect(slack < twoChars)
+    }
+}
+
+@Suite("Table cell inline styling")
+@MainActor
+struct TableInlineStylingTests {
+
+    private func table(_ cell: String) -> NSAttributedString {
+        makeEditor().styleBlock("| \(cell) | b |\n|---|---|\n| x | y |", cursorPosition: nil)
+    }
+
+    @Test("Bold in a header cell renders bold at body size")
+    func boldCell() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("| a | b |\n|---|---|\n| **bold** | y |", cursorPosition: nil)
+        let s = styled.string as NSString
+        let bold = s.range(of: "bold")
+        let f = styled.attribute(.font, at: bold.location, effectiveRange: nil) as? NSFont
+        #expect(f != nil && NSFontManager.shared.traits(of: f!).contains(.boldFontMask))
+        // Its ** delimiters are hidden.
+        let d = styled.attribute(.font, at: bold.location - 1, effectiveRange: nil) as? NSFont
+        #expect((d?.pointSize ?? 99) < 1.0)
+    }
+
+    @Test("Inline code in a cell gets the mono font")
+    func codeCell() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("| a | b |\n|---|---|\n| `code` | y |", cursorPosition: nil)
+        let s = styled.string as NSString
+        let code = s.range(of: "code", options: .backwards)
+        let f = styled.attribute(.font, at: code.location, effectiveRange: nil) as? NSFont
+        #expect(f == editor.inlineCodeFont)
+    }
+
+    @Test("Link in a cell is colored and carries its destination")
+    func linkCell() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("| a | b |\n|---|---|\n| [x](http://e.com) | y |", cursorPosition: nil)
+        let s = styled.string as NSString
+        let x = s.range(of: "[x]", options: .backwards)
+        let dest = styled.attribute(.editorLinkURL, at: x.location + 1, effectiveRange: nil) as? String
+        #expect(dest == "http://e.com")
+    }
+
+    @Test("Header-row styling stays bold when a cell has italic (boldItalic)")
+    func headerItalicCell() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("| *it* | b |\n|---|---|\n| x | y |", cursorPosition: nil)
+        let s = styled.string as NSString
+        let it = s.range(of: "it")
+        let f = styled.attribute(.font, at: it.location, effectiveRange: nil) as? NSFont
+        let traits = f.map { NSFontManager.shared.traits(of: $0) } ?? []
+        #expect(traits.contains(.boldFontMask))
+        #expect(traits.contains(.italicFontMask))
+    }
+
+    @Test("Escaped pipe in a data cell stays visible; structural pipes stay hidden")
+    func escapedPipeStaysVisible() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("| a | b |\n|---|---|\n| x \\| y | z |", cursorPosition: nil)
+        let s = styled.string as NSString
+        let escaped = s.range(of: "\\|")
+        #expect(escaped.location != NSNotFound)
+        let escapedPipeFont = styled.attribute(.font, at: escaped.location + 1, effectiveRange: nil) as? NSFont
+        #expect((escapedPipeFont?.pointSize ?? 0) >= 1.0)
+
+        // A structural pipe (the leading pipe of the data row) stays hidden.
+        let lastRow = s.range(of: "\n", options: .backwards).location + 1
+        let structuralPipeFont = styled.attribute(.font, at: lastRow, effectiveRange: nil) as? NSFont
+        #expect((structuralPipeFont?.pointSize ?? 99) < 1.0)
+    }
+
+    @Test("Row paragraph geometry survives cell styling (table owns it)")
+    func rowGeometryPreserved() {
+        let styled = table("**b**")
+        // First char of the header row still carries the table's paragraph
+        // style (indent = cell padding), not styleBlock's body style.
+        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(ps != nil && ps!.firstLineHeadIndent > 0)
+        // And the row decoration is a table row.
+        #expect(styled.attribute(.blockDecoration, at: 0, effectiveRange: nil) != nil)
     }
 }

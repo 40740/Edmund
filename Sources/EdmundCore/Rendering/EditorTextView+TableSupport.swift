@@ -37,8 +37,22 @@ func tableColumnAlignments(separatorRow: String, count: Int) -> [ColumnAlign] {
 
 /// Splits a markdown table row into cell strings (text between pipes).
 /// Handles both `| A | B |` (outer pipes) and `A | B` (no outer pipes).
+/// A `\|` is escaped content, not a cell separator (GFM Example 200).
 func splitTableRow(_ line: String) -> [String] {
-    var parts = line.components(separatedBy: "|")
+    var parts: [String] = []
+    var current = ""
+    var prevWasBackslash = false
+    for ch in line {
+        if ch == "|" && !prevWasBackslash {
+            parts.append(current)
+            current = ""
+        } else {
+            current.append(ch)
+        }
+        prevWasBackslash = (ch == "\\") && !prevWasBackslash
+    }
+    parts.append(current)
+
     // Remove empty/whitespace-only first/last from outer pipes.
     if let first = parts.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
         parts.removeFirst()
@@ -55,7 +69,10 @@ func splitTableRow(_ line: String) -> [String] {
 func cellRanges(in line: NSString) -> [(start: Int, end: Int)] {
     var pipePos: [Int] = []
     for ci in 0..<line.length {
-        if line.character(at: ci) == 0x7C { pipePos.append(ci) }
+        guard line.character(at: ci) == 0x7C else { continue }
+        // A `\|` is escaped content, not a cell separator (GFM Example 200).
+        if ci > 0 && line.character(at: ci - 1) == 0x5C { continue }
+        pipePos.append(ci)
     }
     guard !pipePos.isEmpty else { return [] }
 

@@ -17,6 +17,12 @@ struct HTMLRendererCoreTests {
         #expect(html("###### Six") == "<h6>Six</h6>")
     }
 
+    @Test("Setext headings render h1/h2")
+    func setextHeadings() {
+        #expect(html("Title\n===") == "<h1>Title</h1>")
+        #expect(html("Title\n---") == "<h2>Title</h2>")
+    }
+
     @Test("Paragraph wraps in <p>")
     func paragraph() {
         #expect(html("hello world") == "<p>hello world</p>")
@@ -200,6 +206,69 @@ struct HTMLRendererInlineTests {
     @Test("Comment is hidden")
     func comment() {
         #expect(!html("before %%secret%% after").contains("secret"))
+    }
+
+    @Test("Inline HTML comment is hidden, not literal text")
+    func inlineHTMLComment() {
+        let out = html("before <!-- secret --> after")
+        #expect(!out.contains("secret"))
+        #expect(out.contains("before"))
+        #expect(out.contains("after"))
+    }
+
+    @Test("Block-level HTML comment is hidden")
+    func blockHTMLComment() {
+        #expect(!html("para\n\n<!-- secret -->\n\nend").contains("secret"))
+    }
+
+    @Test("Inline <img> emits the asset-pass placeholder with declared dimensions")
+    func inlineImgTag() {
+        let out = html("pic <img src=\"cat.png\" alt=\"a cat\" width=\"120\" height=\"80\"> here")
+        #expect(out.contains("<img class=\"md-image\" data-src=\"cat.png\" alt=\"a cat\" width=\"120\" height=\"80\">"))
+    }
+
+    @Test("Block-level <img> line emits the placeholder too")
+    func blockImgTag() {
+        let out = html("<img src=\"cat.png\">")
+        #expect(out.contains("<img class=\"md-image\" data-src=\"cat.png\" alt=\"\">"))
+    }
+
+    @Test("An <img> without a quoted src stays escaped")
+    func imgWithoutSrc() {
+        let out = html("x <img width=\"9\"> y")
+        #expect(!out.contains("<img class=\"md-image\""))
+        #expect(out.contains("&lt;img"))
+    }
+
+    @Test("Bare www autolink renders as a real anchor")
+    func wwwAutolink() {
+        let out = html("visit www.example.com now")
+        #expect(out.contains("<a href=\"http://www.example.com\">www.example.com</a>"))
+    }
+
+    @Test("Email autolink renders as a mailto anchor")
+    func emailAutolink() {
+        let out = html("mail foo@bar.example.com please")
+        #expect(out.contains("<a href=\"mailto:foo@bar.example.com\">foo@bar.example.com</a>"))
+    }
+
+    @Test("Autolink trailing punctuation stays outside the anchor")
+    func autolinkTrim() {
+        let out = html("see www.example.com.")
+        #expect(out.contains("<a href=\"http://www.example.com\">www.example.com</a>."))
+    }
+
+    @Test("No autolink inside inline code")
+    func autolinkNotInCode() {
+        let out = html("`www.example.com`")
+        #expect(!out.contains("<a href"))
+    }
+
+    @Test("A real [x](url) link is untouched; a bare URL beside it links")
+    func autolinkBesideRealLink() {
+        let out = html("[x](http://a.example.com) http://b.example.com")
+        #expect(out.contains(">x</a>"))
+        #expect(out.contains("<a href=\"http://b.example.com\">http://b.example.com</a>"))
     }
 }
 

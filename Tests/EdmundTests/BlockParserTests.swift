@@ -263,6 +263,18 @@ struct BlockParserTests {
         #expect(blocks[0].range == NSRange(location: 0, length: (text as NSString).length))
     }
 
+    @Test("Delimiter row with fewer cells than the header is not a table")
+    func tableRejectsMismatchedDelimiterCount() {
+        let blocks = BlockParser.parse("| a | b |\n|---|")
+        #expect(blocks.map(\.kind) != [.table])
+    }
+
+    @Test("Delimiter row with matching cell count is still a table")
+    func tableAcceptsMatchingDelimiterCount() {
+        let blocks = BlockParser.parse("| a | b |\n|---|---|")
+        #expect(blocks.map(\.kind) == [.table])
+    }
+
     // MARK: - Code Fence Merging
 
     @Test("Fenced code block merges into single block")
@@ -510,5 +522,157 @@ struct BlockParserTests {
     func hrBeatsList() {
         let blocks = BlockParser.parse("- - -")
         #expect(blocks[0].kind == .thematicBreak)
+    }
+
+    // MARK: - Setext headings
+
+    @Test("Paragraph + === underline merges into an h1 block")
+    func setextH1() {
+        let blocks = BlockParser.parse("Title\n===\nbody")
+        #expect(blocks.count == 2)
+        #expect(blocks[0].content == "Title\n===")
+        #expect(blocks[0].kind == .heading(level: 1))
+        #expect(blocks[1].content == "body")
+    }
+
+    @Test("Paragraph + --- underline merges into an h2 block (setext beats rule)")
+    func setextH2() {
+        let blocks = BlockParser.parse("Title\n---")
+        #expect(blocks.count == 1)
+        #expect(blocks[0].kind == .heading(level: 2))
+    }
+
+    @Test("A setext underline merges the whole preceding paragraph run (GFM Example 51)")
+    func setextMultiLineContent() {
+        let blocks = BlockParser.parse("Foo\nbar\n---")
+        #expect(blocks.count == 1)
+        #expect(blocks[0].kind == .heading(level: 2))
+        #expect(blocks[0].content == "Foo\nbar\n---")
+    }
+
+    @Test("Without an underline, each paragraph line stays its own block")
+    func noUnderlineKeepsPerLineBlocks() {
+        let blocks = BlockParser.parse("Foo\nbar")
+        #expect(blocks.map(\.kind) == [.paragraph, .paragraph])
+        #expect(blocks[0].content == "Foo")
+        #expect(blocks[1].content == "bar")
+    }
+
+    @Test("A setext run doesn't swallow a preceding non-paragraph block")
+    func setextRunStopsAtHeading() {
+        let blocks = BlockParser.parse("# h\nFoo\n===")
+        #expect(blocks.map(\.kind) == [.heading(level: 1), .heading(level: 1)])
+        #expect(blocks[1].content == "Foo\n===")
+    }
+
+    @Test("--- after a blank line stays a thematic break")
+    func ruleAfterBlank() {
+        let blocks = BlockParser.parse("para\n\n---")
+        #expect(blocks.map(\.kind) == [.paragraph, .blank, .thematicBreak])
+    }
+
+    @Test("--- after a list item stays a thematic break")
+    func ruleAfterList() {
+        let blocks = BlockParser.parse("- item\n---")
+        #expect(blocks.map(\.kind) == [.listItem, .thematicBreak])
+    }
+
+    @Test("Spaced '- - -' after a paragraph is not a setext underline")
+    func spacedRuleNotUnderline() {
+        let blocks = BlockParser.parse("para\n- - -")
+        #expect(blocks.map(\.kind) == [.paragraph, .thematicBreak])
+    }
+
+    @Test("Underline with trailing non-space text is not a setext underline")
+    func underlineWithTrailingText() {
+        let blocks = BlockParser.parse("para\n=== x")
+        #expect(blocks.map(\.kind) == [.paragraph, .paragraph])
+    }
+
+    @Test("Setext underline can't follow a heading or blank line")
+    func underlineNeedsParagraph() {
+        let blocks = BlockParser.parse("# h\n===")
+        #expect(blocks.map(\.kind) == [.heading(level: 1), .paragraph])
+    }
+
+    // MARK: - Indented code blocks
+
+    @Test("A run of 4-space lines at document start merges into one code block")
+    func indentedCodeRun() {
+        let blocks = BlockParser.parse("    a\n    b")
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == "    a\n    b")
+        #expect(blocks[0].kind == .indentedCode)
+    }
+
+    @Test("Tab indentation opens a code block")
+    func tabIndentedCode() {
+        let blocks = BlockParser.parse("\tcode")
+        #expect(blocks.map(\.kind) == [.indentedCode])
+    }
+
+    @Test("Indented code needs a preceding blank line")
+    func indentedCodeNeedsBlank() {
+        let blocks = BlockParser.parse("foo\n    bar")
+        #expect(blocks.map(\.kind) == [.paragraph, .paragraph])
+    }
+
+    @Test("Indented run after a blank line is a code block")
+    func indentedCodeAfterBlank() {
+        let blocks = BlockParser.parse("foo\n\n    bar")
+        #expect(blocks.map(\.kind) == [.paragraph, .blank, .indentedCode])
+    }
+
+    @Test("An interior blank line stays inside the code block (GFM Example 82)")
+    func indentedCodeBlankSplits() {
+        let blocks = BlockParser.parse("    a\n\n    b")
+        #expect(blocks.map(\.kind) == [.indentedCode])
+        #expect(blocks[0].content == "    a\n\n    b")
+    }
+
+    @Test("A blank line before non-code content is not swallowed into the code block")
+    func indentedCodeTrailingBlankNotSwallowed() {
+        let blocks = BlockParser.parse("    a\n\nx")
+        #expect(blocks.map(\.kind) == [.indentedCode, .blank, .paragraph])
+        #expect(blocks[0].content == "    a")
+    }
+
+    @Test("Multiple interior blank lines and chunks all stay in one code block")
+    func indentedCodeMultipleInteriorBlanks() {
+        let blocks = BlockParser.parse("    a\n\n\n    b\n\npara")
+        #expect(blocks.map(\.kind) == [.indentedCode, .blank, .paragraph])
+        #expect(blocks[0].content == "    a\n\n\n    b")
+    }
+
+    @Test("A deeply indented list item is rescued as a list, not code")
+    func indentedListBeatsCode() {
+        let blocks = BlockParser.parse("    - item")
+        #expect(blocks.map(\.kind) == [.listItem])
+    }
+
+    @Test("An indented line followed by a setext-ish underline stays code + rule")
+    func indentedCodeNotSetext() {
+        let blocks = BlockParser.parse("    code\n---")
+        #expect(blocks.map(\.kind) == [.indentedCode, .thematicBreak])
+    }
+}
+
+@Suite("BlockParser — performance guards")
+struct BlockParserPerfTests {
+
+    /// The multi-line setext scan is memoized (LineBuffer.noSetextUnderlineBefore):
+    /// without the memo, a long blank-line-free paragraph run makes the parse
+    /// quadratic (every line re-scans to the run's end — a 20k-line document
+    /// took >10 minutes). The generous bound only trips on complexity bugs,
+    /// not slow CI machines.
+    @Test("A 10k-line blank-line-free paragraph run parses in linear-ish time")
+    func hugeParagraphRun() {
+        let doc = Array(repeating: "just a plain prose line with words",
+                        count: 10_000).joined(separator: "\n")
+        let t0 = DispatchTime.now()
+        let blocks = BlockParser.parse(doc)
+        let seconds = Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1e9
+        #expect(blocks.count == 10_000)
+        #expect(seconds < 10)
     }
 }

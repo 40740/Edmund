@@ -155,6 +155,23 @@ extension EditorTextView {
 
         let spans = SyntaxHighlighter.parse(markdown)
 
+        // The font already applied at `loc` — the enclosing heading's when
+        // inside one, else the base body font. Inline spans derive their font
+        // from it so `# **bold** and `code`` keeps the heading's size. Spans
+        // apply in location order, so a heading (at the block start) styles
+        // its fullRange before any inner span reads the context.
+        func contextFont(at loc: Int) -> NSFont {
+            guard loc >= 0, loc < result.length else { return bodyFont }
+            return result.attribute(.font, at: loc, effectiveRange: nil) as? NSFont ?? bodyFont
+        }
+        // The mono font matching `ctx`'s scale: the plain inline-code font in
+        // body text, scaled up inside a heading.
+        func monoFont(for ctx: NSFont) -> NSFont {
+            let scale = ctx.pointSize / bodyFont.pointSize
+            return scale == 1 ? inlineCodeFont
+                : theme.monospaceFont(ofSize: inlineCodeFont.pointSize * scale)
+        }
+
         for span in spans {
             let cursorInToken = cursorPosition.map {
                 $0 >= span.fullRange.location && $0 <= span.fullRange.upperBound
@@ -164,22 +181,26 @@ extension EditorTextView {
             switch span.kind {
             case .bold:
                 guard span.contentRange.upperBound <= result.length else { continue }
-                let bold = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
+                let ctx = contextFont(at: span.contentRange.location)
+                let bold = NSFontManager.shared.convert(ctx, toHaveTrait: .boldFontMask)
                 result.addAttribute(.font, value: bold, range: span.contentRange)
 
             case .italic:
                 guard span.contentRange.upperBound <= result.length else { continue }
-                let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
+                let ctx = contextFont(at: span.contentRange.location)
+                let italic = NSFontManager.shared.convert(ctx, toHaveTrait: .italicFontMask)
                 result.addAttribute(.font, value: italic, range: span.contentRange)
 
             case .boldItalic:
                 guard span.contentRange.upperBound <= result.length else { continue }
-                let bi = NSFontManager.shared.convert(bodyFont, toHaveTrait: [.boldFontMask, .italicFontMask])
+                let ctx = contextFont(at: span.contentRange.location)
+                let bi = NSFontManager.shared.convert(ctx, toHaveTrait: [.boldFontMask, .italicFontMask])
                 result.addAttribute(.font, value: bi, range: span.contentRange)
 
             case .code:
                 guard span.contentRange.upperBound <= result.length else { continue }
-                result.addAttribute(.font, value: inlineCodeFont, range: span.contentRange)
+                let ctx = contextFont(at: span.contentRange.location)
+                result.addAttribute(.font, value: monoFont(for: ctx), range: span.contentRange)
                 result.addAttribute(.foregroundColor, value: foregroundColor, range: span.contentRange)
                 result.addAttribute(.backgroundColor, value: inlineCodeBackground, range: span.contentRange)
 
@@ -223,12 +244,13 @@ extension EditorTextView {
                     result.addAttribute(.editorWikiTarget, value: target, range: span.contentRange)
                 }
 
-            case .image(let destination):
+            case .image(let destination, let width, let height):
                 guard span.fullRange.upperBound <= result.length else { continue }
-                if !cursorInToken, let overlay = imageOverlay(destination: destination) {
-                    // Rendered: draw the image at the leading `!` and hide the
-                    // rest of the `![alt](path)` markdown, reserving the line
-                    // height so the picture has room.
+                if !cursorInToken, let overlay = imageOverlay(destination: destination,
+                                                              width: width, height: height) {
+                    // Rendered: draw the image at the leading character (`!` of
+                    // `![alt](path)`, `<` of `<img …>`) and hide the rest of the
+                    // source, reserving the line height so the picture has room.
                     let hideStart = span.fullRange.location + 1
                     let hideLen = span.fullRange.upperBound - hideStart
                     if hideLen > 0 {
@@ -241,6 +263,10 @@ extension EditorTextView {
                                  in: result)
                     reserveLineHeight(overlay.bounds.height,
                                       forOverlayAt: span.fullRange.location, in: result)
+                } else if (markdown as NSString).character(at: span.fullRange.location) == 0x3C {
+                    // Active (or pending) `<img …>`: show the raw tag as colored
+                    // HTML source, like any other tag.
+                    styleRawHTMLTag(result, range: span.fullRange)
                 } else {
                     // Active, or the image couldn't be loaded: show the alt text
                     // link-colored (same as a plain link); delimiters are dimmed/hidden below.
@@ -446,10 +472,11 @@ extension EditorTextView {
                 // active, it stays full size and editable with dimmed delimiters.
                 result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.contentRange)
                 if !cursorInToken {
-                    let small = NSFont(descriptor: bodyFont.fontDescriptor,
-                                       size: bodyFont.pointSize * 0.75) ?? bodyFont
+                    let ctx = contextFont(at: span.contentRange.location)
+                    let small = NSFont(descriptor: ctx.fontDescriptor,
+                                       size: ctx.pointSize * 0.75) ?? ctx
                     result.addAttribute(.font, value: small, range: span.contentRange)
-                    result.addAttribute(.baselineOffset, value: bodyFont.pointSize * 0.35,
+                    result.addAttribute(.baselineOffset, value: ctx.pointSize * 0.35,
                                         range: span.contentRange)
                 }
 
@@ -581,21 +608,32 @@ extension EditorTextView {
 
     /// Applies a whitelisted HTML tag's rendered formatting to `range` (the inner
     /// content). Unknown tags are no-ops (handled as colored source elsewhere).
+    /// Fonts derive from the one already applied at the range (the enclosing
+    /// heading's, when inside one), so sizes nest like other inline spans.
     private func applyHTMLFormatAttribute(_ result: NSMutableAttributedString,
                                           tag: String, range: NSRange) {
+        let ctx = (range.location < result.length
+            ? result.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont
+            : nil) ?? bodyFont
         switch tag {
         case "u":
             result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
         case "mark":
             result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: range)
         case "kbd":
-            result.addAttribute(.font, value: inlineCodeFont, range: range)
+            let scale = ctx.pointSize / bodyFont.pointSize
+            let mono = scale == 1 ? inlineCodeFont
+                : theme.monospaceFont(ofSize: inlineCodeFont.pointSize * scale)
+            result.addAttribute(.font, value: mono, range: range)
             result.addAttribute(.backgroundColor, value: inlineCodeBackground, range: range)
         case "sub", "sup":
-            let small = NSFont(descriptor: bodyFont.fontDescriptor, size: bodyFont.pointSize * 0.75) ?? bodyFont
+            let small = NSFont(descriptor: ctx.fontDescriptor, size: ctx.pointSize * 0.75) ?? ctx
             result.addAttribute(.font, value: small, range: range)
-            let offset = tag == "sub" ? -bodyFont.pointSize * 0.25 : bodyFont.pointSize * 0.35
+            let offset = tag == "sub" ? -ctx.pointSize * 0.25 : ctx.pointSize * 0.35
             result.addAttribute(.baselineOffset, value: offset, range: range)
+        case "small":
+            let fine = NSFont(descriptor: ctx.fontDescriptor, size: ctx.pointSize * 0.85) ?? ctx
+            result.addAttribute(.font, value: fine, range: range)
         default:
             break
         }
@@ -657,6 +695,21 @@ extension EditorTextView {
         styled.enumerateAttributes(in: NSRange(location: 0, length: styled.length), options: []) { attrs, range, _ in
             let tsRange = NSRange(location: range.location + offset, length: range.length)
             ts.setAttributes(attrs, range: tsRange)
+        }
+
+        // Reset the separator newlines adjacent to the block. No block's
+        // styled range covers them, and a character inserted at a block
+        // boundary inherits its neighbor's attributes (e.g. a display-math
+        // block's centered paragraph style), which would otherwise stick
+        // forever — a full recompose leaves separators at base attributes,
+        // so the in-place path must too.
+        let nsStr = ts.string as NSString
+        if offset > 0, nsStr.character(at: offset - 1) == 0x0A {
+            ts.setAttributes(baseAttributes, range: NSRange(location: offset - 1, length: 1))
+        }
+        let after = block.range.upperBound
+        if after < nsStr.length, nsStr.character(at: after) == 0x0A {
+            ts.setAttributes(baseAttributes, range: NSRange(location: after, length: 1))
         }
     }
 

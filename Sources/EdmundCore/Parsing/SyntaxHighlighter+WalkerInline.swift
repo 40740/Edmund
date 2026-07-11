@@ -180,7 +180,7 @@ extension SyntaxHighlighter.SpanCollector {
         let content = contentRange(full: full, delims: delims)
 
         spans.append(SyntaxHighlighter.Span(
-            kind: .image(destination: image.source ?? ""),
+            kind: .image(destination: image.source ?? "", width: nil, height: nil),
             fullRange: full,
             contentRange: content,
             delimiterRanges: delims

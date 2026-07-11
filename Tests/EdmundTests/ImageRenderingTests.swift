@@ -26,7 +26,7 @@ struct ImageRenderingTests {
     @Test("Image syntax parses to an image span carrying the destination")
     func parsesImage() {
         let dests = SyntaxHighlighter.parse("![alt](pic.png)").compactMap { s -> String? in
-            if case .image(let d) = s.kind { return d }; return nil
+            if case .image(let d, _, _) = s.kind { return d }; return nil
         }
         #expect(dests == ["pic.png"])
     }
@@ -48,6 +48,41 @@ struct ImageRenderingTests {
         let editor = makeEditor()
         let styled = editor.styleBlock("![alt](\(tempPNGPath()))", cursorPosition: 3)
         #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
+    }
+
+    @Test("HTML <img> renders an overlay and hides the raw tag")
+    func htmlImgRendersOverlay() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("<img src=\"\(tempPNGPath())\">", cursorPosition: nil)
+        // Overlay anchored on the leading `<`.
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) != nil)
+        let f = styled.attribute(.font, at: 5, effectiveRange: nil) as? NSFont
+        #expect((f?.pointSize ?? 99) < 1.0)
+    }
+
+    @Test("Active HTML <img> shows the raw tag (no overlay)")
+    func htmlImgActiveShowsRaw() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("<img src=\"\(tempPNGPath())\">", cursorPosition: 3)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
+    }
+
+    @Test("Declared width/height size the overlay exactly; one alone scales proportionally")
+    func declaredDimensions() {
+        let editor = makeEditor()
+        let path = tempPNGPath()   // natural 24×16
+
+        let exact = editor.imageOverlay(destination: path, width: 12, height: 10)
+        #expect(exact?.bounds.size == CGSize(width: 12, height: 10))
+
+        let widthOnly = editor.imageOverlay(destination: path, width: 12)
+        #expect(widthOnly?.bounds.size == CGSize(width: 12, height: 8))
+
+        let heightOnly = editor.imageOverlay(destination: path, height: 8)
+        #expect(heightOnly?.bounds.size == CGSize(width: 12, height: 8))
+
+        let natural = editor.imageOverlay(destination: path)
+        #expect(natural?.bounds.size == CGSize(width: 24, height: 16))
     }
 
     @Test("Missing local image shows a blocked-image placeholder overlay, not just alt text")

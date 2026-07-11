@@ -151,11 +151,79 @@ struct HeadingTests {
         #expect(spans.isEmpty)
     }
 
-    @Test("Heading suppresses inline parsing in its range")
-    func headingSuppressesInline() {
+    @Test("Setext === underline: content is the first line, delimiter the underline")
+    func setextH1() {
+        let spans = SyntaxHighlighter.parse("Title\n===")
+        let headings = spans.filter { if case .heading = $0.kind { return true }; return false }
+        #expect(headings.count == 1)
+        let s = headings[0]
+        #expect(s.kind == .heading(1))
+        #expect(s.fullRange == NSRange(location: 0, length: 9))
+        #expect(s.contentRange == NSRange(location: 0, length: 5))       // "Title"
+        #expect(s.delimiterRanges == [NSRange(location: 6, length: 3)])  // "==="
+    }
+
+    @Test("Setext --- underline is level 2")
+    func setextH2() {
+        let spans = SyntaxHighlighter.parse("Title\n---")
+        let headings = spans.filter { if case .heading = $0.kind { return true }; return false }
+        #expect(headings.count == 1)
+        #expect(headings[0].kind == .heading(2))
+    }
+
+    @Test("Setext content can span multiple lines (GFM Example 51)")
+    func setextMultiLineContent() {
+        let spans = SyntaxHighlighter.parse("Foo\nbar\n===")
+        let headings = spans.filter { if case .heading = $0.kind { return true }; return false }
+        #expect(headings.count == 1)
+        let s = headings[0]
+        #expect(s.kind == .heading(1))
+        #expect(s.contentRange == NSRange(location: 0, length: 7))        // "Foo\nbar"
+        #expect(s.delimiterRanges == [NSRange(location: 8, length: 3)])   // "==="
+    }
+
+    @Test("Heading descends into inline children (nested styling)")
+    func headingDescendsInline() {
         let spans = SyntaxHighlighter.parse("# **Bold heading**")
-        #expect(spans.count == 1)
+        #expect(spans.count == 2)
         #expect(spans[0].kind == .heading(1))
+        #expect(spans[1].kind == .bold)
+        #expect(spans[1].contentRange == NSRange(location: 4, length: 12))
+    }
+
+    @Test("Setext heading descends into inline children too")
+    func setextDescendsInline() {
+        let spans = SyntaxHighlighter.parse("**Bold** title\n===")
+        let kinds = spans.map(\.kind)
+        #expect(kinds.contains(.heading(1)))
+        #expect(kinds.contains(.bold))
+    }
+
+    @Test("ATX heading's optional closing sequence is a hidden second delimiter")
+    func atxClosingSequence() {
+        let spans = SyntaxHighlighter.parse("# foo ###")
+        let s = spans[0]
+        #expect(s.kind == .heading(1))
+        #expect(s.delimiterRanges.count == 2)
+        #expect(s.contentRange == NSRange(location: 2, length: 3))       // "foo"
+        #expect(s.delimiterRanges[1] == NSRange(location: 5, length: 4)) // " ###"
+    }
+
+    @Test("A closing '#' with no preceding space stays in the content")
+    func atxNoPrecedingSpaceNotClosing() {
+        let spans = SyntaxHighlighter.parse("# foo#")
+        let s = spans[0]
+        #expect(s.delimiterRanges.count == 1)
+        #expect(s.contentRange == NSRange(location: 2, length: 4))       // "foo#"
+    }
+
+    @Test("An all-hashes closing sequence with empty content is entirely delimiter")
+    func atxEmptyHeadingAllDelimiter() {
+        let spans = SyntaxHighlighter.parse("## ##")
+        let s = spans[0]
+        #expect(s.kind == .heading(2))
+        #expect(s.delimiterRanges.count == 2)
+        #expect(s.contentRange.length == 0)
     }
 }
 
@@ -320,6 +388,21 @@ struct HighlightTests {
     func insideCode() {
         let spans = SyntaxHighlighter.parse("`==nope==`")
         let highlights = spans.filter { $0.kind == .highlight }
+        #expect(highlights.isEmpty)
+    }
+
+    @Test("Single-char ==a== highlights")
+    func singleChar() {
+        let spans = SyntaxHighlighter.parse("==a==")
+        #expect(spans.count == 1)
+        #expect(spans[0].kind == .highlight)
+        #expect(spans[0].contentRange == NSRange(location: 2, length: 1))
+    }
+
+    @Test("Whitespace-flanked content is not a highlight",
+          arguments: ["== spaced ==", "==lead ==", "== trail=="])
+    func flanking(_ text: String) {
+        let highlights = SyntaxHighlighter.parse(text).filter { $0.kind == .highlight }
         #expect(highlights.isEmpty)
     }
 }
@@ -701,6 +784,24 @@ struct CodeBlockTests {
         #expect(content == "hello")
     }
 
+    @Test("Indented code block: no delimiters, all content")
+    func indentedCode() {
+        let text = "    let x = 1\n    let y = 2"
+        let spans = SyntaxHighlighter.parse(text)
+        let codeBlocks = spans.filter {
+            if case .codeBlock = $0.kind { return true }
+            return false
+        }
+        #expect(codeBlocks.count == 1)
+        guard let span = codeBlocks.first else { return }
+        if case .codeBlock(let lang) = span.kind { #expect(lang == nil) }
+        #expect(span.contentRange == span.fullRange)
+        #expect(span.delimiterRanges.isEmpty)
+        // The first line's leading indent is inside the span (swift-markdown's
+        // node range starts after it; the walker expands back to line start).
+        #expect(span.fullRange.location == 0)
+    }
+
     @Test("Code block with tilde fences")
     func tildeFence() {
         let text = "~~~\ncode\n~~~"
@@ -803,7 +904,7 @@ struct ImageTests {
             return false
         }
         #expect(images.count == 1)
-        if case .image(let dest) = images[0].kind {
+        if case .image(let dest, _, _) = images[0].kind {
             #expect(dest == "https://example.com/img.png")
         }
     }
@@ -999,5 +1100,91 @@ struct DisplayMathTests {
     @Test("A normal paragraph is not display math")
     func paragraphNotDisplay() {
         #expect(mathSpans("just a paragraph").isEmpty)
+    }
+}
+
+// MARK: - Autolinks (GFM extension)
+
+@Suite("SyntaxHighlighter — Autolinks")
+struct AutolinkTests {
+
+    private func links(_ text: String) -> [(text: String, dest: String)] {
+        SyntaxHighlighter.parse(text).compactMap { s in
+            guard case .link(let d) = s.kind else { return nil }
+            return ((text as NSString).substring(with: s.contentRange), d)
+        }
+    }
+
+    @Test("Bare www autolink gets an http:// destination")
+    func www() {
+        let l = links("visit www.example.com now")
+        #expect(l.count == 1)
+        #expect(l[0].text == "www.example.com")
+        #expect(l[0].dest == "http://www.example.com")
+    }
+
+    @Test("Scheme autolink keeps its own destination")
+    func scheme() {
+        let l = links("see https://example.com/page?x=1 there")
+        #expect(l.map(\.dest) == ["https://example.com/page?x=1"])
+    }
+
+    @Test("Trailing punctuation is trimmed")
+    func trailingPunct() {
+        #expect(links("go to www.example.com.").map(\.text) == ["www.example.com"])
+        #expect(links("really, www.example.com!").map(\.text) == ["www.example.com"])
+    }
+
+    @Test("Unbalanced trailing paren is trimmed; balanced is kept")
+    func parens() {
+        #expect(links("(see www.example.com)").map(\.text) == ["www.example.com"])
+        #expect(links("https://en.wikipedia.org/wiki/Markdown_(language)").map(\.text)
+                == ["https://en.wikipedia.org/wiki/Markdown_(language)"])
+    }
+
+    @Test("Trailing &entity; is trimmed")
+    func entity() {
+        #expect(links("www.example.com/foo&amp;").map(\.text) == ["www.example.com/foo"])
+    }
+
+    @Test("Email autolink gets a mailto destination")
+    func email() {
+        let l = links("mail foo.bar+baz@sub.example.com please")
+        #expect(l.map(\.dest) == ["mailto:foo.bar+baz@sub.example.com"])
+    }
+
+    @Test("Invalid domains don't autolink")
+    func invalidDomain() {
+        #expect(links("http://nodot").isEmpty)
+        #expect(links("www.ex_ample.com").isEmpty)   // _ in the last two labels
+        #expect(links("it cost $5 www").isEmpty)
+    }
+
+    @Test("A URL mid-word doesn't autolink")
+    func midWord() {
+        #expect(links("xhttp://example.com").isEmpty)
+    }
+
+    @Test("No autolink inside code spans")
+    func insideCode() {
+        #expect(links("`www.example.com`").isEmpty)
+    }
+
+    @Test("No autolink inside a real markdown link; a bare one next to it still links")
+    func besideRealLink() {
+        let l = links("[x](http://a.com) http://b.com")
+        // The [x](…) link comes from the walker; the autolink pass adds b only.
+        let autos = l.filter { $0.dest == "http://b.com" }
+        #expect(autos.count == 1)
+        #expect(!l.contains { $0.text.contains("a.com") && $0.dest == "http://a.com" && $0.text == "http://a.com" })
+    }
+
+    @Test("No autolink inside an <img> src attribute")
+    func insideImgTag() {
+        let spans = SyntaxHighlighter.parse("<img src=\"http://example.com/x.png\">")
+        let autos = spans.filter {
+            if case .link = $0.kind { return true }; return false
+        }
+        #expect(autos.isEmpty)
     }
 }

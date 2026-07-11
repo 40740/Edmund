@@ -53,6 +53,57 @@ struct HTMLTagParseTests {
         #expect(!k.contains { if case .htmlTag = $0 { return true }; return false })
         #expect(!k.contains { if case .htmlFormat = $0 { return true }; return false })
     }
+
+    @Test("<!-- comment --> → .comment with <!-- / --> delimiters")
+    func htmlComment() {
+        let spans = SyntaxHighlighter.parse("a <!-- note --> b")
+        let comment = spans.first { if case .comment = $0.kind { return true }; return false }
+        #expect(comment != nil)
+        #expect(comment?.fullRange == NSRange(location: 2, length: 13))
+        #expect(comment?.delimiterRanges == [NSRange(location: 2, length: 4),    // <!--
+                                             NSRange(location: 12, length: 3)])  // -->
+    }
+
+    @Test("A tag inside an HTML comment belongs to the comment, not the tag pass")
+    func commentSwallowsTags() {
+        let k = kinds("<!-- <u>x</u> -->")
+        #expect(!k.contains { if case .htmlTag = $0 { return true }; return false })
+        #expect(!k.contains { if case .htmlFormat = $0 { return true }; return false })
+    }
+
+    @Test("<img src> → image span carrying src and declared dimensions")
+    func imgTag() {
+        let text = "<img src=\"cat.png\" alt=\"a cat\" width=\"120\" height=\"80\">"
+        let spans = SyntaxHighlighter.parse(text)
+        let images = spans.filter { if case .image = $0.kind { return true }; return false }
+        #expect(images.count == 1)
+        guard let img = images.first else { return }
+        if case .image(let dest, let w, let h) = img.kind {
+            #expect(dest == "cat.png")
+            #expect(w == 120)
+            #expect(h == 80)
+        }
+        #expect(img.fullRange == NSRange(location: 0, length: (text as NSString).length))
+        #expect((text as NSString).substring(with: img.contentRange) == "cat.png")
+        #expect(!spans.contains { if case .htmlTag = $0.kind { return true }; return false })
+    }
+
+    @Test("<img> without dimensions parses with nil width/height")
+    func imgNoDims() {
+        let spans = SyntaxHighlighter.parse("<img src=\"cat.png\">")
+        guard case .image(let dest, let w, let h)? =
+            spans.first(where: { if case .image = $0.kind { return true }; return false })?.kind
+        else { Issue.record("no image span"); return }
+        #expect(dest == "cat.png")
+        #expect(w == nil && h == nil)
+    }
+
+    @Test("<img> without a quoted src stays colored source (htmlTag)")
+    func imgWithoutSrc() {
+        let k = kinds("<img width=\"9\">")
+        #expect(!k.contains { if case .image = $0 { return true }; return false })
+        #expect(k.contains { if case .htmlTag = $0 { return true }; return false })
+    }
 }
 
 @Suite("Rendering — HTML tags")
@@ -106,6 +157,20 @@ struct HTMLTagRenderingTests {
 
         let sup = editor.styleBlock("<sup>2</sup>", cursorPosition: nil)
         #expect((attr(.baselineOffset, at: 5, in: sup) as? CGFloat ?? 0) > 0)
+
+        let small = editor.styleBlock("<small>fine</small>", cursorPosition: nil)
+        let f = attr(.font, at: 8, in: small) as? NSFont
+        #expect(f != nil && f!.pointSize < editor.bodyFont.pointSize)
+    }
+
+    @Test("HTML comment: dimmed in edit view, hidden in reading view")
+    func htmlComment() {
+        let editor = makeEditor()
+        let edit = editor.styleBlock("a <!-- note --> b", cursorPosition: nil)
+        #expect(!isHidden(at: 5, in: edit))   // visible (dimmed) in edit mode
+
+        let read = editor.styleBlock("a <!-- note --> b", cursorPosition: nil, hideComments: true)
+        #expect(isHidden(at: 5, in: read))    // gone in reading view
     }
 
     @Test("Inner markdown still styles: <u>**b**</u>")
@@ -131,6 +196,7 @@ struct HTMLTagExportTests {
         #expect(html("<mark>m</mark>").contains("<mark>m</mark>"))
         #expect(html("H<sub>2</sub>O").contains("<sub>2</sub>"))
         #expect(html("x<sup>2</sup>").contains("<sup>2</sup>"))
+        #expect(html("<small>fine</small>").contains("<small>fine</small>"))
     }
 
     @Test("Attributes are stripped (bare tag only)")

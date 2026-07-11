@@ -87,6 +87,34 @@ extension SyntaxHighlighter {
         }
     }
 
+    private static let htmlCommentRegex =
+        try! NSRegularExpression(pattern: "<!--[\\s\\S]*?-->")
+
+    /// Parses HTML `<!-- comment -->` spans into the same `.comment` kind as
+    /// `%%…%%` (dimmed in edit mode, hidden in reading view; inner spans are
+    /// dropped by the opaque-range pass). Skips comments inside code / math.
+    static func parseHTMLComments(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+        for m in htmlCommentRegex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            let full = m.range(at: 0)
+            let overlaps = spans.contains { existing in
+                switch existing.kind {
+                case .code, .codeBlock, .math: break
+                default: return false
+                }
+                return existing.fullRange.location <= full.location
+                    && existing.fullRange.upperBound >= full.upperBound
+            }
+            guard !overlaps else { continue }
+            spans.append(Span(
+                kind: .comment,
+                fullRange: full,
+                contentRange: NSRange(location: full.location + 4, length: full.length - 7),
+                delimiterRanges: [NSRange(location: full.location, length: 4),
+                                  NSRange(location: full.upperBound - 3, length: 3)]))
+        }
+    }
+
     private static let wikiLinkRegex =
         try! NSRegularExpression(pattern: #"\[\[([^\[\]\n]+?)\]\]"#)
 
@@ -137,9 +165,11 @@ extension SyntaxHighlighter {
     }
 
     /// Parses ==highlight== spans using regex (not supported by swift-markdown).
+    /// GFM-style flanking: the content must not begin or end with whitespace
+    /// (`== spaced ==` stays literal), matching how cmark treats `**`/`~~`.
     static func parseHighlight(_ text: String, into spans: inout [Span]) {
         let nsText = text as NSString
-        guard let regex = try? NSRegularExpression(pattern: "==(.+?)==", options: []) else { return }
+        guard let regex = try? NSRegularExpression(pattern: "==(?!\\s)(.+?)(?<!\\s)==", options: []) else { return }
         let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsText.length))
         for match in matches {
             let full = match.range(at: 0)
@@ -313,6 +343,14 @@ extension SyntaxHighlighter {
     private static let htmlTagRegex = try! NSRegularExpression(
         pattern: #"</?([A-Za-z][A-Za-z0-9]*)(?:\s[^<>]*)?/?>"#)
 
+    // `<img>` attribute extractors, double-quoted values only (ponytail:
+    // single/unquoted attrs stay colored source). Shared with the read-mode
+    // sanitizer so both back-ends accept exactly the same tags.
+    static let imgSrcRegex = try! NSRegularExpression(pattern: #"\ssrc="([^"]*)""#)
+    static let imgAltRegex = try! NSRegularExpression(pattern: #"\salt="([^"]*)""#)
+    static let imgWidthRegex = try! NSRegularExpression(pattern: #"\swidth="(\d+)""#)
+    static let imgHeightRegex = try! NSRegularExpression(pattern: #"\sheight="(\d+)""#)
+
     /// Parses inline HTML tags. Two tiers:
     ///   - a whitelisted pair (`<u>…</u>`, `<kbd>`, `<mark>`, `<sub>`, `<sup>`)
     ///     becomes a `.htmlFormat` span whose tags hide and whose content takes a
@@ -367,10 +405,149 @@ extension SyntaxHighlighter {
                 $0.location <= full.location && $0.upperBound >= full.upperBound
             }) { continue }
             let nameR = m.range(at: 1)
+
+            // `<img src="…">` renders as an inline image (like `![](…)`),
+            // optionally at declared pixel dimensions. Without a src the tag
+            // stays colored source.
+            if ns.substring(with: nameR).lowercased() == "img",
+               let srcM = imgSrcRegex.firstMatch(in: text, range: full) {
+                func intAttr(_ regex: NSRegularExpression) -> Int? {
+                    regex.firstMatch(in: text, range: full)
+                        .map { ns.substring(with: $0.range(at: 1)) }.flatMap(Int.init)
+                }
+                spans.append(Span(
+                    kind: .image(destination: ns.substring(with: srcM.range(at: 1)),
+                                 width: intAttr(imgWidthRegex),
+                                 height: intAttr(imgHeightRegex)),
+                    fullRange: full,
+                    contentRange: srcM.range(at: 1),
+                    delimiterRanges: []))
+                continue
+            }
             let pre = NSRange(location: full.location, length: nameR.location - full.location)
             let post = NSRange(location: nameR.upperBound, length: full.upperBound - nameR.upperBound)
             spans.append(Span(kind: .htmlTag, fullRange: full, contentRange: nameR,
                               delimiterRanges: [pre, post]))
+        }
+    }
+
+    // GFM autolinks extension. Group 1 is the allowed preceding character
+    // (start of text, whitespace, or `*`/`_`/`~`/`(`); group 2 the candidate:
+    // a scheme/www URL run or an email. Trailing punctuation, unbalanced `)`,
+    // and `&entity;` suffixes are trimmed in code afterwards, then the domain
+    // is validated (≥1 dot, no `_` in the last two labels).
+    private static let autolinkRegex = try! NSRegularExpression(
+        pattern: #"(^|[\s*_~(])((?:https?://|www\.)[^\s<]+|[A-Za-z0-9._+-]+@[A-Za-z0-9._-]+)"#,
+        options: [.caseInsensitive])
+
+    /// Parses bare `www.…`/`http(s)://…`/`user@host` autolinks per the GFM
+    /// autolinks extension (swift-markdown doesn't attach cmark's). Emits
+    /// `.link` spans with no delimiters (the whole match is content). Skips
+    /// candidates inside code, math, comments, wikilinks, real links/images,
+    /// and HTML tags. Must run after every other pass.
+    static func parseAutolinks(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+
+        func isTrimPunct(_ c: unichar) -> Bool {
+            // ? ! . , : * _ ~ ' "
+            switch c {
+            case 0x3F, 0x21, 0x2E, 0x2C, 0x3A, 0x2A, 0x5F, 0x7E, 0x27, 0x22: return true
+            default: return false
+            }
+        }
+        func isAlnum(_ c: unichar) -> Bool {
+            (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) || (c >= 0x30 && c <= 0x39)
+        }
+
+        // GFM trailing trim: strip punctuation, a `)` only while the match's
+        // parens are unbalanced, and a trailing `&entity;`.
+        func trimmedEnd(from start: Int, to initialEnd: Int) -> Int {
+            var end = initialEnd
+            loop: while end > start {
+                let c = ns.character(at: end - 1)
+                if isTrimPunct(c) { end -= 1; continue }
+                if c == 0x29 {   // ")"
+                    var opens = 0, closes = 0
+                    for i in start..<end {
+                        let ch = ns.character(at: i)
+                        if ch == 0x28 { opens += 1 } else if ch == 0x29 { closes += 1 }
+                    }
+                    if closes > opens { end -= 1; continue }
+                    break
+                }
+                if c == 0x3B {   // ";" — strip a `&word;` entity-like suffix
+                    var i = end - 2
+                    while i >= start, isAlnum(ns.character(at: i)) { i -= 1 }
+                    if i >= start, ns.character(at: i) == 0x26, i < end - 2 {  // "&" + 1+ alnum + ";"
+                        end = i
+                        continue loop
+                    }
+                    break
+                }
+                break
+            }
+            return end
+        }
+
+        /// GFM valid domain: `.`-separated labels of alphanumerics/`-`/`_`,
+        /// at least two labels, no `_` in the last two.
+        func isValidDomain(_ domain: Substring) -> Bool {
+            let labels = domain.split(separator: ".", omittingEmptySubsequences: false)
+            guard labels.count >= 2 else { return false }
+            for label in labels {
+                guard !label.isEmpty,
+                      label.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })
+                else { return false }
+            }
+            return !labels.suffix(2).contains { $0.contains("_") }
+        }
+
+        for m in autolinkRegex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            let candidate = m.range(at: 2)
+            let end = trimmedEnd(from: candidate.location, to: candidate.upperBound)
+            guard end > candidate.location else { continue }
+            let full = NSRange(location: candidate.location, length: end - candidate.location)
+            let match = ns.substring(with: full)
+
+            let destination: String
+            if match.range(of: "^https?://", options: [.regularExpression, .caseInsensitive]) != nil {
+                let afterScheme = match[match.range(of: "://")!.upperBound...]
+                guard isValidDomain(afterScheme.prefix {
+                    $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == "."
+                }) else { continue }
+                destination = match
+            } else if match.lowercased().hasPrefix("www.") {
+                guard isValidDomain(match.prefix(while: {
+                    $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == "."
+                })) else { continue }
+                destination = "http://" + match
+            } else {
+                // Email: needs text before the `@`, a valid domain after it,
+                // and the last character can't be `-` or `_`.
+                guard let at = match.firstIndex(of: "@"), at != match.startIndex,
+                      isValidDomain(match[match.index(after: at)...]),
+                      match.last != "-", match.last != "_"
+                else { continue }
+                destination = "mailto:" + match
+            }
+
+            let overlapsExisting = spans.contains { existing in
+                switch existing.kind {
+                case .code, .codeBlock, .math, .comment, .wikilink,
+                     .link, .image, .htmlTag, .htmlFormat:
+                    return existing.fullRange.location < full.upperBound
+                        && existing.fullRange.upperBound > full.location
+                default:
+                    return false
+                }
+            }
+            guard !overlapsExisting else { continue }
+
+            spans.append(Span(
+                kind: .link(destination: destination),
+                fullRange: full,
+                contentRange: full,
+                delimiterRanges: []))
         }
     }
 

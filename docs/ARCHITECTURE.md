@@ -64,14 +64,19 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
                                           ├─ SyntaxHighlighter (swift-markdown
                                           │   Walker + custom parsers for
                                           │   callouts, ==highlight==, wikilinks,
-                                          │   comments, footnotes, math, backslash
-                                          │   escapes, inline HTML tags)
+                                          │   %% and <!-- --> comments, footnotes,
+                                          │   math, backslash escapes, inline HTML
+                                          │   tags incl. <img>, GFM autolinks)
                                           └─ writes attributes into textStorage
 ```
 
 - **`BlockParser`** (`Parsing/`) splits `rawSource` into `Block`s (one per
-  logical block: paragraph, heading, list run, quote/callout run, code fence,
-  table…). `Block.kind` is a `BlockKind` enum (e.g. `.quoteRun(isCallout:)`).
+  logical block: paragraph, heading — ATX or setext, list run, quote/callout
+  run, code fence, indented code run, table…). `Block.kind` is a `BlockKind`
+  enum (e.g. `.quoteRun(isCallout:)`). The indented-code rule is the parser's
+  only backward-looking one (a run starts only after a blank line), so
+  `consumeBlock` carries a `prevLine` context and the incremental parse won't
+  resync onto an indented-code-ish line.
 - **`SyntaxHighlighter`** + `+Walker`/`+WalkerInline`/`+CustomParsers` produce
   styling spans. The custom parsers handle the non-CommonMark syntax.
 - **`styleBlock(_:cursorPosition:)`** (`Rendering/EditorTextView+Rendering.swift`)
@@ -419,17 +424,20 @@ them and route through the app's document graph without JavaScript.
 ## 10. Still to address
 
 - **Inline HTML renders in both modes for a fixed whitelist** —
-  `SyntaxHighlighter.htmlFormatTags` (`u`/`kbd`/`mark`/`sub`/`sup`), the single
-  source of truth. Edit: `parseHTMLTags` colors any tag (name red, brackets
-  dimmed) and renders the whitelist by hiding the tags + styling the inner
-  content. Read: `HTMLRenderer.sanitizeInlineHTML` passes the same whitelist
-  through as *bare* tags (attributes dropped — defense-in-depth; the read webview
-  also disables JS); every other inline tag and **all** block HTML
-  (`visitHTMLBlock`) stays escaped. `<br>` and non-whitelisted tags are
-  color-only in Edit / escaped in Read (a real `<br>` break would need to mutate
-  storage, breaking the storage==rawSource invariant). Minor divergence: an
-  *unpaired* whitelist tag is color-only source in Edit but follows browser HTML
-  balancing in Read.
+  `SyntaxHighlighter.htmlFormatTags` (`u`/`kbd`/`mark`/`sub`/`sup`/`small`), the
+  single source of truth. Edit: `parseHTMLTags` colors any tag (name red,
+  brackets dimmed) and renders the whitelist by hiding the tags + styling the
+  inner content. Read: `HTMLRenderer.sanitizeInlineHTML` passes the same
+  whitelist through as *bare* tags (attributes dropped — defense-in-depth; the
+  read webview also disables JS); every other inline tag and **all** block HTML
+  (`visitHTMLBlock`) stays escaped, except `<!-- comments -->` (invisible in
+  both modes) and a lone `<img src="…">` tag (rendered in both modes, with
+  optional declared `width`/`height`; double-quoted attributes only). `<br>`
+  and non-whitelisted tags are color-only in Edit / escaped in Read (a real
+  `<br>` break would need to mutate storage, breaking the storage==rawSource
+  invariant). Minor divergence: an *unpaired* whitelist tag is color-only
+  source in Edit but follows browser HTML balancing in Read. Full HTML block
+  support (type-6 multi-line blocks) is still deferred.
 - **Edit-mode table alignment** distributes each cell's slack via `.kern`,
   putting the right/center "before" pad on the cell's *hidden* leading pipe
   (0.01pt glyph) — kern still adds advance there. See

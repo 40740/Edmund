@@ -140,17 +140,58 @@ extension SyntaxHighlighter {
             if plainQuoteDepth > 0 { return }   // literal inside a plain quote
             guard let range = heading.range else { return }
             let full = nsRange(for: range)
+            let text = (source as NSString).substring(with: full)
+
+            // Setext heading (`Title\n===`, or `Foo\nbar\n===` per GFM Example
+            // 51 — content can span multiple lines): no `#` prefix. Everything
+            // up to the *last* line is the content; that last line is the
+            // underline delimiter (hidden when rendered, dimmed when active).
+            // The `\n`s stay untouched so the line structure survives.
+            if !text.drop(while: { $0 == " " }).hasPrefix("#") {
+                let nl = (text as NSString).range(of: "\n", options: .backwards)
+                guard nl.location != NSNotFound else { return }  // setext is 2+ lines
+                spans.append(Span(
+                    kind: .heading(heading.level),
+                    fullRange: full,
+                    contentRange: NSRange(location: full.location, length: nl.location),
+                    delimiterRanges: [NSRange(location: full.location + nl.upperBound,
+                                              length: full.length - nl.upperBound)]
+                ))
+                descendInto(heading)   // inline children style at heading size
+                return
+            }
+
             let delimLen = heading.level + 1
-            let cStart = full.location + delimLen
-            let cLen = max(0, full.length - delimLen)
+            // cmark already recognizes and trims a valid optional closing
+            // sequence (GFM 4.2, e.g. `# foo ###`) out of `heading.range` —
+            // it can even trim `full` down to just the opening `#` run when
+            // the heading is otherwise empty (`## ##`), shorter than
+            // `delimLen`. Clamp so an empty-content heading doesn't push
+            // `cStart` past what `full` actually covers.
+            let openDelimLen = min(delimLen, full.length)
+            let cStart = full.location + openDelimLen
+            let cLen = max(0, full.length - openDelimLen)
+            var delimiterRanges = [NSRange(location: full.location, length: openDelimLen)]
+
+            // Whatever raw text follows `full` to the end of this
+            // single-line block is exactly what cmark trimmed as the
+            // closing sequence (its required separating whitespace, the
+            // `#` run, and any trailing whitespace) — hide it too.
+            let nsSource = source as NSString
+            let lineEnd = nsSource.length
+            if full.upperBound < lineEnd {
+                delimiterRanges.append(NSRange(location: full.upperBound, length: lineEnd - full.upperBound))
+            }
 
             spans.append(Span(
                 kind: .heading(heading.level),
                 fullRange: full,
                 contentRange: NSRange(location: cStart, length: cLen),
-                delimiterRanges: [NSRange(location: full.location, length: delimLen)]
+                delimiterRanges: delimiterRanges
             ))
-            // Don't descend — heading subsumes children
+            // The heading span is appended first, so inner spans read the
+            // heading font as their context and keep its size.
+            descendInto(heading)
         }
 
         // MARK: - Code Blocks
@@ -163,6 +204,30 @@ extension SyntaxHighlighter {
 
             let nsSource = source as NSString
             let blockText = nsSource.substring(with: full) as NSString
+
+            // Indented code block: no fence, so no delimiters — every
+            // character (indentation included) is content. swift-markdown's
+            // node range starts *after* the first line's 4-space indent, so
+            // expand back over the leading whitespace or those characters
+            // would keep the body font and misalign the first line.
+            let opener = (blockText as String).drop(while: { $0 == " " })
+            if !(opener.hasPrefix("```") || opener.hasPrefix("~~~")) {
+                var start = full.location
+                while start > 0 {
+                    let c = nsSource.character(at: start - 1)
+                    guard c == 0x20 || c == 0x09 else { break }
+                    start -= 1
+                }
+                let expanded = NSRange(location: start, length: full.upperBound - start)
+                spans.append(Span(
+                    kind: .codeBlock(language: nil),
+                    fullRange: expanded,
+                    contentRange: expanded,
+                    delimiterRanges: []
+                ))
+                return
+            }
+
             var delims: [NSRange] = []
             var cStart = full.location
             var cEnd = full.upperBound

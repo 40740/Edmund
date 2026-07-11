@@ -122,6 +122,7 @@ public enum Log {
             case .heading(let level):     return "heading(\(level))·\(c)c"
             case .quoteRun(let isCallout): return "\(isCallout ? "callout" : "quote")·\(c)c"
             case .fence:                  return "fence·\(c)c"
+            case .indentedCode:           return "indentedCode·\(c)c"
             case .mathDisplay:            return "math·\(c)c"
             case .table:                  return "table·\(c)c"
             case .listItem:               return "listItem·\(c)c"

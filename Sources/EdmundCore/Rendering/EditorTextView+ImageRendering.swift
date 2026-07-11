@@ -143,10 +143,11 @@ extension EditorTextView {
 
     /// A `FragmentOverlay` for `destination`'s image or placeholder, or nil
     /// while a remote fetch is pending (the caller then shows plain alt text).
-    func imageOverlay(destination: String) -> FragmentOverlay? {
+    /// `width`/`height` are declared pixel dimensions from an HTML `<img>` tag.
+    func imageOverlay(destination: String, width: Int? = nil, height: Int? = nil) -> FragmentOverlay? {
         switch imageDisplay(destination: destination) {
         case .image(let image):
-            return scaledOverlay(image: image)
+            return scaledOverlay(image: image, width: width, height: height)
         case .blocked(let failure):
             return placeholderOverlay(failure: failure)
         case .pending:
@@ -156,10 +157,21 @@ extension EditorTextView {
 
     /// Scales `image` down to fit the text width while keeping its aspect
     /// ratio. `bounds.minY == 0` sits the image bottom on the text baseline
-    /// (the reserved line height makes room above it).
-    private func scaledOverlay(image: NSImage) -> FragmentOverlay? {
+    /// (the reserved line height makes room above it). Declared `width`/
+    /// `height` override the natural size first (one alone scales the other
+    /// proportionally); the max-width clamp still applies after.
+    private func scaledOverlay(image: NSImage, width: Int? = nil, height: Int? = nil) -> FragmentOverlay? {
         var size = image.size
         guard size.width > 0, size.height > 0 else { return nil }
+
+        switch (width, height) {
+        case let (w?, h?): size = NSSize(width: CGFloat(w), height: CGFloat(h))
+        case let (w?, nil): size = NSSize(width: CGFloat(w),
+                                          height: size.height * CGFloat(w) / size.width)
+        case let (nil, h?): size = NSSize(width: size.width * CGFloat(h) / size.height,
+                                          height: CGFloat(h))
+        case (nil, nil): break
+        }
 
         let maxWidth = availableContentWidth
         if maxWidth > 0, size.width > maxWidth {
