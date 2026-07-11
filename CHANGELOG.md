@@ -3,6 +3,24 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+GFM pass: closing the gaps between Edmund and the GFM spec in both edit and read mode.
+
+### Added
+- Setext headings (`Title` underlined by `===`/`---`) render in edit mode
+- Indented code blocks (4 spaces or a tab, after a blank line) render in edit mode
+- HTML `<!-- comments -->`: dimmed in edit mode, hidden in read mode (previously showed as literal text in read mode)
+- `<small>` added to the rendered HTML whitelist (both modes)
+- `<img src alt width height>` renders the image in both modes, at its declared size (one dimension alone scales proportionally); remote/local image policy applies as for markdown images
+- Autolinks ([GFM extension](https://github.github.com/gfm/#autolinks-extension-)): bare `www.…`, `http(s)://…`, and email addresses become links in both modes, with CMD+click to follow
+- Inline styling (bold, code, links, ==marks==, …) now renders inside table cells in edit mode; column widths align on the *styled* text, not the raw source
+- Inline styling inside headings keeps the heading's font size (`# **bold** and `code``), for ATX and setext headings
+
+### Changed
+- A `---` line directly under a paragraph is now a setext h2 underline per GFM, no longer a thematic break — put a blank line between the paragraph and `---` to keep the rule
+- `==highlight==` now follows GFM-style flanking: content can't begin or end with whitespace (`== spaced ==` stays literal)
+
 ## [0.1.4] - 2026-07-09
 
 Various small fixes and improvement and new round of grind at the [delete caret drift](https://github.com/I7T5/Edmund/issues/156). I think it actually worked this time, but don't quote me on it. 
