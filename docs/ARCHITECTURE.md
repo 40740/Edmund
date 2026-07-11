@@ -206,15 +206,17 @@ the document as themed HTML (the `Export/` group); Edit and Source stay on the
 `EditorTextView`. The HTML path walks the *same* swift-markdown `Document` the
 editor parses (one parser, two back-ends: `SpanCollector` → editor attributes,
 `HTMLRenderer` → HTML), themed from the *same* `EditorTheme`/`CalloutStyle` via
-`HTMLTheme`, so the two can't drift. The webview disables JavaScript and inlines
-every asset (math/icons as data URIs) so it needs no file/network reach; external
-links open in the default browser. Raw HTML passes through per GFM, filtered by
-tagfilter + hardening, and the page carries a `script-src 'none'` CSP meta
-(see §10 for the full policy). **File ▸ Export as PDF… / Print… (⌘P)** run
-the same HTML through `WKWebView.printOperation` for real vector (selectable)
-text — `MarkdownPrinter`. Math glyphs are high-DPI PNG (SwiftMath has no SVG
-path yet); callout/checkbox icons are inline Lucide SVG (vector); everything
-else is vector. Code blocks are syntax-colored by
+`HTMLTheme`, so the two can't drift. The webview disables JavaScript, loads the
+generated HTML against an explicit `about:blank` base URL, and inlines every
+asset (math/icons as data URIs) so it needs no file/network reach; external
+`http`/`https`/`mailto` links open in the default browser, while `file:` and
+unknown schemes are cancelled instead of fetched in-view. Raw HTML passes 
+through per GFM, filtered by tagfilter + hardening, and the page carries a 
+`script-src 'none'` CSP meta (see §10 for the full policy). **File ▸ Export as
+PDF… / Print… (⌘P)** run the same HTML through `WKWebView.printOperation` for
+real vector (selectable) text — `MarkdownPrinter`. Math glyphs are high-DPI PNG
+(SwiftMath has no SVG path yet); callout/checkbox icons are inline Lucide SVG
+(vector); everything else is vector. Code blocks are syntax-colored by
 `CodeHighlighter` (same tokenizer and `CodeSyntaxPalette` as Edit mode). Local
 images are inlined as data URIs via a `baseURL` (document directory) threaded
 through `DocumentHTML`/`ReadModeWebView`/`MarkdownPrinter`; remote images are

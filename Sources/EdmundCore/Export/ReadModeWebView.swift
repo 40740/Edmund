@@ -70,7 +70,7 @@ public final class ReadModeWebView: WKWebView {
         let html = DocumentHTML.full(markdown: p.markdown, theme: p.theme,
                                      callouts: p.callouts, dark: dark,
                                      baseURL: p.baseURL, options: p.options)
-        loadHTMLString(html, baseURL: nil)
+        loadHTMLString(html, baseURL: ReadModeNavigationPolicy.trustedBaseURL)
     }
 
     public override func viewDidChangeEffectiveAppearance() {
@@ -103,44 +103,81 @@ private final class ReadModeNavigationCoordinator: NSObject, WKNavigationDelegat
     // (`webView(_:decidePolicyFor:)`) exactly and registers the correct selector.
     func webView(_ webView: WKWebView,
                  decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
-        // QUIRK: the page is loaded via `loadHTMLString(_, baseURL: nil)`, so the
-        // document URL is `about:blank`. A user-triggered or WebKit-triggered
+        // QUIRK: the page is loaded with an explicit `about:blank` base URL.
+        // A user-triggered or WebKit-triggered
         // reload navigates back to `about:blank` and clears the content. Intercept
         // it and re-inject the HTML ourselves instead of allowing the blank reload.
-        if navigationAction.navigationType == .reload {
+        switch ReadModeNavigationPolicy.decision(for: navigationAction.request.url,
+                                                 navigationType: navigationAction.navigationType) {
+        case .reload:
             owner?.reloadHTML()
             return .cancel
+        case .openWiki(let target):
+            owner?.onOpenWikiLink?(target)
+            return .cancel
+        case .openInternal(let target):
+            owner?.onOpenInternalLink?(target)
+            return .cancel
+        case .openExternal(let url):
+            NSWorkspace.shared.open(url)
+            return .cancel
+        case .allow:
+            return .allow
+        case .cancel:
+            return .cancel
         }
-        guard let url = navigationAction.request.url else { return .allow }
+    }
+}
+
+// MARK: - Navigation classifier
+
+enum ReadModeNavigationPolicy {
+
+    static let trustedBaseURL = URL(string: "about:blank")!
+
+    enum Decision: Equatable {
+        case allow
+        case reload
+        case openWiki(String)
+        case openInternal(String)
+        case openExternal(URL)
+        case cancel
+    }
+
+    /// Classifies read-mode navigation without touching WebKit/AppKit state. The
+    /// generated document is self-contained and loaded against `about:blank`, so
+    /// only in-document anchors, Edmund's private schemes, and browser handoffs are
+    /// expected. `file:` and other explicit schemes stay out of the webview.
+    static func decision(for url: URL?, navigationType: WKNavigationType) -> Decision {
+        if navigationType == .reload { return .reload }
+        guard let url else { return .allow }
         let scheme = url.scheme?.lowercased()
 
         // `[[wikilink]]`s and relative/internal markdown links carry their target
-        // in a private scheme (the renderer classifies them), so routing doesn't
-        // depend on how WebKit rewrites relative hrefs under `baseURL: nil`.
-        // Decode the target and route it through the app's document graph.
-        if scheme == HTMLRenderer.wikiScheme || scheme == HTMLRenderer.linkScheme {
-            let target = decodeTarget(url, scheme: scheme!)
-            if scheme == HTMLRenderer.wikiScheme {
-                owner?.onOpenWikiLink?(target)
-            } else {
-                owner?.onOpenInternalLink?(target)
-            }
-            return .cancel
+        // in a private scheme (the renderer classifies them). Decode the target
+        // and route it through the app's document graph.
+        if scheme == HTMLRenderer.wikiScheme {
+            return .openWiki(decodeTarget(url, scheme: HTMLRenderer.wikiScheme))
         }
-        // Decide by URL scheme, not navigation type: with `baseURL: nil` a click
-        // does not reliably report `.linkActivated`. A real web scheme is an
-        // external link to hand off to the browser; everything else (the
-        // about:blank initial load, in-page `#fragment` scrolls, data:) loads in place.
+        if scheme == HTMLRenderer.linkScheme {
+            return .openInternal(decodeTarget(url, scheme: HTMLRenderer.linkScheme))
+        }
+        // Decide by URL scheme, not navigation type: WebKit does not reliably
+        // report `.linkActivated` for every click. Real web schemes are handed to
+        // the user's browser; `about:` covers the initial document and in-page
+        // `#fragment` scrolls; anything else is not fetched in the webview.
         if scheme == "http" || scheme == "https" || scheme == "mailto" {
-            NSWorkspace.shared.open(url)
-            return .cancel
+            return .openExternal(url)
         }
-        return .allow
+        if scheme == nil || scheme == "about" {
+            return .allow
+        }
+        return .cancel
     }
 
     /// Recovers the percent-decoded target from a private-scheme URL
     /// (`scheme:encoded`), which has no `//` authority.
-    private func decodeTarget(_ url: URL, scheme: String) -> String {
+    private static func decodeTarget(_ url: URL, scheme: String) -> String {
         let raw = String(url.absoluteString.dropFirst(scheme.count + 1))
         return raw.removingPercentEncoding ?? raw
     }

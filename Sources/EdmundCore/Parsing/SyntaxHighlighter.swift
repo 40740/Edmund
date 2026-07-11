@@ -42,7 +42,10 @@ public enum SyntaxHighlighter {
             /// A markdown `![alt](src)` image, or an HTML `<img src="…">` tag
             /// (which may carry declared pixel dimensions).
             case image(destination: String, width: Int?, height: Int?)
-            case blockquote
+            /// `depth` is the nesting level (0 = outermost, not itself inside
+            /// another plain quote). A `> > text` emits two spans, depth 0 and
+            /// depth 1, so each level's own marker hides and draws its own bar.
+            case blockquote(depth: Int)
             case listItem(ordered: Bool, checkbox: CheckboxState? = nil)
             case table
             case thematicBreak
@@ -154,13 +157,13 @@ public enum SyntaxHighlighter {
         // would double-style the body. Plain block quotes are unaffected: their
         // inline spans are intentionally kept.
         let calloutRanges: [NSRange] = walker.spans.compactMap { span in
-            guard case .blockquote = span.kind,
+            guard case .blockquote(_) = span.kind,
                   isCalloutFirstLine(of: span.fullRange, in: text) else { return nil }
             return span.fullRange
         }
         if !calloutRanges.isEmpty {
             walker.spans.removeAll { span in
-                if case .blockquote = span.kind { return false }
+                if case .blockquote(_) = span.kind { return false }
                 return calloutRanges.contains {
                     $0.location <= span.fullRange.location && $0.upperBound >= span.fullRange.upperBound
                 }

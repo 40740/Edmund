@@ -88,7 +88,7 @@ extension EditorTextView {
             insertText("\n" + next, replacementRange: replaceRange)
         } else if !indent.isEmpty {
             // Indented empty list line → un-indent one level
-            let maxRemove = (Self.indentUnit as NSString).length
+            let maxRemove = Self.indentUnit.count
             let leading = indent.prefix(while: { $0 == " " }).count
             let remove = indent.hasPrefix("\t") ? 1 : min(leading, maxRemove)
             let dedented = String(block.content.dropFirst(remove))

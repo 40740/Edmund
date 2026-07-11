@@ -354,8 +354,7 @@ struct HTMLRenderer: MarkupVisitor {
         // any explicit scheme) keep their real href — the nav policy lets the
         // anchor scroll and hands external schemes to the browser. A relative /
         // internal destination is wrapped in the private link scheme so it routes
-        // through the app's document graph reliably (independent of how WebKit
-        // rewrites relative hrefs under `baseURL: nil`).
+        // through the app's document graph reliably.
         if dest.hasPrefix("#") || Self.hasExternalScheme(dest) {
             return "<a href=\"\(Self.attr(dest))\"\(title)>\(inner)</a>"
         }
