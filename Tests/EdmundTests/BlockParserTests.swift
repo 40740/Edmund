@@ -656,3 +656,23 @@ struct BlockParserTests {
         #expect(blocks.map(\.kind) == [.indentedCode, .thematicBreak])
     }
 }
+
+@Suite("BlockParser — performance guards")
+struct BlockParserPerfTests {
+
+    /// The multi-line setext scan is memoized (LineBuffer.noSetextUnderlineBefore):
+    /// without the memo, a long blank-line-free paragraph run makes the parse
+    /// quadratic (every line re-scans to the run's end — a 20k-line document
+    /// took >10 minutes). The generous bound only trips on complexity bugs,
+    /// not slow CI machines.
+    @Test("A 10k-line blank-line-free paragraph run parses in linear-ish time")
+    func hugeParagraphRun() {
+        let doc = Array(repeating: "just a plain prose line with words",
+                        count: 10_000).joined(separator: "\n")
+        let t0 = DispatchTime.now()
+        let blocks = BlockParser.parse(doc)
+        let seconds = Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1e9
+        #expect(blocks.count == 10_000)
+        #expect(seconds < 10)
+    }
+}

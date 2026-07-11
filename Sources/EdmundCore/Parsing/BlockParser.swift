@@ -212,6 +212,13 @@ public enum BlockParser {
         private(set) var lines: [String] = []
         private var nextOffset: Int
         private var exhausted = false
+        /// Setext-scan memo: a failed underline scan that terminated at line
+        /// `k` proves no scan starting before `k` can find an underline (the
+        /// intervening lines are all plain paragraphs and `k` isn't an
+        /// underline), so `consumeBlock` skips the scan for start lines below
+        /// this bound. Without it, a long blank-line-free paragraph run makes
+        /// the parse quadratic (each line re-scans to the run's end).
+        var noSetextUnderlineBefore = 0
 
         init(_ text: String, from offset: Int = 0) {
             self.ns = text as NSString
@@ -356,7 +363,7 @@ public enum BlockParser {
         // found, fall through and return just `first` as a single-line
         // paragraph block — Edmund deliberately keeps one block per
         // paragraph line when there's no setext underline beneath it.
-        if case .paragraph = classifyLine(first) {
+        if case .paragraph = classifyLine(first), i >= buf.noSetextUnderlineBefore {
             var j = i + 1
             while let line = buf.line(at: j) {
                 if let level = setextUnderlineLevel(line) {
@@ -370,6 +377,9 @@ public enum BlockParser {
                 }
                 j += 1
             }
+            // No underline: everything up to the terminator at `j` is plain
+            // paragraph lines, so no scan starting before `j` can succeed.
+            buf.noSetextUnderlineBefore = j
         }
 
         return (first, classifyLine(first), i + 1)
