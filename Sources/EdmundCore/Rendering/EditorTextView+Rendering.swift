@@ -428,10 +428,25 @@ extension EditorTextView {
                         applyOverlay(overlay,
                                      anchor: NSRange(location: span.fullRange.location, length: 1),
                                      in: result)
-                        if !display {
-                            // Inline math flows within a text line; reserve the
-                            // line height so a tall equation (e.g. scaled to a
-                            // heading's font) doesn't overlap the line below.
+                        // A `$$…$$` run gets block layout (centered on its own
+                        // line) only when it owns the whole block. A run sharing
+                        // its line with prose flows inline like `$…$` math.
+                        let displayOwnsBlock: Bool = {
+                            guard display else { return false }
+                            let blockNS = markdown as NSString
+                            let full = span.fullRange
+                            let nonWS = CharacterSet.whitespacesAndNewlines.inverted
+                            let before = NSRange(location: 0, length: full.location)
+                            let after = NSRange(location: full.upperBound,
+                                                length: blockNS.length - full.upperBound)
+                            return blockNS.rangeOfCharacter(from: nonWS, options: [], range: before).location == NSNotFound
+                                && blockNS.rangeOfCharacter(from: nonWS, options: [], range: after).location == NSNotFound
+                        }()
+                        if !displayOwnsBlock {
+                            // Inline math — and a display run sharing its line
+                            // with prose — flows within the text line; reserve
+                            // the line height so a tall equation (e.g. scaled to
+                            // a heading's font) doesn't overlap the line below.
                             reserveLineHeight(overlay.bounds.height,
                                               forOverlayAt: span.fullRange.location,
                                               in: result)
@@ -439,7 +454,7 @@ extension EditorTextView {
                         // Display math sits centered on its own line, with
                         // vertical padding and the image's ascent/descent
                         // reserved on the (first) line that carries it.
-                        if display {
+                        if displayOwnsBlock {
                             let fullStr = result.string as NSString
                             result.addAttribute(.paragraphStyle,
                                                 value: displayMathParagraphStyle(padded: false),

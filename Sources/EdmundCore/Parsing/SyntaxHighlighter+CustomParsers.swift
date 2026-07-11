@@ -192,27 +192,55 @@ extension SyntaxHighlighter {
         }
     }
 
-    /// Recognizes a whole block as `$$…$$` display math. `BlockParser` has
-    /// already merged a multi-line `$$ … $$` run into a single block, so here we
-    /// only need to confirm the block opens and closes with `$$`.
+    /// Scans for `$$…$$` display math runs. A run can own its whole block
+    /// (`BlockParser` merges a multi-line `$$ … $$` into one block, so content
+    /// may span newlines) or sit inline within a prose line (`text $$x$$ more`).
+    ///
+    /// Tightness (space/tab, NOT newline) guards against prose false positives
+    /// like "pay $$5 and $$6": a `$$` delimiter must abut non-space on the inner
+    /// side — mirrors the Pandoc rule in `parseMath`. Newlines are allowed so a
+    /// block-merged `$$\n … \n$$` still matches. Runs before `parseMath`, which
+    /// skips ranges inside a `.math(display: true)` span.
     static func parseDisplayMath(_ text: String, into spans: inout [Span]) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("$$"), trimmed.hasSuffix("$$"), trimmed.count >= 4 else { return }
-
         let ns = text as NSString
-        let open = ns.range(of: "$$")
-        let close = ns.range(of: "$$", options: .backwards)
-        guard open.location != NSNotFound, close.location != NSNotFound,
-              close.location >= open.location + 2 else { return }
+        let n = ns.length
+        let dollar: unichar = 0x24, backslash: unichar = 0x5C
 
-        let full = NSRange(location: open.location, length: close.upperBound - open.location)
-        let content = NSRange(location: open.upperBound, length: close.location - open.upperBound)
-        spans.append(Span(
-            kind: .math(display: true),
-            fullRange: full,
-            contentRange: content,
-            delimiterRanges: [open, close]
-        ))
+        // Same-line whitespace only; newlines are legal inside a display block.
+        func isSpace(_ c: unichar) -> Bool { c == 0x20 || c == 0x09 }
+
+        var i = 0
+        while i < n {
+            let c = ns.character(at: i)
+            if c == backslash { i += 2; continue }   // skip escaped char
+            // Opening `$$`, abutting a non-space on its inner side.
+            guard c == dollar, i + 1 < n, ns.character(at: i + 1) == dollar else { i += 1; continue }
+            let afterOpen = i + 2
+            guard afterOpen < n, !isSpace(ns.character(at: afterOpen)) else { i += 1; continue }
+
+            // Find the closing `$$`, abutting a non-space on its inner side.
+            var j = afterOpen
+            var closeLoc = -1
+            while j + 1 < n {
+                let cj = ns.character(at: j)
+                if cj == backslash { j += 2; continue }
+                if cj == dollar && ns.character(at: j + 1) == dollar {
+                    if !isSpace(ns.character(at: j - 1)) { closeLoc = j; break }
+                    j += 2; continue      // `$$` preceded by space isn't a valid close
+                }
+                j += 1
+            }
+            guard closeLoc > afterOpen else { i += 2; continue }  // no close / empty content
+
+            spans.append(Span(
+                kind: .math(display: true),
+                fullRange: NSRange(location: i, length: closeLoc + 2 - i),
+                contentRange: NSRange(location: afterOpen, length: closeLoc - afterOpen),
+                delimiterRanges: [NSRange(location: i, length: 2),
+                                  NSRange(location: closeLoc, length: 2)]
+            ))
+            i = closeLoc + 2
+        }
     }
 
     /// Scans for inline `$…$` math. Uses Pandoc-style disambiguation so prose

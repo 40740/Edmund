@@ -1123,6 +1123,33 @@ struct DisplayMathTests {
     func paragraphNotDisplay() {
         #expect(mathSpans("just a paragraph").isEmpty)
     }
+
+    @Test("Inline $$…$$ sharing a line with prose is display math")
+    func inlineDisplayInProse() {
+        let text = "text $$x$$ more"
+        let spans = mathSpans(text)
+        #expect(spans.count == 1)
+        #expect(spans[0].kind == .math(display: true))
+        #expect(spans[0].fullRange == NSRange(location: 5, length: 5))
+        #expect((text as NSString).substring(with: spans[0].contentRange) == "x")
+    }
+
+    @Test("Two $$…$$ runs on one line produce two display spans")
+    func twoRunsOneLine() {
+        let spans = mathSpans("$$a$$ and $$b$$")
+        #expect(spans.count == 2)
+        #expect(spans.allSatisfy { $0.kind == .math(display: true) })
+    }
+
+    @Test("$$ with space after the delimiter is not display math")
+    func spaceAfterDelimiterNotDisplay() {
+        #expect(mathSpans("a $$ x $$ b").isEmpty)
+    }
+
+    @Test("Loose $$ in prose (close preceded by space) is not display math")
+    func looseProseDollarsNotDisplay() {
+        #expect(mathSpans("cost $$5 for $$10 today").isEmpty)
+    }
 }
 
 // MARK: - Autolinks (GFM extension)
