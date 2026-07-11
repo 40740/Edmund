@@ -111,6 +111,22 @@ struct DocumentHTMLTests {
         #expect(out.contains("alt=\"cat\""))
     }
 
+    @Test("Declared <img> width/height survive the asset pass")
+    func imgDimensionsSurvive() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("edmund-img-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try validPNGData().write(to: dir.appendingPathComponent("pic.png"))
+
+        let out = DocumentHTML.full(
+            markdown: "<img src=\"pic.png\" alt=\"cat\" width=\"120\" height=\"80\">",
+            theme: .default, callouts: Callout.defaultStyles, dark: false, baseURL: dir)
+        #expect(!out.contains("data-src"))
+        #expect(out.contains("src=\"data:image/png;base64,"))
+        #expect(out.contains("width=\"120\" height=\"80\">"))
+    }
+
     @Test("Unresolvable local image shows the blocked-image placeholder with 'Image not found'")
     func missingImage() {
         let out = doc("![gone](nope.png)")   // no baseURL → can't resolve

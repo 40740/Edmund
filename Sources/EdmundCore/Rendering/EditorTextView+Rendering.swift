@@ -223,12 +223,13 @@ extension EditorTextView {
                     result.addAttribute(.editorWikiTarget, value: target, range: span.contentRange)
                 }
 
-            case .image(let destination):
+            case .image(let destination, let width, let height):
                 guard span.fullRange.upperBound <= result.length else { continue }
-                if !cursorInToken, let overlay = imageOverlay(destination: destination) {
-                    // Rendered: draw the image at the leading `!` and hide the
-                    // rest of the `![alt](path)` markdown, reserving the line
-                    // height so the picture has room.
+                if !cursorInToken, let overlay = imageOverlay(destination: destination,
+                                                              width: width, height: height) {
+                    // Rendered: draw the image at the leading character (`!` of
+                    // `![alt](path)`, `<` of `<img …>`) and hide the rest of the
+                    // source, reserving the line height so the picture has room.
                     let hideStart = span.fullRange.location + 1
                     let hideLen = span.fullRange.upperBound - hideStart
                     if hideLen > 0 {
@@ -241,6 +242,10 @@ extension EditorTextView {
                                  in: result)
                     reserveLineHeight(overlay.bounds.height,
                                       forOverlayAt: span.fullRange.location, in: result)
+                } else if (markdown as NSString).character(at: span.fullRange.location) == 0x3C {
+                    // Active (or pending) `<img …>`: show the raw tag as colored
+                    // HTML source, like any other tag.
+                    styleRawHTMLTag(result, range: span.fullRange)
                 } else {
                     // Active, or the image couldn't be loaded: show the alt text
                     // link-colored (same as a plain link); delimiters are dimmed/hidden below.
@@ -518,6 +523,9 @@ extension EditorTextView {
             result.addAttribute(.font, value: small, range: range)
             let offset = tag == "sub" ? -bodyFont.pointSize * 0.25 : bodyFont.pointSize * 0.35
             result.addAttribute(.baselineOffset, value: offset, range: range)
+        case "small":
+            let fine = NSFont(descriptor: bodyFont.fontDescriptor, size: bodyFont.pointSize * 0.85) ?? bodyFont
+            result.addAttribute(.font, value: fine, range: range)
         default:
             break
         }

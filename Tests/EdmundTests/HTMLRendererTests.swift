@@ -207,6 +207,38 @@ struct HTMLRendererInlineTests {
     func comment() {
         #expect(!html("before %%secret%% after").contains("secret"))
     }
+
+    @Test("Inline HTML comment is hidden, not literal text")
+    func inlineHTMLComment() {
+        let out = html("before <!-- secret --> after")
+        #expect(!out.contains("secret"))
+        #expect(out.contains("before"))
+        #expect(out.contains("after"))
+    }
+
+    @Test("Block-level HTML comment is hidden")
+    func blockHTMLComment() {
+        #expect(!html("para\n\n<!-- secret -->\n\nend").contains("secret"))
+    }
+
+    @Test("Inline <img> emits the asset-pass placeholder with declared dimensions")
+    func inlineImgTag() {
+        let out = html("pic <img src=\"cat.png\" alt=\"a cat\" width=\"120\" height=\"80\"> here")
+        #expect(out.contains("<img class=\"md-image\" data-src=\"cat.png\" alt=\"a cat\" width=\"120\" height=\"80\">"))
+    }
+
+    @Test("Block-level <img> line emits the placeholder too")
+    func blockImgTag() {
+        let out = html("<img src=\"cat.png\">")
+        #expect(out.contains("<img class=\"md-image\" data-src=\"cat.png\" alt=\"\">"))
+    }
+
+    @Test("An <img> without a quoted src stays escaped")
+    func imgWithoutSrc() {
+        let out = html("x <img width=\"9\"> y")
+        #expect(!out.contains("<img class=\"md-image\""))
+        #expect(out.contains("&lt;img"))
+    }
 }
 
 @Suite("HTMLRenderer — footnotes")

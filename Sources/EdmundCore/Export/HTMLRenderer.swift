@@ -347,7 +347,28 @@ struct HTMLRenderer: MarkupVisitor {
     mutating func visitInlineHTML(_ inlineHTML: InlineHTML) -> String {
         Self.sanitizeInlineHTML(inlineHTML.rawHTML)
     }
-    mutating func visitHTMLBlock(_ html: HTMLBlock) -> String { "<p>\(Self.escape(html.rawHTML))</p>" }
+    mutating func visitHTMLBlock(_ html: HTMLBlock) -> String {
+        // A block-level `<!-- comment -->` is invisible, like in a browser.
+        // Any other block HTML is still escaped to literal text (§G), except a
+        // lone `<img …>` tag, which becomes the same sanitized placeholder as
+        // an inline one.
+        let trimmed = html.rawHTML.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("<!--") && trimmed.hasSuffix("-->") { return "" }
+        if isSingleTag(trimmed, named: "img"), let img = Self.imgPlaceholder(trimmed) {
+            return "<p>\(img)</p>"
+        }
+        return "<p>\(Self.escape(html.rawHTML))</p>"
+    }
+
+    /// True when `raw` is exactly one `<name …>` tag (no trailing content —
+    /// the anchored tag regex must consume the whole string).
+    private func isSingleTag(_ raw: String, named name: String) -> Bool {
+        let ns = raw as NSString
+        guard let m = Self.inlineTagRegex.firstMatch(
+            in: raw, range: NSRange(location: 0, length: ns.length)) else { return false }
+        return ns.substring(with: m.range(at: 1)).isEmpty
+            && ns.substring(with: m.range(at: 2)).lowercased() == name
+    }
 
     private static let inlineTagRegex =
         try! NSRegularExpression(pattern: #"^<(/?)([A-Za-z][A-Za-z0-9]*)[^>]*>$"#)
@@ -358,6 +379,8 @@ struct HTMLRenderer: MarkupVisitor {
     /// attribute-based injection (`<mark onmouseover=…>`). Mirrors the Edit-mode
     /// whitelist via `SyntaxHighlighter.htmlFormatTags`.
     static func sanitizeInlineHTML(_ raw: String) -> String {
+        // An inline `<!-- comment -->` is invisible, not literal text.
+        if raw.hasPrefix("<!--") { return "" }
         let ns = raw as NSString
         if let m = inlineTagRegex.firstMatch(in: raw, range: NSRange(location: 0, length: ns.length)) {
             let isClose = ns.substring(with: m.range(at: 1)) == "/"
@@ -365,8 +388,31 @@ struct HTMLRenderer: MarkupVisitor {
             if SyntaxHighlighter.htmlFormatTags.contains(name) {
                 return isClose ? "</\(name)>" : "<\(name)>"
             }
+            // `<img src="…">` becomes the same asset-pass placeholder as a
+            // markdown image, carrying declared width/height through.
+            if name == "img", !isClose, let img = imgPlaceholder(raw) {
+                return img
+            }
         }
         return escape(raw)
+    }
+
+    /// A `md-image` placeholder for a raw `<img src="…">` tag, or nil when it
+    /// has no double-quoted `src`. Attribute extraction shares the Edit-mode
+    /// regexes so the two back-ends accept the same tags; every value is
+    /// re-escaped, so no raw attribute text passes through.
+    static func imgPlaceholder(_ raw: String) -> String? {
+        let ns = raw as NSString
+        let whole = NSRange(location: 0, length: ns.length)
+        func attrValue(_ regex: NSRegularExpression) -> String? {
+            regex.firstMatch(in: raw, range: whole).map { ns.substring(with: $0.range(at: 1)) }
+        }
+        guard let src = attrValue(SyntaxHighlighter.imgSrcRegex) else { return nil }
+        var out = "<img class=\"md-image\" data-src=\"\(attr(src))\""
+        out += " alt=\"\(attr(attrValue(SyntaxHighlighter.imgAltRegex) ?? ""))\""
+        if let w = attrValue(SyntaxHighlighter.imgWidthRegex) { out += " width=\"\(w)\"" }
+        if let h = attrValue(SyntaxHighlighter.imgHeightRegex) { out += " height=\"\(h)\"" }
+        return out + ">"
     }
 
     // MARK: - Callouts

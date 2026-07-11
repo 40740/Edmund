@@ -19,7 +19,7 @@ public enum SyntaxHighlighter {
     /// as colored source. Single source of truth shared by the editor's
     /// `parseHTMLTags` (Edit mode) and `HTMLRenderer.sanitizeInlineHTML` (Read
     /// mode), so the two back-ends can't drift on which tags are allowed.
-    public static let htmlFormatTags: Set<String> = ["u", "kbd", "mark", "sub", "sup"]
+    public static let htmlFormatTags: Set<String> = ["u", "kbd", "mark", "sub", "sup", "small"]
 
     // MARK: - Model
 
@@ -39,7 +39,9 @@ public enum SyntaxHighlighter {
             case highlight
             case heading(Int)
             case link(destination: String)
-            case image(destination: String)
+            /// A markdown `![alt](src)` image, or an HTML `<img src="…">` tag
+            /// (which may carry declared pixel dimensions).
+            case image(destination: String, width: Int?, height: Int?)
             case blockquote
             case listItem(ordered: Bool, checkbox: CheckboxState? = nil)
             case table
@@ -114,6 +116,11 @@ public enum SyntaxHighlighter {
         // CommonMark backslash escapes (`\*`, `\$`, …). Runs after math/line-break
         // so it can defer to them; before HTML tags so `\<` defers to the escape.
         parseEscapes(text, into: &walker.spans)
+
+        // HTML `<!-- comments -->` share the `.comment` kind (and its opaque
+        // treatment below). Before parseHTMLTags so a tag inside a comment
+        // belongs to the comment, not the tag pass.
+        parseHTMLComments(text, into: &walker.spans)
 
         // Inline HTML tags: whitelist pairs render (`<u>…</u>`); any other tag is
         // colored source. Runs after escapes so an escaped `\<` isn't seen as a tag.

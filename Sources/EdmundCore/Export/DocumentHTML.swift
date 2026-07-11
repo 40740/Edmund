@@ -94,8 +94,10 @@ enum DocumentHTML {
 
     // MARK: Images (local → inlined data URI; remote → off by default)
 
+    // Groups 3/4 are optional declared dimensions from an HTML `<img>` tag
+    // (captured with their leading space so they re-emit verbatim).
     private static let imagePattern =
-        "<img class=\"md-image\" data-src=\"([^\"]*)\" alt=\"([^\"]*)\">"
+        "<img class=\"md-image\" data-src=\"([^\"]*)\" alt=\"([^\"]*)\"( width=\"[0-9]+\")?( height=\"[0-9]+\")?>"
 
     /// Resolves each `md-image` placeholder: local/relative paths are read and
     /// inlined as a data URI (self-contained, no file access needed at render
@@ -109,11 +111,12 @@ enum DocumentHTML {
         return replaceMatches(html, pattern: imagePattern) { groups in
             let src = unescapeAttr(groups[1])
             let alt = groups[2]   // already attribute-escaped by the renderer
+            let dims = groups[3] + groups[4]   // optional ` width="N" height="N"`
 
             if src.isEmpty { return blockedImagePlaceholder(reason:.notFound) }
             let lower = src.lowercased()
             if lower.hasPrefix("data:") {
-                return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\">"
+                return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\"\(dims)>"
             }
             if lower.hasPrefix("http://") {
                 return blockedImagePlaceholder(reason:.httpUnsupported)
@@ -122,14 +125,14 @@ enum DocumentHTML {
                 guard options.allowRemoteImages else {
                     return blockedImagePlaceholder(reason:.blockedBySetting)
                 }
-                return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\">"
+                return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\"\(dims)>"
             }
             // Local: resolve against the document directory, read, inline.
             guard let fileURL = resolveLocalImage(src, baseURL: baseURL) else {
                 return blockedImagePlaceholder(reason:.notFound)
             }
             if let cached = cache[fileURL.path] {
-                return "<img class=\"md-image\" src=\"\(cached)\" alt=\"\(alt)\">"
+                return "<img class=\"md-image\" src=\"\(cached)\" alt=\"\(alt)\"\(dims)>"
             }
             // `resolveLocalImage`'s absolute/`~` branches don't check existence
             // (only the relative-path branch does), so a missing file and an
@@ -142,7 +145,7 @@ enum DocumentHTML {
                 return blockedImagePlaceholder(reason:.notAnImage)
             }
             cache[fileURL.path] = uri
-            return "<img class=\"md-image\" src=\"\(uri)\" alt=\"\(alt)\">"
+            return "<img class=\"md-image\" src=\"\(uri)\" alt=\"\(alt)\"\(dims)>"
         }
     }
 

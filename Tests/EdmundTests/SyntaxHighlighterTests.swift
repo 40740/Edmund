@@ -853,7 +853,7 @@ struct ImageTests {
             return false
         }
         #expect(images.count == 1)
-        if case .image(let dest) = images[0].kind {
+        if case .image(let dest, _, _) = images[0].kind {
             #expect(dest == "https://example.com/img.png")
         }
     }

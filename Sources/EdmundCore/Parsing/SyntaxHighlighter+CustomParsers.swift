@@ -87,6 +87,34 @@ extension SyntaxHighlighter {
         }
     }
 
+    private static let htmlCommentRegex =
+        try! NSRegularExpression(pattern: "<!--[\\s\\S]*?-->")
+
+    /// Parses HTML `<!-- comment -->` spans into the same `.comment` kind as
+    /// `%%…%%` (dimmed in edit mode, hidden in reading view; inner spans are
+    /// dropped by the opaque-range pass). Skips comments inside code / math.
+    static func parseHTMLComments(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+        for m in htmlCommentRegex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            let full = m.range(at: 0)
+            let overlaps = spans.contains { existing in
+                switch existing.kind {
+                case .code, .codeBlock, .math: break
+                default: return false
+                }
+                return existing.fullRange.location <= full.location
+                    && existing.fullRange.upperBound >= full.upperBound
+            }
+            guard !overlaps else { continue }
+            spans.append(Span(
+                kind: .comment,
+                fullRange: full,
+                contentRange: NSRange(location: full.location + 4, length: full.length - 7),
+                delimiterRanges: [NSRange(location: full.location, length: 4),
+                                  NSRange(location: full.upperBound - 3, length: 3)]))
+        }
+    }
+
     private static let wikiLinkRegex =
         try! NSRegularExpression(pattern: #"\[\[([^\[\]\n]+?)\]\]"#)
 
@@ -315,6 +343,14 @@ extension SyntaxHighlighter {
     private static let htmlTagRegex = try! NSRegularExpression(
         pattern: #"</?([A-Za-z][A-Za-z0-9]*)(?:\s[^<>]*)?/?>"#)
 
+    // `<img>` attribute extractors, double-quoted values only (ponytail:
+    // single/unquoted attrs stay colored source). Shared with the read-mode
+    // sanitizer so both back-ends accept exactly the same tags.
+    static let imgSrcRegex = try! NSRegularExpression(pattern: #"\ssrc="([^"]*)""#)
+    static let imgAltRegex = try! NSRegularExpression(pattern: #"\salt="([^"]*)""#)
+    static let imgWidthRegex = try! NSRegularExpression(pattern: #"\swidth="(\d+)""#)
+    static let imgHeightRegex = try! NSRegularExpression(pattern: #"\sheight="(\d+)""#)
+
     /// Parses inline HTML tags. Two tiers:
     ///   - a whitelisted pair (`<u>…</u>`, `<kbd>`, `<mark>`, `<sub>`, `<sup>`)
     ///     becomes a `.htmlFormat` span whose tags hide and whose content takes a
@@ -369,6 +405,25 @@ extension SyntaxHighlighter {
                 $0.location <= full.location && $0.upperBound >= full.upperBound
             }) { continue }
             let nameR = m.range(at: 1)
+
+            // `<img src="…">` renders as an inline image (like `![](…)`),
+            // optionally at declared pixel dimensions. Without a src the tag
+            // stays colored source.
+            if ns.substring(with: nameR).lowercased() == "img",
+               let srcM = imgSrcRegex.firstMatch(in: text, range: full) {
+                func intAttr(_ regex: NSRegularExpression) -> Int? {
+                    regex.firstMatch(in: text, range: full)
+                        .map { ns.substring(with: $0.range(at: 1)) }.flatMap(Int.init)
+                }
+                spans.append(Span(
+                    kind: .image(destination: ns.substring(with: srcM.range(at: 1)),
+                                 width: intAttr(imgWidthRegex),
+                                 height: intAttr(imgHeightRegex)),
+                    fullRange: full,
+                    contentRange: srcM.range(at: 1),
+                    delimiterRanges: []))
+                continue
+            }
             let pre = NSRange(location: full.location, length: nameR.location - full.location)
             let post = NSRange(location: nameR.upperBound, length: full.upperBound - nameR.upperBound)
             spans.append(Span(kind: .htmlTag, fullRange: full, contentRange: nameR,
