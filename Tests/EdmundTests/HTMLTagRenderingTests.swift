@@ -5,8 +5,8 @@ import AppKit
 
 // HTML tags in edit mode: every recognized tag is colored source (name red,
 // brackets dimmed); a whitelist (u/kbd/mark/sub/sup) additionally renders its
-// formatting when the caret is outside the token. Read mode is unchanged
-// (HTML stays escaped).
+// formatting when the caret is outside the token. Read mode passes raw HTML
+// through per GFM, filtered by tagfilter (§6.11) + hardening.
 
 @Suite("SyntaxHighlighter — HTML tags")
 struct HTMLTagParseTests {
@@ -199,11 +199,10 @@ struct HTMLTagExportTests {
         #expect(html("<small>fine</small>").contains("<small>fine</small>"))
     }
 
-    @Test("Attributes are stripped (bare tag only)")
-    func stripsAttributes() {
+    @Test("Benign attributes kept, event handlers stripped")
+    func hardensAttributes() {
         let out = html("<u class=\"x\" onclick=\"y\">hi</u>")
-        #expect(out.contains("<u>hi</u>"))
-        #expect(!out.contains("class"))
+        #expect(out.contains("<u class=\"x\">hi</u>"))
         #expect(!out.contains("onclick"))
     }
 
@@ -212,18 +211,17 @@ struct HTMLTagExportTests {
         #expect(html("<u>**b**</u>").contains("<u><strong>b</strong></u>"))
     }
 
-    @Test("Non-whitelisted inline tag stays escaped")
-    func unknownEscaped() {
+    @Test("Non-whitelisted inline tag passes through raw (GFM)")
+    func unknownPassesThrough() {
         let out = html("a <span>x</span> b")
-        #expect(out.contains("&lt;span&gt;"))
-        #expect(!out.contains("<span>"))
+        #expect(out.contains("<span>x</span>"))
     }
 
-    @Test("A nested script inside a passed tag is still escaped")
-    func nestedScriptEscaped() {
+    @Test("A nested script inside a passed tag is tagfiltered")
+    func nestedScriptTagfiltered() {
         let out = html("<u><script>alert(1)</script></u>")
         #expect(out.contains("<u>"))
-        #expect(!out.contains("<script>"))
-        #expect(out.contains("&lt;script&gt;"))
+        #expect(!out.contains("<script"))
+        #expect(out.contains("&lt;script"))
     }
 }

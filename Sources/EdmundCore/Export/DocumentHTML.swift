@@ -8,7 +8,10 @@ import SwiftMath
 // fills the renderer's placeholder elements with inlined assets (SwiftMath
 // glyphs and local images) as data URIs. Callout/checkbox icons are inline
 // Lucide SVGs emitted by `HTMLRenderer` (no asset pass needed). Inlining keeps
-// the document self-contained — the webview needs no file/network access (§G).
+// the document self-contained — the webview needs no file/network access.
+// Raw HTML in the markdown passes through per GFM, filtered by
+// `HTMLRenderer.filterRawHTML` (tagfilter + hardening); the page also carries a
+// `script-src 'none'` CSP meta as defense-in-depth (§G, ARCHITECTURE §10).
 @MainActor
 enum DocumentHTML {
 
@@ -28,6 +31,7 @@ enum DocumentHTML {
         return """
         <!DOCTYPE html>
         <html><head><meta charset="utf-8">
+        <meta http-equiv="Content-Security-Policy" content="script-src 'none'">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
         \(css)

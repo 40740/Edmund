@@ -340,24 +340,44 @@ struct HTMLRenderer: MarkupVisitor {
         return "<img class=\"md-image\" data-src=\"\(src)\" alt=\"\(alt)\">"
     }
 
-    // Inline HTML: a whitelisted formatting tag (u/kbd/mark/sub/sup) passes
-    // through so the browser renders it; every other tag is escaped to literal
-    // text. Block HTML is always escaped (below) — a document still can't inject
-    // markup/script (§G).
+    // Inline HTML (§6.10): full GFM raw-HTML passthrough, filtered through
+    // tagfilter (§6.11) + hardening (§G — see ARCHITECTURE §10). Block HTML
+    // gets the same filter (below).
     mutating func visitInlineHTML(_ inlineHTML: InlineHTML) -> String {
         Self.sanitizeInlineHTML(inlineHTML.rawHTML)
     }
     mutating func visitHTMLBlock(_ html: HTMLBlock) -> String {
         // A block-level `<!-- comment -->` is invisible, like in a browser.
-        // Any other block HTML is still escaped to literal text (§G), except a
-        // lone `<img …>` tag, which becomes the same sanitized placeholder as
-        // an inline one.
         let trimmed = html.rawHTML.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("<!--") && trimmed.hasSuffix("-->") { return "" }
         if isSingleTag(trimmed, named: "img"), let img = Self.imgPlaceholder(trimmed) {
             return "<p>\(img)</p>"
         }
-        return "<p>\(Self.escape(html.rawHTML))</p>"
+        // GFM passthrough (§4.6): tagfilter + hardening, then rewrite interior
+        // `<img src=…>` tags to asset-pass placeholders (same baseURL-nil reason
+        // as inline; also the remote-image-policy enforcement point). No <p>
+        // wrapper, no escaping. filterRawHTML runs FIRST: the placeholders carry
+        // only class/data-src/alt/width/height attrs, which the hardening
+        // regexes can't touch.
+        return Self.rewriteImgs(in: Self.filterRawHTML(html.rawHTML))
+    }
+
+    /// Full §6.10 open-tag grammar for `img` (quoted values may contain `>`).
+    private static let imgTagRegex = try! NSRegularExpression(
+        pattern: #"<img(?:\s+[a-zA-Z_:][a-zA-Z0-9:._-]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*/?>"#,
+        options: [.caseInsensitive])
+
+    /// Replaces every `<img …>` that has a usable src with the md-image
+    /// placeholder; src-less imgs pass through untouched (they simply won't load).
+    static func rewriteImgs(in html: String) -> String {
+        let ns = html as NSString
+        let out = NSMutableString(string: html)
+        for m in imgTagRegex.matches(in: html, range: NSRange(location: 0, length: ns.length)).reversed() {
+            if let placeholder = imgPlaceholder(ns.substring(with: m.range)) {
+                out.replaceCharacters(in: m.range, with: placeholder)
+            }
+        }
+        return out as String
     }
 
     /// True when `raw` is exactly one `<name …>` tag (no trailing content —
@@ -373,28 +393,58 @@ struct HTMLRenderer: MarkupVisitor {
     private static let inlineTagRegex =
         try! NSRegularExpression(pattern: #"^<(/?)([A-Za-z][A-Za-z0-9]*)[^>]*>$"#)
 
-    /// Passes a whitelisted inline tag through as a sanitized *bare* tag (`<u>` /
-    /// `</u>`, attributes dropped); escapes anything else. The read webview
-    /// disables JavaScript, but dropping attributes is defense-in-depth against
-    /// attribute-based injection (`<mark onmouseover=…>`). Mirrors the Edit-mode
-    /// whitelist via `SyntaxHighlighter.htmlFormatTags`.
+    // MARK: - GFM tagfilter (§6.11) + hardening
+
+    /// Tagfilter (§6.11): the leading `<` of the nine disallowed tag names
+    /// (open or closing, case-insensitive) becomes `&lt;`. Lookahead only —
+    /// nothing else is consumed.
+    private static let tagfilterRegex = try! NSRegularExpression(
+        pattern: #"<(?=/?(?:title|textarea|style|xmp|iframe|noembed|noframes|script|plaintext)(?:[\s/>]|$))"#,
+        options: [.caseInsensitive])
+
+    /// Hardening (beyond spec): strip `on*` event-handler attributes.
+    /// ponytail: plain-text regex, not an HTML parser — a literal ` onclick="x"`
+    /// in text between tags is also stripped; harmless for a hardening pass.
+    private static let eventAttrRegex = try! NSRegularExpression(
+        pattern: #"\son[a-zA-Z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)"#,
+        options: [.caseInsensitive])
+
+    /// Hardening: neutralize javascript:/vbscript: schemes in URL-carrying
+    /// attributes (the scheme is deleted; the rest becomes a harmless relative URL).
+    private static let scriptURLRegex = try! NSRegularExpression(
+        pattern: #"(\s(?:href|src|action|formaction|xlink:href|data)\s*=\s*["']?\s*)(?:javascript|vbscript)\s*:"#,
+        options: [.caseInsensitive])
+
+    /// GFM raw-HTML output filter: tagfilter + Edmund's hardening. Defense-in-depth
+    /// on top of the read webview's JS-off + CSP script-src 'none' + baseURL nil.
+    static func filterRawHTML(_ raw: String) -> String {
+        func sub(_ s: String, _ rx: NSRegularExpression, _ template: String) -> String {
+            rx.stringByReplacingMatches(in: s, range: NSRange(location: 0, length: (s as NSString).length),
+                                        withTemplate: template)
+        }
+        var out = sub(raw, tagfilterRegex, "&lt;")
+        out = sub(out, eventAttrRegex, "")
+        out = sub(out, scriptURLRegex, "$1")
+        return out
+    }
+
+    /// GFM raw-HTML passthrough (§6.10) with tagfilter (§6.11) + hardening.
+    /// Comments stay invisible. A lone `<img src=…>` becomes the asset-pass
+    /// placeholder — REQUIRED, not just policy: the page loads with `baseURL: nil`,
+    /// so a raw relative `<img src>` could never resolve; the placeholder routes
+    /// it through DocumentHTML.fillImages (data-URI inlining + remote-image policy,
+    /// declared width/height carried through). Everything else passes through
+    /// filtered. Whitelisted formatting tags now keep their (hardened) attributes.
     static func sanitizeInlineHTML(_ raw: String) -> String {
-        // An inline `<!-- comment -->` is invisible, not literal text.
         if raw.hasPrefix("<!--") { return "" }
         let ns = raw as NSString
-        if let m = inlineTagRegex.firstMatch(in: raw, range: NSRange(location: 0, length: ns.length)) {
-            let isClose = ns.substring(with: m.range(at: 1)) == "/"
-            let name = ns.substring(with: m.range(at: 2)).lowercased()
-            if SyntaxHighlighter.htmlFormatTags.contains(name) {
-                return isClose ? "</\(name)>" : "<\(name)>"
-            }
-            // `<img src="…">` becomes the same asset-pass placeholder as a
-            // markdown image, carrying declared width/height through.
-            if name == "img", !isClose, let img = imgPlaceholder(raw) {
-                return img
-            }
+        if let m = inlineTagRegex.firstMatch(in: raw, range: NSRange(location: 0, length: ns.length)),
+           ns.substring(with: m.range(at: 1)).isEmpty,                    // open tag
+           ns.substring(with: m.range(at: 2)).lowercased() == "img",
+           let img = imgPlaceholder(raw) {
+            return img
         }
-        return escape(raw)
+        return filterRawHTML(raw)
     }
 
     /// A `md-image` placeholder for a raw `<img src="…">` tag, or nil when it
