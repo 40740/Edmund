@@ -5,8 +5,8 @@ import AppKit
 
 // HTML tags in edit mode: every recognized tag is colored source (name red,
 // brackets dimmed); a whitelist (u/kbd/mark/sub/sup) additionally renders its
-// formatting when the caret is outside the token. Read mode is unchanged
-// (HTML stays escaped).
+// formatting when the caret is outside the token. Read mode passes raw HTML
+// through per GFM, filtered by tagfilter (§6.11) + hardening.
 
 @Suite("SyntaxHighlighter — HTML tags")
 struct HTMLTagParseTests {
@@ -104,6 +104,50 @@ struct HTMLTagParseTests {
         #expect(!k.contains { if case .image = $0 { return true }; return false })
         #expect(k.contains { if case .htmlTag = $0 { return true }; return false })
     }
+
+    @Test("Hyphenated element name is a tag (§6.10)")
+    func hyphenName() {
+        let spans = SyntaxHighlighter.parse("a <my-element> b")
+        let tag = spans.first { if case .htmlTag = $0.kind { return true }; return false }
+        #expect(tag?.contentRange == NSRange(location: 3, length: 10))   // "my-element"
+    }
+
+    @Test("A quoted attribute value may contain `>`")
+    func quotedGT() {
+        let text = "<span title=\"a>b\">"
+        let spans = SyntaxHighlighter.parse(text)
+        let tags = spans.filter { if case .htmlTag = $0.kind { return true }; return false }
+        #expect(tags.count == 1)
+        #expect(tags.first?.fullRange == NSRange(location: 0, length: (text as NSString).length))
+    }
+
+    @Test("<img> accepts single-quoted and unquoted attribute values")
+    func imgAltQuoting() {
+        guard case .image(let dest1, _, _)? = SyntaxHighlighter.parse("<img src='cat.png'>")
+            .first(where: { if case .image = $0.kind { return true }; return false })?.kind
+        else { Issue.record("no image span for single-quoted src"); return }
+        #expect(dest1 == "cat.png")
+
+        guard case .image(let dest2, let w, _)? = SyntaxHighlighter.parse("<img src=cat.png width=120>")
+            .first(where: { if case .image = $0.kind { return true }; return false })?.kind
+        else { Issue.record("no image span for unquoted src"); return }
+        #expect(dest2 == "cat.png")
+        #expect(w == 120)
+    }
+
+    @Test("A closing tag with attributes is not a tag (§6.10)")
+    func badCloseTag() {
+        let k = kinds("</div class=\"x\">")
+        #expect(!k.contains { if case .htmlTag = $0 { return true }; return false })
+    }
+
+    @Test("PI, declaration, and CDATA tokens become dimmed source")
+    func otherRawHTML() {
+        for text in ["x <?php echo ?> y", "x <!DOCTYPE html> y", "x <![CDATA[>&<]]> y"] {
+            #expect(kinds(text).contains { if case .htmlTag = $0 { return true }; return false },
+                    "no htmlTag span in \(text)")
+        }
+    }
 }
 
 @Suite("Rendering — HTML tags")
@@ -182,6 +226,17 @@ struct HTMLTagRenderingTests {
         let f = attr(.font, at: 5, in: styled) as? NSFont
         #expect(f != nil && NSFontManager.shared.traits(of: f!).contains(.boldFontMask))
     }
+
+    @Test("An .htmlBlock renders as colored source: tags colored, markdown literal")
+    func htmlBlockSource() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("<div>\n**text**\n</div>", cursorPosition: nil)
+        // "div" name colored like any recognized tag (offset 1).
+        #expect(attr(.foregroundColor, at: 1, in: styled) as? NSColor == editor.theme.mathOperatorColor)
+        // The `**` asterisks stay visible — raw HTML source, no markdown spans.
+        #expect(!isHidden(at: 6, in: styled))
+        #expect(!isHidden(at: 7, in: styled))
+    }
 }
 
 @Suite("HTMLRenderer — whitelisted HTML passes through")
@@ -199,11 +254,10 @@ struct HTMLTagExportTests {
         #expect(html("<small>fine</small>").contains("<small>fine</small>"))
     }
 
-    @Test("Attributes are stripped (bare tag only)")
-    func stripsAttributes() {
+    @Test("Benign attributes kept, event handlers stripped")
+    func hardensAttributes() {
         let out = html("<u class=\"x\" onclick=\"y\">hi</u>")
-        #expect(out.contains("<u>hi</u>"))
-        #expect(!out.contains("class"))
+        #expect(out.contains("<u class=\"x\">hi</u>"))
         #expect(!out.contains("onclick"))
     }
 
@@ -212,18 +266,17 @@ struct HTMLTagExportTests {
         #expect(html("<u>**b**</u>").contains("<u><strong>b</strong></u>"))
     }
 
-    @Test("Non-whitelisted inline tag stays escaped")
-    func unknownEscaped() {
+    @Test("Non-whitelisted inline tag passes through raw (GFM)")
+    func unknownPassesThrough() {
         let out = html("a <span>x</span> b")
-        #expect(out.contains("&lt;span&gt;"))
-        #expect(!out.contains("<span>"))
+        #expect(out.contains("<span>x</span>"))
     }
 
-    @Test("A nested script inside a passed tag is still escaped")
-    func nestedScriptEscaped() {
+    @Test("A nested script inside a passed tag is tagfiltered")
+    func nestedScriptTagfiltered() {
         let out = html("<u><script>alert(1)</script></u>")
         #expect(out.contains("<u>"))
-        #expect(!out.contains("<script>"))
-        #expect(out.contains("&lt;script&gt;"))
+        #expect(!out.contains("<script"))
+        #expect(out.contains("&lt;script"))
     }
 }

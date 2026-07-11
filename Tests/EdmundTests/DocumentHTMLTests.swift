@@ -177,4 +177,19 @@ struct DocumentHTMLTests {
             #expect(out.contains("HTTP connection not supported"))
         }
     }
+
+    @Test("Page carries the script-src 'none' CSP meta")
+    func cspMeta() {
+        #expect(doc("hi").contains(
+            "<meta http-equiv=\"Content-Security-Policy\" content=\"script-src 'none'\">"))
+    }
+
+    // Caution: the page head legitimately contains a <style> from HTMLTheme —
+    // never assert !contains("<style") globally.
+    @Test("Full pipeline: a script block arrives tagfiltered, not executable")
+    func fullPipelineScript() {
+        let out = doc("<script>alert(1)</script>")
+        #expect(!out.contains("<script>alert"))
+        #expect(out.contains("&lt;script>"))
+    }
 }

@@ -114,6 +114,12 @@ public enum BlockParser {
                     // old parse from here isn't provably identical. Bail to
                     // the full parse (rare and cheap).
                     if isIndentedCodeLine(firstLine(of: old[j].content)) { return nil }
+                    // Same bail for HTML-block-ish starts: type 7 depends on the
+                    // line above (which the edit may have changed), so an old
+                    // block whose first line looks like ANY html-block opener
+                    // isn't provably re-derivable — full parse (rare and cheap).
+                    // prevLine: nil = most permissive check.
+                    if htmlBlockStart(firstLine(of: old[j].content), prevLine: nil) != nil { return nil }
                     suffixStart = j
                     break
                 }
@@ -346,6 +352,40 @@ public enum BlockParser {
             return (merged.joined(separator: "\n"), .indentedCode, j)
         }
 
+        // GFM §4.6 HTML block. Types 1–5 scan forward for the end-condition line
+        // (included; the end may already be on the start line; unterminated runs
+        // to EOF — spec: end of document closes it). Types 6/7 end BEFORE the
+        // first blank line (the blank stays its own `.blank` block). Type 7
+        // can't interrupt a paragraph — htmlBlockStart gates it on prevLine.
+        // Placement: after indented code (the ≤3-space guard keeps a 4-space-
+        // indented `<div>` as indented code); a `<`-line forming a valid table
+        // header+separator still becomes a table (deliberate divergence, tables
+        // win — this branch sits below the table branch); must precede the
+        // setext scan so an HTML start isn't swallowed as heading content.
+        // Edit mode shows the block as colored SOURCE (read mode renders it) —
+        // same split as GitHub's editor; rendered HTML in edit mode is
+        // impossible under the storage==rawSource invariant.
+        if let type = htmlBlockStart(first, prevLine: prevLine) {
+            var merged = [first]
+            var j = i + 1
+            switch type {
+            case .scriptPreStyle, .comment, .processing, .declaration, .cdata:
+                if !htmlBlockEnds(first, type: type) {
+                    while let line = buf.line(at: j) {
+                        merged.append(line)
+                        j += 1
+                        if htmlBlockEnds(line, type: type) { break }
+                    }
+                }
+            case .blockTag, .completeTag:
+                while let line = buf.line(at: j), !isBlankLine(line) {
+                    merged.append(line)
+                    j += 1
+                }
+            }
+            return (merged.joined(separator: "\n"), .htmlBlock, j)
+        }
+
         // Setext heading: a paragraph line underlined by `===` (h1) or `---`
         // (h2). Consuming the underline here means a `---` after a paragraph
         // is a heading underline (GFM setext wins over thematic break); only
@@ -375,6 +415,12 @@ public enum BlockParser {
                    splitTableRow(line).count == splitTableRow(next).count {
                     break
                 }
+                // An HTML block start (types 1–6 interrupt paragraphs; type 7 is
+                // gated on the previous line) terminates the run, mirroring the
+                // table break above — otherwise "Foo\n<div>\n---" would merge
+                // into a setext heading instead of paragraph + HTML block
+                // (GFM: the `---` belongs to the HTML block).
+                if htmlBlockStart(line, prevLine: buf.line(at: j - 1)) != nil { break }
                 j += 1
             }
             // No underline: everything up to the terminator at `j` is plain
@@ -475,6 +521,67 @@ public enum BlockParser {
 
     private static func isBlankLine(_ line: String) -> Bool {
         line.allSatisfy { $0 == " " || $0 == "\t" }
+    }
+
+    /// GFM §4.6 HTML block start conditions.
+    enum HTMLBlockType {
+        case scriptPreStyle   // 1: <script|<pre|<style  — ends ON the line containing </script>|</pre>|</style>
+        case comment          // 2: <!--                 — ends ON the line containing -->
+        case processing       // 3: <?                   — ends ON the line containing ?>
+        case declaration      // 4: <! + ASCII uppercase — ends ON the line containing >
+        case cdata            // 5: <![CDATA[            — ends ON the line containing ]]>
+        case blockTag         // 6: one of the 62 block tag names — ends BEFORE a blank line
+        case completeTag      // 7: a complete lone tag  — ends BEFORE a blank line; can't interrupt a paragraph
+    }
+
+    // Tag set pinned to CommonMark 0.29 / GFM (script|pre|style — no textarea,
+    // which later CommonMark added); deliberate, documented in ARCHITECTURE §10.
+    private static let htmlType1Regex = try! NSRegularExpression(
+        pattern: #"^ {0,3}<(?:script|pre|style)(?:[ \t>]|$)"#, options: [.caseInsensitive])
+
+    private static let htmlType6Regex = try! NSRegularExpression(
+        pattern: #"^ {0,3}</?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h1|h2|h3|h4|h5|h6|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:[ \t]|/?>|$)"#,
+        options: [.caseInsensitive])
+
+    /// One COMPLETE open tag (full §6.10 attribute grammar — quoted values may
+    /// contain `>`) or closing tag, alone on the line. Check order 1→7 means a
+    /// normal `<script …>` is always claimed by type 1 first; the one leak is a
+    /// self-closing `<script/>` lone tag, which spec calls a paragraph but we
+    /// call type 7 — deliberate, harmless divergence (ARCHITECTURE §10).
+    private static let htmlType7Regex = try! NSRegularExpression(
+        pattern: #"^ {0,3}(?:<[A-Za-z][A-Za-z0-9-]*(?:\s+[a-zA-Z_:][a-zA-Z0-9:._-]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*/?>|</[A-Za-z][A-Za-z0-9-]*\s*>)[ \t]*$"#)
+
+    /// GFM §4.6: the HTML-block type `line` opens, or nil. `prevLine` gates type 7
+    /// (it cannot interrupt a paragraph — same backward context as indented code).
+    /// O(line), and only `<`-prefixed lines get past the cheap guard.
+    static func htmlBlockStart(_ line: String, prevLine: String?) -> HTMLBlockType? {
+        let trimmed = line.drop(while: { $0 == " " })
+        guard line.count - trimmed.count <= 3, trimmed.first == "<" else { return nil }
+        let range = NSRange(location: 0, length: (line as NSString).length)
+        if htmlType1Regex.firstMatch(in: line, range: range) != nil { return .scriptPreStyle }
+        if trimmed.hasPrefix("<!--") { return .comment }
+        if trimmed.hasPrefix("<?") { return .processing }
+        if trimmed.hasPrefix("<![CDATA[") { return .cdata }
+        if trimmed.hasPrefix("<!"), let c = trimmed.dropFirst(2).first,
+           c.isASCII, c.isUppercase { return .declaration }
+        if htmlType6Regex.firstMatch(in: line, range: range) != nil { return .blockTag }
+        if prevLine == nil || isBlankLine(prevLine!),
+           htmlType7Regex.firstMatch(in: line, range: range) != nil { return .completeTag }
+        return nil
+    }
+
+    /// End condition for types 1–5 (the matching line is INCLUDED in the block).
+    private static func htmlBlockEnds(_ line: String, type: HTMLBlockType) -> Bool {
+        switch type {
+        case .scriptPreStyle:
+            let l = line.lowercased()
+            return l.contains("</script>") || l.contains("</pre>") || l.contains("</style>")
+        case .comment:     return line.contains("-->")
+        case .processing:  return line.contains("?>")
+        case .declaration: return line.contains(">")
+        case .cdata:       return line.contains("]]>")
+        case .blockTag, .completeTag: return false
+        }
     }
 
     /// Returns true for a thematic break: 3+ of the same `-`/`*`/`_` character

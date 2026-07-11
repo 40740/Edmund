@@ -331,6 +331,9 @@ extension SyntaxHighlighter {
     /// Whitelisted HTML formatting tags rendered (not just colored). The inner
     /// content keeps its own markdown styling. Built from `htmlFormatTags` so the
     /// Edit and Read whitelists share one source of truth.
+    /// Known ceiling: the open tag's attr swallow `(?:\s[^>]*)?` breaks on a `>`
+    /// inside a quoted attribute of a whitelist pair open tag — the pair then
+    /// falls back to two colored `.htmlTag` tokens (acceptable).
     private static let htmlPairRegex: NSRegularExpression = {
         let names = htmlFormatTags.sorted().joined(separator: "|")
         return try! NSRegularExpression(
@@ -338,18 +341,37 @@ extension SyntaxHighlighter {
             options: [.caseInsensitive, .dotMatchesLineSeparators])
     }()
 
-    /// Any single inline HTML tag (open, close, or self-closing). Group 1 is the
-    /// element name.
-    private static let htmlTagRegex = try! NSRegularExpression(
-        pattern: #"</?([A-Za-z][A-Za-z0-9]*)(?:\s[^<>]*)?/?>"#)
+    /// Any single inline HTML tag per GFM §6.10: an open tag (group 1 = name,
+    /// full attribute grammar — names may contain hyphens, attribute values may
+    /// be double-quoted, single-quoted, or unquoted, and quoted values may
+    /// contain `>`), or a closing tag (group 2 = name; no attributes allowed).
+    private static let htmlTagRegex = try! NSRegularExpression(pattern:
+        #"<(?:([A-Za-z][A-Za-z0-9-]*)(?:\s+[a-zA-Z_:][a-zA-Z0-9:._-]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*/?|/([A-Za-z][A-Za-z0-9-]*)\s*)>"#)
 
-    // `<img>` attribute extractors, double-quoted values only (ponytail:
-    // single/unquoted attrs stay colored source). Shared with the read-mode
-    // sanitizer so both back-ends accept exactly the same tags.
-    static let imgSrcRegex = try! NSRegularExpression(pattern: #"\ssrc="([^"]*)""#)
-    static let imgAltRegex = try! NSRegularExpression(pattern: #"\salt="([^"]*)""#)
-    static let imgWidthRegex = try! NSRegularExpression(pattern: #"\swidth="(\d+)""#)
-    static let imgHeightRegex = try! NSRegularExpression(pattern: #"\sheight="(\d+)""#)
+    /// §6.10 processing instructions `<?…?>`, declarations `<!NAME …>`, and
+    /// CDATA `<![CDATA[…]]>` — shown as dimmed source. HTML comments are handled
+    /// (more laxly than spec — interior `--` allowed, deliberate divergence) by
+    /// parseHTMLComments, which runs first.
+    private static let htmlOtherRegex = try! NSRegularExpression(
+        pattern: #"<\?[\s\S]*?\?>|<![A-Z]+\s+[^>]*>|<!\[CDATA\[[\s\S]*?\]\]>"#)
+
+    // `<img>` attribute extractors — double-, single-, and unquoted values
+    // (§6.10). Exactly one of groups 1–3 participates per match. Shared with the
+    // read-mode renderer so both back-ends accept the same tags.
+    static let imgSrcRegex = try! NSRegularExpression(
+        pattern: #"\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"#, options: [.caseInsensitive])
+    static let imgAltRegex = try! NSRegularExpression(
+        pattern: #"\salt\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"#, options: [.caseInsensitive])
+    static let imgWidthRegex = try! NSRegularExpression(
+        pattern: #"\swidth\s*=\s*(?:"(\d+)"|'(\d+)'|(\d+))"#, options: [.caseInsensitive])
+    static let imgHeightRegex = try! NSRegularExpression(
+        pattern: #"\sheight\s*=\s*(?:"(\d+)"|'(\d+)'|(\d+))"#, options: [.caseInsensitive])
+
+    /// The matched value range: whichever of groups 1–3 participated.
+    static func attrValueRange(_ m: NSTextCheckingResult) -> NSRange {
+        for i in 1...3 where m.range(at: i).location != NSNotFound { return m.range(at: i) }
+        return m.range(at: 0)
+    }
 
     /// Parses inline HTML tags. Two tiers:
     ///   - a whitelisted pair (`<u>…</u>`, `<kbd>`, `<mark>`, `<sub>`, `<sup>`)
@@ -404,7 +426,8 @@ extension SyntaxHighlighter {
             if pairTagRanges.contains(where: {
                 $0.location <= full.location && $0.upperBound >= full.upperBound
             }) { continue }
-            let nameR = m.range(at: 1)
+            // Group 1 = open-tag name, group 2 = closing-tag name.
+            let nameR = m.range(at: 1).location != NSNotFound ? m.range(at: 1) : m.range(at: 2)
 
             // `<img src="…">` renders as an inline image (like `![](…)`),
             // optionally at declared pixel dimensions. Without a src the tag
@@ -413,14 +436,14 @@ extension SyntaxHighlighter {
                let srcM = imgSrcRegex.firstMatch(in: text, range: full) {
                 func intAttr(_ regex: NSRegularExpression) -> Int? {
                     regex.firstMatch(in: text, range: full)
-                        .map { ns.substring(with: $0.range(at: 1)) }.flatMap(Int.init)
+                        .map { ns.substring(with: attrValueRange($0)) }.flatMap(Int.init)
                 }
                 spans.append(Span(
-                    kind: .image(destination: ns.substring(with: srcM.range(at: 1)),
+                    kind: .image(destination: ns.substring(with: attrValueRange(srcM)),
                                  width: intAttr(imgWidthRegex),
                                  height: intAttr(imgHeightRegex)),
                     fullRange: full,
-                    contentRange: srcM.range(at: 1),
+                    contentRange: attrValueRange(srcM),
                     delimiterRanges: []))
                 continue
             }
@@ -428,6 +451,17 @@ extension SyntaxHighlighter {
             let post = NSRange(location: nameR.upperBound, length: full.upperBound - nameR.upperBound)
             spans.append(Span(kind: .htmlTag, fullRange: full, contentRange: nameR,
                               delimiterRanges: [pre, post]))
+        }
+
+        // Pass 3: PI / declaration / CDATA → dimmed source. Zero-length content +
+        // full-range delimiter ⇒ the whole token dims (like a comment); tokens
+        // inside a real <!-- comment --> are dropped by the opaque-range pass.
+        for m in htmlOtherRegex.matches(in: text, range: whole) {
+            let full = m.range(at: 0)
+            guard !guarded(full) else { continue }
+            spans.append(Span(kind: .htmlTag, fullRange: full,
+                              contentRange: NSRange(location: full.location, length: 0),
+                              delimiterRanges: [full]))
         }
     }
 

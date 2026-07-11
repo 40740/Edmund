@@ -20,7 +20,10 @@ struct IncrementalParseFuzzTests {
         let fragments = ["\n", "\n\n", "```", "```\n", "$$", "|", ">", "> ",
                          "# ", "- ", "---\n", "x", "hello **world**",
                          "| a | b |", "[!note]", "  - indented\n", "\t- tabbed\n",
-                         "===\n", "===", "    code\n", "\tcode\n"]
+                         "===\n", "===", "    code\n", "\tcode\n",
+                         "<div>", "</div>\n", "<!--", "-->", "<script>",
+                         "</script>\n", "<pre>", "<?", "<!DOCTYPE ",
+                         "<![CDATA[", "]]>", "<custom-tag>\n"]
 
         for _ in 0..<120 {
             let ns = editor.rawSource as NSString

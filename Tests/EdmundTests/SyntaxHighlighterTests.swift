@@ -107,6 +107,28 @@ struct CodeTests {
         #expect(spans.count == 1)
         #expect(spans[0].kind == .code)
     }
+
+    @Test("``a`b`` uses 2-backtick delimiters (GFM §6.3)")
+    func doubleBacktickCode() {
+        let spans = SyntaxHighlighter.parse("``a`b``")
+        #expect(spans.count == 1)
+        let s = spans[0]
+        #expect(s.kind == .code)
+        #expect(s.delimiterRanges == [NSRange(location: 0, length: 2),
+                                      NSRange(location: 5, length: 2)])
+        #expect(s.contentRange == NSRange(location: 2, length: 3))   // "a`b"
+    }
+
+    @Test("`` ` `` keeps its padding spaces in contentRange (edit mode shows source)")
+    func paddedBacktick() {
+        let spans = SyntaxHighlighter.parse("`` ` ``")
+        #expect(spans.count == 1)
+        let s = spans[0]
+        #expect(s.kind == .code)
+        #expect(s.delimiterRanges == [NSRange(location: 0, length: 2),
+                                      NSRange(location: 5, length: 2)])
+        #expect(s.contentRange == NSRange(location: 2, length: 3))   // " ` "
+    }
 }
 
 // MARK: - Headings

@@ -46,12 +46,47 @@ struct HTMLRendererCoreTests {
 
     @Test("Unordered, ordered, and task lists")
     func lists() {
-        #expect(html("- a\n- b") == "<ul><li><p>a</p></li><li><p>b</p></li></ul>")
+        // A tight list (GFM §5.3): no <p> wrapper inside items.
+        #expect(html("- a\n- b") == "<ul><li>a</li><li>b</li></ul>")
         #expect(html("1. a").hasPrefix("<ol>"))
         #expect(html("3. a\n4. b").hasPrefix("<ol start=\"3\">"))
         let task = html("- [ ] todo\n- [x] done")
         #expect(task.contains("<li class=\"task\"><span class=\"task-check task-check--unchecked\"><svg"))
         #expect(task.contains("<span class=\"task-check task-check--checked\"><svg"))
+    }
+
+    @Test("A loose list (blank line between items) keeps <p> wrappers")
+    func looseList() {
+        let out = html("- a\n\n- b")
+        #expect(out.contains("<li><p>a</p></li>"))
+        #expect(out.contains("<li><p>b</p></li>"))
+    }
+
+    @Test("A multi-block item with a blank gap makes the whole list loose")
+    func looseByMultiBlockItem() {
+        let out = html("- a\n\n  second\n- b")
+        #expect(out.contains("<p>a</p>"))
+        #expect(out.contains("<p>second</p>"))
+        #expect(out.contains("<li><p>b</p></li>"))
+    }
+
+    @Test("Nested loose list gets <p>; the tight outer list doesn't")
+    func mixedNesting() {
+        let out = html("- a\n  - x\n\n  - y\n- b")
+        #expect(out.contains("<li><p>x</p></li>"))
+        #expect(out.contains("<p>y</p>"))
+        #expect(!out.contains("<p>a</p>"))
+        #expect(out.contains("<li>b</li>"))
+    }
+
+    @Test("Link title renders as an escaped title attribute")
+    func linkTitle() {
+        #expect(html("[x](https://example.com \"hi there\")")
+            == "<p><a href=\"https://example.com\" title=\"hi there\">x</a></p>")
+        #expect(html("[x](https://example.com \"a & b\")").contains("title=\"a &amp; b\""))
+        let internalLink = html("[o](other.md \"note\")")
+        #expect(internalLink.contains("<a href=\"x-edmund-link:"))
+        #expect(internalLink.contains("title=\"note\""))
     }
 
     @Test("Table emits thead/tbody with per-column alignment")
@@ -135,19 +170,84 @@ struct HTMLRendererEscapingTests {
 
     private func html(_ md: String) -> String { HTMLRenderer.render(markdown: md) }
 
-    @Test("Leaf text is HTML-escaped (no script injection)")
+    @Test("Inline <script> is tagfiltered (no script injection)")
     func escapesText() {
         let out = html("a <script>alert(1)</script> & b")
-        #expect(!out.contains("<script>"))
-        #expect(out.contains("&lt;script&gt;"))
+        #expect(!out.contains("<script"))
+        #expect(out.contains("&lt;script>alert(1)&lt;/script>"))
         #expect(out.contains("&amp;"))
     }
 
-    @Test("Raw HTML block is escaped, not passed through")
-    func escapesHTMLBlock() {
+    @Test("Raw HTML block passes through with event handlers stripped")
+    func blockPassthroughHardened() {
         let out = html("<div onclick=\"x\">hi</div>")
-        #expect(!out.contains("<div onclick"))
-        #expect(out.contains("&lt;div"))
+        #expect(out.contains("<div>hi</div>"))
+        #expect(!out.contains("onclick"))
+    }
+}
+
+@Suite("HTMLRenderer — GFM raw HTML, tagfilter & hardening")
+struct HTMLRendererRawHTMLTests {
+
+    private func html(_ md: String) -> String { HTMLRenderer.render(markdown: md) }
+
+    // GFM §6.11 spec example: only the leading `<` of a disallowed tag becomes
+    // `&lt;` (the `>` stays literal); everything else passes through raw.
+    @Test("Tagfilter spec example: disallowed tags get &lt;, others pass")
+    func tagfilterSpecExample() {
+        let out = html("<strong> <title> <style> <em>\n\n<blockquote>\n  <xmp> is disallowed.  <XMP> is also disallowed.\n</blockquote>")
+        #expect(out.contains("<strong> &lt;title> &lt;style> <em>"))
+        #expect(out.contains("&lt;xmp>"))
+        #expect(out.contains("&lt;XMP>"))
+        #expect(out.contains("<blockquote>"))
+    }
+
+    @Test("HTML block passes through raw; markdown inside is NOT rendered")
+    func blockPassthroughRaw() {
+        let out = html("<div>\n*hello*\n</div>")
+        #expect(out.contains("<div>\n*hello*\n</div>"))
+        #expect(!out.contains("<em>"))
+    }
+
+    @Test("A <script> block is tagfiltered, content inert")
+    func scriptBlockTagfiltered() {
+        let out = html("<script>\nalert(1)\n</script>")
+        #expect(!out.contains("<script"))
+        #expect(out.contains("&lt;script>"))
+        #expect(out.contains("alert(1)"))
+    }
+
+    @Test("javascript: href is neutralized")
+    func jsHrefNeutralized() {
+        let out = html("<a href=\"javascript:alert(1)\">x</a>")
+        #expect(!out.lowercased().contains("javascript:"))
+        #expect(out.contains("<a href="))
+    }
+
+    @Test("vbscript: action and single-quoted onmouseover are hardened")
+    func moreHardening() {
+        let out = html("<form action=\"vbscript:evil()\"><span onmouseover='x()'>t</span></form>")
+        #expect(!out.lowercased().contains("vbscript:"))
+        #expect(!out.contains("onmouseover"))
+    }
+
+    @Test("An <img> inside an HTML block becomes the asset-pass placeholder")
+    func blockInteriorImg() {
+        let out = html("<div><img src=\"cat.png\" alt=\"c\"></div>")
+        #expect(out.contains("<div>"))
+        #expect(out.contains("<img class=\"md-image\" data-src=\"cat.png\""))
+    }
+
+    @Test("A raw <table> block passes through")
+    func tableBlock() {
+        let out = html("<table><tr><td>x</td></tr></table>")
+        #expect(out.contains("<table><tr><td>x</td></tr></table>"))
+    }
+
+    @Test("A single-quoted <img src> still becomes the asset-pass placeholder")
+    func singleQuotedImgRead() {
+        let out = html("pic <img src='cat.png'> x")
+        #expect(out.contains("data-src=\"cat.png\""))
     }
 }
 
@@ -233,11 +333,11 @@ struct HTMLRendererInlineTests {
         #expect(out.contains("<img class=\"md-image\" data-src=\"cat.png\" alt=\"\">"))
     }
 
-    @Test("An <img> without a quoted src stays escaped")
+    @Test("An <img> without a src passes through raw (no placeholder)")
     func imgWithoutSrc() {
         let out = html("x <img width=\"9\"> y")
-        #expect(!out.contains("<img class=\"md-image\""))
-        #expect(out.contains("&lt;img"))
+        #expect(!out.contains("md-image"))
+        #expect(out.contains("<img width=\"9\">"))
     }
 
     @Test("Bare www autolink renders as a real anchor")

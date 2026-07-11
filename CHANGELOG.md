@@ -16,8 +16,15 @@ GFM pass: closing the gaps between Edmund and the GFM spec in both edit and read
 - Autolinks ([GFM extension](https://github.github.com/gfm/#autolinks-extension-)): bare `www.…`, `http(s)://…`, and email addresses become links in both modes, with CMD+click to follow
 - Inline styling (bold, code, links, ==marks==, …) now renders inside table cells in edit mode; column widths align on the *styled* text, not the raw source
 - Inline styling inside headings keeps the heading's font size (`# **bold** and `code``), for ATX and setext headings
+- Raw HTML renders in read mode per GFM ([§4.6](https://github.github.com/gfm/#html-blocks)/[§6.10](https://github.github.com/gfm/#raw-html)) with the tagfilter extension ([§6.11](https://github.github.com/gfm/#disallowed-raw-html-extension-)) plus hardening: `on*` event-handler attributes and `javascript:`/`vbscript:` URLs stripped, and a `script-src 'none'` CSP on the page (JS was already disabled)
+- HTML blocks (all seven GFM §4.6 start conditions) parse as blocks in edit mode and show as colored source
+- Full GFM §6.10 inline tag grammar in edit mode: hyphenated tag names, single-quoted/unquoted attribute values, `>` inside quoted values, and PI/declaration/CDATA tokens
+- Multi-backtick code spans in edit mode (`` ``a`b`` ``) style with their real delimiter length
+- Loose vs tight lists in read mode: tight lists drop the `<p>` wrapper inside items per GFM §5.3
+- Link `title` attributes carry into read-mode/exported HTML
 
 ### Changed
+- Read mode no longer escapes unknown HTML — GFM passthrough (with tagfilter + hardening) replaces the escape-by-default whitelist
 - A `---` line directly under a paragraph is now a setext h2 underline per GFM, no longer a thematic break — put a blank line between the paragraph and `---` to keep the rule
 - `==highlight==` now follows GFM-style flanking: content can't begin or end with whitespace (`== spaced ==` stays literal)
 - Setext heading content spans the whole preceding paragraph run (`Foo\nbar\n---` is one h2), matching GFM Example 51

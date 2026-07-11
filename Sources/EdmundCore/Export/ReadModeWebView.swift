@@ -4,10 +4,12 @@ import WebKit
 // MARK: - ReadModeWebView
 //
 // The WKWebView that backs Read mode. It is a pure renderer of the user's own
-// document: JavaScript is disabled, all assets are inlined (so no file/network
-// reach), and navigation is intercepted — internal scrolling stays, external
-// links open in the default browser, and the view never navigates away from the
-// rendered document (§G).
+// document: JavaScript is disabled (plus a `script-src 'none'` CSP meta in the
+// page itself), all assets are inlined (so no file/network reach), raw HTML
+// passes through per GFM but filtered by `HTMLRenderer.filterRawHTML`
+// (tagfilter + hardening), and navigation is intercepted — internal scrolling
+// stays, external links open in the default browser, and the view never
+// navigates away from the rendered document (§G, ARCHITECTURE §10).
 //
 // The navigation delegate is a *separate* object (not the webview itself). A
 // WKWebView that is its own `navigationDelegate` does not reliably receive the
