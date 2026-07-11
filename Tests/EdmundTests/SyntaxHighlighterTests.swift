@@ -759,6 +759,9 @@ struct CodeBlockTests {
         if case .codeBlock(let lang) = span.kind { #expect(lang == nil) }
         #expect(span.contentRange == span.fullRange)
         #expect(span.delimiterRanges.isEmpty)
+        // The first line's leading indent is inside the span (swift-markdown's
+        // node range starts after it; the walker expands back to line start).
+        #expect(span.fullRange.location == 0)
     }
 
     @Test("Code block with tilde fences")

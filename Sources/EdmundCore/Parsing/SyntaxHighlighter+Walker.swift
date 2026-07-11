@@ -187,13 +187,23 @@ extension SyntaxHighlighter {
             let blockText = nsSource.substring(with: full) as NSString
 
             // Indented code block: no fence, so no delimiters — every
-            // character (indentation included) is content.
+            // character (indentation included) is content. swift-markdown's
+            // node range starts *after* the first line's 4-space indent, so
+            // expand back over the leading whitespace or those characters
+            // would keep the body font and misalign the first line.
             let opener = (blockText as String).drop(while: { $0 == " " })
             if !(opener.hasPrefix("```") || opener.hasPrefix("~~~")) {
+                var start = full.location
+                while start > 0 {
+                    let c = nsSource.character(at: start - 1)
+                    guard c == 0x20 || c == 0x09 else { break }
+                    start -= 1
+                }
+                let expanded = NSRange(location: start, length: full.upperBound - start)
                 spans.append(Span(
                     kind: .codeBlock(language: nil),
-                    fullRange: full,
-                    contentRange: full,
+                    fullRange: expanded,
+                    contentRange: expanded,
                     delimiterRanges: []
                 ))
                 return
