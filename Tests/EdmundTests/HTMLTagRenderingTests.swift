@@ -182,6 +182,17 @@ struct HTMLTagRenderingTests {
         let f = attr(.font, at: 5, in: styled) as? NSFont
         #expect(f != nil && NSFontManager.shared.traits(of: f!).contains(.boldFontMask))
     }
+
+    @Test("An .htmlBlock renders as colored source: tags colored, markdown literal")
+    func htmlBlockSource() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("<div>\n**text**\n</div>", cursorPosition: nil)
+        // "div" name colored like any recognized tag (offset 1).
+        #expect(attr(.foregroundColor, at: 1, in: styled) as? NSColor == editor.theme.mathOperatorColor)
+        // The `**` asterisks stay visible — raw HTML source, no markdown spans.
+        #expect(!isHidden(at: 6, in: styled))
+        #expect(!isHidden(at: 7, in: styled))
+    }
 }
 
 @Suite("HTMLRenderer — whitelisted HTML passes through")

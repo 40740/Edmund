@@ -127,6 +127,7 @@ public enum Log {
             case .table:                  return "table·\(c)c"
             case .listItem:               return "listItem·\(c)c"
             case .thematicBreak:          return "hr·\(c)c"
+            case .htmlBlock:              return "htmlBlock·\(c)c"
             case .blank:                  return "blank·\(c)c"
             }
         }

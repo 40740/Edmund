@@ -657,6 +657,82 @@ struct BlockParserTests {
     }
 }
 
+// GFM §4.6: the seven HTML-block start conditions and their end conditions.
+@Suite("BlockParser — HTML blocks")
+struct BlockParserHTMLBlockTests {
+
+    @Test("Type 6 block tag runs to the blank line")
+    func type6() {
+        let blocks = BlockParser.parse("<div>\n*foo*\n</div>\n\npara")
+        #expect(blocks.map(\.kind) == [.htmlBlock, .blank, .paragraph])
+        #expect(blocks[0].content == "<div>\n*foo*\n</div>")
+    }
+
+    @Test("Type 6 unterminated runs to EOF")
+    func type6EOF() {
+        let blocks = BlockParser.parse("<div>\n*foo*")
+        #expect(blocks.map(\.kind) == [.htmlBlock])
+    }
+
+    @Test("Type 6 interrupts a paragraph")
+    func type6Interrupts() {
+        let blocks = BlockParser.parse("para\n<div>\nx")
+        #expect(blocks.map(\.kind) == [.paragraph, .htmlBlock])
+    }
+
+    @Test("Type 1 <script> ends ON the </script> line")
+    func type1() {
+        let blocks = BlockParser.parse("<script>\nalert(1)\n</script>\nafter")
+        #expect(blocks.map(\.kind) == [.htmlBlock, .paragraph])
+        #expect(blocks[0].content == "<script>\nalert(1)\n</script>")
+    }
+
+    @Test("Type 1 end condition can be on the start line")
+    func type1OneLine() {
+        let blocks = BlockParser.parse("<pre role=\"x\">y</pre>")
+        #expect(blocks.map(\.kind) == [.htmlBlock])
+    }
+
+    @Test("Types 2–5: comment, PI, declaration, CDATA")
+    func types2to5() {
+        let comment = BlockParser.parse("<!--\nnote\n-->\nok")
+        #expect(comment.map(\.kind) == [.htmlBlock, .paragraph])
+        #expect(comment[0].content == "<!--\nnote\n-->")
+        #expect(BlockParser.parse("<?php\necho\n?>").map(\.kind) == [.htmlBlock])
+        #expect(BlockParser.parse("<!DOCTYPE html>").map(\.kind) == [.htmlBlock])
+        #expect(BlockParser.parse("<![CDATA[\ndata\n]]>").map(\.kind) == [.htmlBlock])
+    }
+
+    @Test("Type 2 unterminated comment runs to EOF")
+    func type2EOF() {
+        #expect(BlockParser.parse("<!-- open\nrest\nmore").map(\.kind) == [.htmlBlock])
+    }
+
+    @Test("Type 7 lone complete tag after a blank line")
+    func type7() {
+        let blocks = BlockParser.parse("para\n\n<custom-tag attr='x'>\ncontent")
+        #expect(blocks.map(\.kind) == [.paragraph, .blank, .htmlBlock])
+        #expect(blocks[2].content == "<custom-tag attr='x'>\ncontent")
+    }
+
+    @Test("Type 7 cannot interrupt a paragraph")
+    func type7NoInterrupt() {
+        #expect(BlockParser.parse("para\n<custom-tag>").map(\.kind) == [.paragraph, .paragraph])
+    }
+
+    @Test("A 4-space-indented tag is indented code, not an HTML block")
+    func indentedNotHTML() {
+        #expect(BlockParser.parse("    <div>").map(\.kind) == [.indentedCode])
+    }
+
+    @Test("An HTML start under a paragraph isn't swallowed as setext content")
+    func setextDoesNotSwallowHTML() {
+        let blocks = BlockParser.parse("Foo\n<div>\n---")
+        #expect(blocks.map(\.kind) == [.paragraph, .htmlBlock])
+        #expect(blocks[1].content == "<div>\n---")
+    }
+}
+
 @Suite("BlockParser — performance guards")
 struct BlockParserPerfTests {
 
@@ -669,6 +745,31 @@ struct BlockParserPerfTests {
     func hugeParagraphRun() {
         let doc = Array(repeating: "just a plain prose line with words",
                         count: 10_000).joined(separator: "\n")
+        let t0 = DispatchTime.now()
+        let blocks = BlockParser.parse(doc)
+        let seconds = Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1e9
+        #expect(blocks.count == 10_000)
+        #expect(seconds < 10)
+    }
+
+    /// HTML-block end scans are consumed (the parser advances past them), so a
+    /// huge blank-line-free type-6 block must merge in one linear pass.
+    @Test("A 10k-line HTML block parses in linear-ish time")
+    func hugeHTMLBlockRun() {
+        let doc = Array(repeating: "<div>x</div>", count: 10_000).joined(separator: "\n")
+        let t0 = DispatchTime.now()
+        let blocks = BlockParser.parse(doc)
+        let seconds = Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1e9
+        #expect(blocks.count == 1)
+        #expect(seconds < 10)
+    }
+
+    /// `<custom> trailing words` opens no HTML block (name not in the type-6
+    /// list; the trailing words defeat type 7), so the start check must stay
+    /// O(line) across a huge run of such paragraphs.
+    @Test("A 10k-line angle-bracket paragraph run parses in linear-ish time")
+    func hugeAngleParagraphRun() {
+        let doc = Array(repeating: "<custom> trailing words", count: 10_000).joined(separator: "\n")
         let t0 = DispatchTime.now()
         let blocks = BlockParser.parse(doc)
         let seconds = Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1e9

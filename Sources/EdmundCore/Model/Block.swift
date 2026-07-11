@@ -15,6 +15,7 @@ public enum BlockKind: Equatable, Sendable {
     case table
     case listItem
     case thematicBreak
+    case htmlBlock
     case blank
 }
 
