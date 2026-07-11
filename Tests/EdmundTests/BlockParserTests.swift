@@ -542,6 +542,29 @@ struct BlockParserTests {
         #expect(blocks[0].kind == .heading(level: 2))
     }
 
+    @Test("A setext underline merges the whole preceding paragraph run (GFM Example 51)")
+    func setextMultiLineContent() {
+        let blocks = BlockParser.parse("Foo\nbar\n---")
+        #expect(blocks.count == 1)
+        #expect(blocks[0].kind == .heading(level: 2))
+        #expect(blocks[0].content == "Foo\nbar\n---")
+    }
+
+    @Test("Without an underline, each paragraph line stays its own block")
+    func noUnderlineKeepsPerLineBlocks() {
+        let blocks = BlockParser.parse("Foo\nbar")
+        #expect(blocks.map(\.kind) == [.paragraph, .paragraph])
+        #expect(blocks[0].content == "Foo")
+        #expect(blocks[1].content == "bar")
+    }
+
+    @Test("A setext run doesn't swallow a preceding non-paragraph block")
+    func setextRunStopsAtHeading() {
+        let blocks = BlockParser.parse("# h\nFoo\n===")
+        #expect(blocks.map(\.kind) == [.heading(level: 1), .heading(level: 1)])
+        #expect(blocks[1].content == "Foo\n===")
+    }
+
     @Test("--- after a blank line stays a thematic break")
     func ruleAfterBlank() {
         let blocks = BlockParser.parse("para\n\n---")

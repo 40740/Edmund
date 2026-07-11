@@ -142,13 +142,14 @@ extension SyntaxHighlighter {
             let full = nsRange(for: range)
             let text = (source as NSString).substring(with: full)
 
-            // Setext heading (`Title\n===`): no `#` prefix. The first line is
-            // the content; the underline line is the delimiter (hidden when
-            // rendered, dimmed when active). The `\n` between them stays
-            // untouched so the line structure survives.
+            // Setext heading (`Title\n===`, or `Foo\nbar\n===` per GFM Example
+            // 51 — content can span multiple lines): no `#` prefix. Everything
+            // up to the *last* line is the content; that last line is the
+            // underline delimiter (hidden when rendered, dimmed when active).
+            // The `\n`s stay untouched so the line structure survives.
             if !text.drop(while: { $0 == " " }).hasPrefix("#") {
-                let nl = (text as NSString).range(of: "\n")
-                guard nl.location != NSNotFound else { return }  // setext is 2 lines
+                let nl = (text as NSString).range(of: "\n", options: .backwards)
+                guard nl.location != NSNotFound else { return }  // setext is 2+ lines
                 spans.append(Span(
                     kind: .heading(heading.level),
                     fullRange: full,

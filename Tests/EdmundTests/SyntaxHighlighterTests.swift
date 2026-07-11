@@ -171,6 +171,17 @@ struct HeadingTests {
         #expect(headings[0].kind == .heading(2))
     }
 
+    @Test("Setext content can span multiple lines (GFM Example 51)")
+    func setextMultiLineContent() {
+        let spans = SyntaxHighlighter.parse("Foo\nbar\n===")
+        let headings = spans.filter { if case .heading = $0.kind { return true }; return false }
+        #expect(headings.count == 1)
+        let s = headings[0]
+        #expect(s.kind == .heading(1))
+        #expect(s.contentRange == NSRange(location: 0, length: 7))        // "Foo\nbar"
+        #expect(s.delimiterRanges == [NSRange(location: 8, length: 3)])   // "==="
+    }
+
     @Test("Heading descends into inline children (nested styling)")
     func headingDescendsInline() {
         let spans = SyntaxHighlighter.parse("# **Bold heading**")

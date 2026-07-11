@@ -78,7 +78,17 @@ public enum BlockParser {
         guard let firstAffected = blockIndex(in: old, forOffset: editedOldRange.location)
         else { return nil }
 
-        let windowStartIndex = max(0, firstAffected - 1)
+        var windowStartIndex = max(0, firstAffected - 1)
+        // A setext underline merges the whole run of single-line paragraph
+        // blocks above it into one heading (consumeBlock's multi-line setext
+        // scan), so the window must start before that entire run, not just
+        // one block back — keep walking back while the block at the window
+        // start is itself a `.paragraph` block. This is a superset of the
+        // one-block-back rule above (a non-paragraph block one back leaves
+        // the loop immediately), so every other merge rule stays covered.
+        while windowStartIndex > 0, case .paragraph = old[windowStartIndex].kind {
+            windowStartIndex -= 1
+        }
         let windowStartOffset = old[windowStartIndex].range.location
         let editEndNew = editedOldRange.upperBound + delta
 
@@ -333,10 +343,33 @@ public enum BlockParser {
         // (h2). Consuming the underline here means a `---` after a paragraph
         // is a heading underline (GFM setext wins over thematic break); only
         // a `---` after a blank line / non-paragraph stays a rule.
-        if case .paragraph = classifyLine(first),
-           let underline = buf.line(at: i + 1),
-           let level = setextUnderlineLevel(underline) {
-            return (first + "\n" + underline, .heading(level: level), i + 2)
+        //
+        // The underline can follow any number of plain paragraph lines, not
+        // just the first (GFM Example 51: "Foo\nbar\n---" is one heading
+        // whose content is "Foo\nbar") — so scan forward through a run of
+        // paragraph lines looking for the underline, checking each line for
+        // a setext underline *before* classifying it (an underline reads as
+        // `.paragraph`/`.thematicBreak` under `classifyLine`, and must
+        // terminate-and-merge the run rather than continue or break it). A
+        // table start also breaks the run, mirroring the table branch above
+        // so a table isn't swallowed as heading content. If no underline is
+        // found, fall through and return just `first` as a single-line
+        // paragraph block — Edmund deliberately keeps one block per
+        // paragraph line when there's no setext underline beneath it.
+        if case .paragraph = classifyLine(first) {
+            var j = i + 1
+            while let line = buf.line(at: j) {
+                if let level = setextUnderlineLevel(line) {
+                    let merged = (i...j).map { buf.line(at: $0)! }
+                    return (merged.joined(separator: "\n"), .heading(level: level), j + 1)
+                }
+                guard case .paragraph = classifyLine(line) else { break }
+                if isTableRow(line), let next = buf.line(at: j + 1), isTableSeparator(next),
+                   splitTableRow(line).count == splitTableRow(next).count {
+                    break
+                }
+                j += 1
+            }
         }
 
         return (first, classifyLine(first), i + 1)
