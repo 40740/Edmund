@@ -161,14 +161,32 @@ extension SyntaxHighlighter {
             }
 
             let delimLen = heading.level + 1
-            let cStart = full.location + delimLen
-            let cLen = max(0, full.length - delimLen)
+            // cmark already recognizes and trims a valid optional closing
+            // sequence (GFM 4.2, e.g. `# foo ###`) out of `heading.range` —
+            // it can even trim `full` down to just the opening `#` run when
+            // the heading is otherwise empty (`## ##`), shorter than
+            // `delimLen`. Clamp so an empty-content heading doesn't push
+            // `cStart` past what `full` actually covers.
+            let openDelimLen = min(delimLen, full.length)
+            let cStart = full.location + openDelimLen
+            let cLen = max(0, full.length - openDelimLen)
+            var delimiterRanges = [NSRange(location: full.location, length: openDelimLen)]
+
+            // Whatever raw text follows `full` to the end of this
+            // single-line block is exactly what cmark trimmed as the
+            // closing sequence (its required separating whitespace, the
+            // `#` run, and any trailing whitespace) — hide it too.
+            let nsSource = source as NSString
+            let lineEnd = nsSource.length
+            if full.upperBound < lineEnd {
+                delimiterRanges.append(NSRange(location: full.upperBound, length: lineEnd - full.upperBound))
+            }
 
             spans.append(Span(
                 kind: .heading(heading.level),
                 fullRange: full,
                 contentRange: NSRange(location: cStart, length: cLen),
-                delimiterRanges: [NSRange(location: full.location, length: delimLen)]
+                delimiterRanges: delimiterRanges
             ))
             // The heading span is appended first, so inner spans read the
             // heading font as their context and keep its size.

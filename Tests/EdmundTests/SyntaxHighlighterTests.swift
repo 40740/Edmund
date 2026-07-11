@@ -187,6 +187,33 @@ struct HeadingTests {
         #expect(kinds.contains(.heading(1)))
         #expect(kinds.contains(.bold))
     }
+
+    @Test("ATX heading's optional closing sequence is a hidden second delimiter")
+    func atxClosingSequence() {
+        let spans = SyntaxHighlighter.parse("# foo ###")
+        let s = spans[0]
+        #expect(s.kind == .heading(1))
+        #expect(s.delimiterRanges.count == 2)
+        #expect(s.contentRange == NSRange(location: 2, length: 3))       // "foo"
+        #expect(s.delimiterRanges[1] == NSRange(location: 5, length: 4)) // " ###"
+    }
+
+    @Test("A closing '#' with no preceding space stays in the content")
+    func atxNoPrecedingSpaceNotClosing() {
+        let spans = SyntaxHighlighter.parse("# foo#")
+        let s = spans[0]
+        #expect(s.delimiterRanges.count == 1)
+        #expect(s.contentRange == NSRange(location: 2, length: 4))       // "foo#"
+    }
+
+    @Test("An all-hashes closing sequence with empty content is entirely delimiter")
+    func atxEmptyHeadingAllDelimiter() {
+        let spans = SyntaxHighlighter.parse("## ##")
+        let s = spans[0]
+        #expect(s.kind == .heading(2))
+        #expect(s.delimiterRanges.count == 2)
+        #expect(s.contentRange.length == 0)
+    }
 }
 
 // MARK: - Priority & Overlap
