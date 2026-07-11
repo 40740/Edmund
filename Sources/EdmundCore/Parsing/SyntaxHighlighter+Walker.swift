@@ -156,6 +156,7 @@ extension SyntaxHighlighter {
                     delimiterRanges: [NSRange(location: full.location + nl.upperBound,
                                               length: full.length - nl.upperBound)]
                 ))
+                descendInto(heading)   // inline children style at heading size
                 return
             }
 
@@ -169,7 +170,9 @@ extension SyntaxHighlighter {
                 contentRange: NSRange(location: cStart, length: cLen),
                 delimiterRanges: [NSRange(location: full.location, length: delimLen)]
             ))
-            // Don't descend — heading subsumes children
+            // The heading span is appended first, so inner spans read the
+            // heading font as their context and keep its size.
+            descendInto(heading)
         }
 
         // MARK: - Code Blocks

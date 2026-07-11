@@ -171,11 +171,21 @@ struct HeadingTests {
         #expect(headings[0].kind == .heading(2))
     }
 
-    @Test("Heading suppresses inline parsing in its range")
-    func headingSuppressesInline() {
+    @Test("Heading descends into inline children (nested styling)")
+    func headingDescendsInline() {
         let spans = SyntaxHighlighter.parse("# **Bold heading**")
-        #expect(spans.count == 1)
+        #expect(spans.count == 2)
         #expect(spans[0].kind == .heading(1))
+        #expect(spans[1].kind == .bold)
+        #expect(spans[1].contentRange == NSRange(location: 4, length: 12))
+    }
+
+    @Test("Setext heading descends into inline children too")
+    func setextDescendsInline() {
+        let spans = SyntaxHighlighter.parse("**Bold** title\n===")
+        let kinds = spans.map(\.kind)
+        #expect(kinds.contains(.heading(1)))
+        #expect(kinds.contains(.bold))
     }
 }
 

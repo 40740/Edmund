@@ -193,6 +193,58 @@ struct BlockStylingNonActiveTests {
         #expect(abs(f.pointSize - expectedSize) < 0.1)
     }
 
+    @Test("Inline styling inside a heading keeps the heading size")
+    @MainActor func headingNestedInline() {
+        let editor = makeEditor()
+        // "# **bold** and `code` x"  — bold at 4, code at 17
+        editor.loadContent("# **bold** and `code` x\nother")
+        activateBlock(1, in: editor)
+        let h1Size = editor.bodyFont.pointSize * 1.5
+
+        // Bold run: heading size, bold trait; its ** hidden.
+        let bold = font(at: 4, in: editor)!
+        #expect(abs(bold.pointSize - h1Size) < 0.1)
+        #expect(NSFontManager.shared.traits(of: bold).contains(.boldFontMask))
+        #expect(font(at: 2, in: editor)!.pointSize < 1.0)   // hidden **
+
+        // Code run: mono, scaled up to the heading's proportion.
+        let code = font(at: 17, in: editor)!
+        let expectedMono = editor.inlineCodeFont.pointSize * 1.5
+        #expect(abs(code.pointSize - expectedMono) < 0.1)
+
+        // Plain heading text unaffected.
+        let plain = font(at: 12, in: editor)!
+        #expect(abs(plain.pointSize - h1Size) < 0.1)
+    }
+
+    @Test("Setext heading renders like an ATX heading with hidden underline")
+    @MainActor func setextHeadingStyling() {
+        let editor = makeEditor()
+        editor.loadContent("Big *title*\n===\nother")
+        activateBlock(1, in: editor)
+
+        // Content on line 1 gets the h1 font.
+        let f = font(at: 0, in: editor)!
+        #expect(abs(f.pointSize - editor.bodyFont.pointSize * 1.5) < 0.1)
+        // Italic run keeps the heading size and gains the trait.
+        let it = font(at: 5, in: editor)!
+        #expect(abs(it.pointSize - editor.bodyFont.pointSize * 1.5) < 0.1)
+        #expect(NSFontManager.shared.traits(of: it).contains(.italicFontMask))
+        // The === underline is hidden.
+        #expect(font(at: 12, in: editor)!.pointSize < 1.0)
+    }
+
+    @Test("Body-text bold still uses the body size (regression)")
+    @MainActor func bodyBoldUnchanged() {
+        let editor = makeEditor()
+        editor.loadContent("some **bold** here\nother")
+        activateBlock(1, in: editor)
+
+        let f = font(at: 7, in: editor)!
+        #expect(abs(f.pointSize - editor.bodyFont.pointSize) < 0.1)
+        #expect(NSFontManager.shared.traits(of: f).contains(.boldFontMask))
+    }
+
     // MARK: - Bullet Lists
 
     @Test("Non-active list item has raw text, bullet dot, indent")
