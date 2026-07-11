@@ -104,6 +104,50 @@ struct HTMLTagParseTests {
         #expect(!k.contains { if case .image = $0 { return true }; return false })
         #expect(k.contains { if case .htmlTag = $0 { return true }; return false })
     }
+
+    @Test("Hyphenated element name is a tag (§6.10)")
+    func hyphenName() {
+        let spans = SyntaxHighlighter.parse("a <my-element> b")
+        let tag = spans.first { if case .htmlTag = $0.kind { return true }; return false }
+        #expect(tag?.contentRange == NSRange(location: 3, length: 10))   // "my-element"
+    }
+
+    @Test("A quoted attribute value may contain `>`")
+    func quotedGT() {
+        let text = "<span title=\"a>b\">"
+        let spans = SyntaxHighlighter.parse(text)
+        let tags = spans.filter { if case .htmlTag = $0.kind { return true }; return false }
+        #expect(tags.count == 1)
+        #expect(tags.first?.fullRange == NSRange(location: 0, length: (text as NSString).length))
+    }
+
+    @Test("<img> accepts single-quoted and unquoted attribute values")
+    func imgAltQuoting() {
+        guard case .image(let dest1, _, _)? = SyntaxHighlighter.parse("<img src='cat.png'>")
+            .first(where: { if case .image = $0.kind { return true }; return false })?.kind
+        else { Issue.record("no image span for single-quoted src"); return }
+        #expect(dest1 == "cat.png")
+
+        guard case .image(let dest2, let w, _)? = SyntaxHighlighter.parse("<img src=cat.png width=120>")
+            .first(where: { if case .image = $0.kind { return true }; return false })?.kind
+        else { Issue.record("no image span for unquoted src"); return }
+        #expect(dest2 == "cat.png")
+        #expect(w == 120)
+    }
+
+    @Test("A closing tag with attributes is not a tag (§6.10)")
+    func badCloseTag() {
+        let k = kinds("</div class=\"x\">")
+        #expect(!k.contains { if case .htmlTag = $0 { return true }; return false })
+    }
+
+    @Test("PI, declaration, and CDATA tokens become dimmed source")
+    func otherRawHTML() {
+        for text in ["x <?php echo ?> y", "x <!DOCTYPE html> y", "x <![CDATA[>&<]]> y"] {
+            #expect(kinds(text).contains { if case .htmlTag = $0 { return true }; return false },
+                    "no htmlTag span in \(text)")
+        }
+    }
 }
 
 @Suite("Rendering — HTML tags")

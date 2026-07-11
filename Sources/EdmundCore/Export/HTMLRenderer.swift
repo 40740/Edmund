@@ -448,14 +448,16 @@ struct HTMLRenderer: MarkupVisitor {
     }
 
     /// A `md-image` placeholder for a raw `<img src="…">` tag, or nil when it
-    /// has no double-quoted `src`. Attribute extraction shares the Edit-mode
-    /// regexes so the two back-ends accept the same tags; every value is
-    /// re-escaped, so no raw attribute text passes through.
+    /// has no `src`. Attribute extraction shares the Edit-mode regexes so the
+    /// two back-ends accept the same tags (double-, single-, and unquoted
+    /// values, §6.10); every value is re-escaped, so no raw attribute text
+    /// passes through.
     static func imgPlaceholder(_ raw: String) -> String? {
         let ns = raw as NSString
         let whole = NSRange(location: 0, length: ns.length)
         func attrValue(_ regex: NSRegularExpression) -> String? {
-            regex.firstMatch(in: raw, range: whole).map { ns.substring(with: $0.range(at: 1)) }
+            regex.firstMatch(in: raw, range: whole)
+                .map { ns.substring(with: SyntaxHighlighter.attrValueRange($0)) }
         }
         guard let src = attrValue(SyntaxHighlighter.imgSrcRegex) else { return nil }
         var out = "<img class=\"md-image\" data-src=\"\(attr(src))\""

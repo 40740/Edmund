@@ -208,6 +208,12 @@ struct HTMLRendererRawHTMLTests {
         let out = html("<table><tr><td>x</td></tr></table>")
         #expect(out.contains("<table><tr><td>x</td></tr></table>"))
     }
+
+    @Test("A single-quoted <img src> still becomes the asset-pass placeholder")
+    func singleQuotedImgRead() {
+        let out = html("pic <img src='cat.png'> x")
+        #expect(out.contains("data-src=\"cat.png\""))
+    }
 }
 
 @Suite("HTMLRenderer — non-GFM inline")
