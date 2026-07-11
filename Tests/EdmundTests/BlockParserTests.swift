@@ -600,10 +600,25 @@ struct BlockParserTests {
         #expect(blocks.map(\.kind) == [.paragraph, .blank, .indentedCode])
     }
 
-    @Test("An internal blank line splits the run into two code blocks")
+    @Test("An interior blank line stays inside the code block (GFM Example 82)")
     func indentedCodeBlankSplits() {
         let blocks = BlockParser.parse("    a\n\n    b")
-        #expect(blocks.map(\.kind) == [.indentedCode, .blank, .indentedCode])
+        #expect(blocks.map(\.kind) == [.indentedCode])
+        #expect(blocks[0].content == "    a\n\n    b")
+    }
+
+    @Test("A blank line before non-code content is not swallowed into the code block")
+    func indentedCodeTrailingBlankNotSwallowed() {
+        let blocks = BlockParser.parse("    a\n\nx")
+        #expect(blocks.map(\.kind) == [.indentedCode, .blank, .paragraph])
+        #expect(blocks[0].content == "    a")
+    }
+
+    @Test("Multiple interior blank lines and chunks all stay in one code block")
+    func indentedCodeMultipleInteriorBlanks() {
+        let blocks = BlockParser.parse("    a\n\n\n    b\n\npara")
+        #expect(blocks.map(\.kind) == [.indentedCode, .blank, .paragraph])
+        #expect(blocks[0].content == "    a\n\n\n    b")
     }
 
     @Test("A deeply indented list item is rescued as a list, not code")

@@ -307,14 +307,24 @@ public enum BlockParser {
         // tab), starting only after a blank line / document start so list
         // continuation text isn't swallowed. Deeply indented list items keep
         // priority (the indentedListRegex rescue — deliberate divergence).
-        // ponytail: an internal blank line ends the run; GFM would bridge it.
-        // Visually identical — revisit with the HTML-block pass if ever.
+        // Interior blank lines belong to the block (GFM Examples 82/87); a
+        // run of blanks only ends the block if code doesn't resume after
+        // them — trailing blanks stay separate `.blank` blocks.
         if isIndentedCodeLine(first), prevLine == nil || isBlankLine(prevLine!) {
             var merged = [first]
             var j = i + 1
-            while let line = buf.line(at: j), isIndentedCodeLine(line) {
-                merged.append(line)
-                j += 1
+            while let line = buf.line(at: j) {
+                if isIndentedCodeLine(line) {
+                    merged.append(line)
+                    j += 1
+                    continue
+                }
+                guard isBlankLine(line) else { break }
+                var k = j
+                while let blank = buf.line(at: k), isBlankLine(blank) { k += 1 }
+                guard let resumed = buf.line(at: k), isIndentedCodeLine(resumed) else { break }
+                for m in j..<k { merged.append(buf.line(at: m)!) }
+                j = k
             }
             return (merged.joined(separator: "\n"), .indentedCode, j)
         }
