@@ -158,10 +158,13 @@ extension EditorTextView {
                     }
                 }
 
-                // Hide all pipes (zero-width + clear)
+                // Hide all structural pipes (zero-width + clear). A `\|` is
+                // escaped cell content, not a separator — leave it visible
+                // (its `\` is already hidden by the cell's escape span).
                 let lineNS = line as NSString
                 for ci in 0..<lineNS.length {
-                    if lineNS.character(at: ci) == 0x7C {
+                    if lineNS.character(at: ci) == 0x7C,
+                       !(ci > 0 && lineNS.character(at: ci - 1) == 0x5C) {
                         let pipeRange = NSRange(location: lineOffset + ci, length: 1)
                         result.addAttribute(.font, value: hiddenFont, range: pipeRange)
                         result.addAttribute(.foregroundColor, value: NSColor.clear, range: pipeRange)

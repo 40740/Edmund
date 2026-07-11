@@ -28,6 +28,11 @@ struct TableAlignmentParseTests {
         #expect(tableColumnAlignments(separatorRow: "|--:|", count: 3)
                 == [.right, .left, .left])
     }
+
+    @Test("A backslash-escaped pipe does not split a cell")
+    func escapedPipeNotSeparator() {
+        #expect(splitTableRow("| a \\| b | c |").count == 2)
+    }
 }
 
 @Suite("Table column alignment — rendering")
@@ -145,6 +150,22 @@ struct TableInlineStylingTests {
         let traits = f.map { NSFontManager.shared.traits(of: $0) } ?? []
         #expect(traits.contains(.boldFontMask))
         #expect(traits.contains(.italicFontMask))
+    }
+
+    @Test("Escaped pipe in a data cell stays visible; structural pipes stay hidden")
+    func escapedPipeStaysVisible() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("| a | b |\n|---|---|\n| x \\| y | z |", cursorPosition: nil)
+        let s = styled.string as NSString
+        let escaped = s.range(of: "\\|")
+        #expect(escaped.location != NSNotFound)
+        let escapedPipeFont = styled.attribute(.font, at: escaped.location + 1, effectiveRange: nil) as? NSFont
+        #expect((escapedPipeFont?.pointSize ?? 0) >= 1.0)
+
+        // A structural pipe (the leading pipe of the data row) stays hidden.
+        let lastRow = s.range(of: "\n", options: .backwards).location + 1
+        let structuralPipeFont = styled.attribute(.font, at: lastRow, effectiveRange: nil) as? NSFont
+        #expect((structuralPipeFont?.pointSize ?? 99) < 1.0)
     }
 
     @Test("Row paragraph geometry survives cell styling (table owns it)")
