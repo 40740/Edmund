@@ -121,16 +121,28 @@ extension SyntaxHighlighter.SpanCollector {
         let full = nsRange(for: range)
         guard full.length >= 2 else { return }
 
-        let openDelim = NSRange(location: full.location, length: 1)
-        let closeDelim = NSRange(location: full.upperBound - 1, length: 1)
-        let content = NSRange(location: full.location + 1,
-                              length: max(0, full.length - 2))
+        // GFM §6.3: the delimiters are equal-length backtick runs of ANY length.
+        // Measure the actual runs in the raw source (the AST doesn't carry them).
+        let ns = source as NSString
+        let backtick: unichar = 0x60
+        var open = 0
+        while full.location + open < full.upperBound,
+              ns.character(at: full.location + open) == backtick { open += 1 }
+        var close = 0
+        while full.upperBound - 1 - close > full.location + open - 1,
+              ns.character(at: full.upperBound - 1 - close) == backtick { close += 1 }
+        // cmark guarantees matching runs; clamp defensively so a surprise can't
+        // produce inverted ranges.
+        let d = max(1, min(min(open, close), full.length / 2))
 
+        // NOTE: the §6.3 one-space strip (`` ` `` → "`") is a render rule; in
+        // edit mode the padding spaces are source and stay in contentRange.
         spans.append(SyntaxHighlighter.Span(
             kind: .code,
             fullRange: full,
-            contentRange: content,
-            delimiterRanges: [openDelim, closeDelim]
+            contentRange: NSRange(location: full.location + d, length: max(0, full.length - 2 * d)),
+            delimiterRanges: [NSRange(location: full.location, length: d),
+                              NSRange(location: full.upperBound - d, length: d)]
         ))
     }
 

@@ -42,6 +42,10 @@ struct HTMLRenderer: MarkupVisitor {
     /// instead of in place. Order is document order of the *definitions*.
     private var footnotes: [(id: String, bodyHTML: String)] = []
 
+    /// Tightness of each list currently being walked (stack: nested lists).
+    /// See `isTight(_:)`.
+    private var listIsTight: [Bool] = []
+
     private init(source: String, options: ReadRenderOptions) {
         self.source = source
         self.sourceLines = source.components(separatedBy: "\n")
@@ -241,11 +245,36 @@ struct HTMLRenderer: MarkupVisitor {
         return "<blockquote>\(renderChildren(of: blockQuote))</blockquote>"
     }
 
+    /// GFM §5.3: a list is LOOSE iff any two adjacent blocks inside it — between
+    /// items, or between blocks within one item — are separated by a blank source
+    /// line. swift-markdown doesn't expose cmark's tight flag; recover it from
+    /// source-line gaps, clamping each block's end past cmark's folded trailing
+    /// blanks (same trick as visitDocument).
+    private func isTight(_ list: Markup) -> Bool {
+        var prevEnd: Int? = nil
+        for item in list.children {
+            guard let r = item.range else { continue }
+            if let p = prevEnd, r.lowerBound.line - p > 1 { return false }
+            var innerPrev: Int? = nil
+            for block in item.children {
+                guard let br = block.range else { continue }
+                if let ip = innerPrev, br.lowerBound.line - ip > 1 { return false }
+                innerPrev = lastContentLine(atOrBefore: br.upperBound.line)
+            }
+            prevEnd = lastContentLine(atOrBefore: r.upperBound.line)
+        }
+        return true
+    }
+
     mutating func visitUnorderedList(_ list: UnorderedList) -> String {
-        "<ul>\(renderChildren(of: list))</ul>"
+        listIsTight.append(isTight(list))
+        defer { listIsTight.removeLast() }
+        return "<ul>\(renderChildren(of: list))</ul>"
     }
 
     mutating func visitOrderedList(_ list: OrderedList) -> String {
+        listIsTight.append(isTight(list))
+        defer { listIsTight.removeLast() }
         let start = list.startIndex == 1 ? "" : " start=\"\(list.startIndex)\""
         return "<ol\(start)>\(renderChildren(of: list))</ol>"
     }
@@ -258,9 +287,25 @@ struct HTMLRenderer: MarkupVisitor {
             let mark = "<span class=\"task-check task-check--\(checked ? "checked" : "unchecked")\">"
                 + "\(LucideIcons.checkboxSVG(checked: checked))</span>"
             let checkedClass = checked ? " task--checked" : ""
-            return "<li class=\"task\(checkedClass)\">\(mark)\(renderChildren(of: listItem))</li>"
+            return "<li class=\"task\(checkedClass)\">\(mark)\(renderListItemContents(listItem))</li>"
         }
-        return "<li>\(renderChildren(of: listItem))</li>"
+        return "<li>\(renderListItemContents(listItem))</li>"
+    }
+
+    /// Item contents; in a tight list, each direct Paragraph child loses its
+    /// <p></p> wrapper (visit-then-strip, so visitParagraph's math/footnote
+    /// special cases still run).
+    private mutating func renderListItemContents(_ item: ListItem) -> String {
+        guard listIsTight.last == true else { return renderChildren(of: item) }
+        var out = ""
+        for child in item.children {
+            var html = visit(child)
+            if child is Paragraph, html.hasPrefix("<p>"), html.hasSuffix("</p>") {
+                html = String(html.dropFirst(3).dropLast(4))
+            }
+            out += html
+        }
+        return out
     }
 
     mutating func visitTable(_ table: Table) -> String {
@@ -304,6 +349,7 @@ struct HTMLRenderer: MarkupVisitor {
     mutating func visitLink(_ link: Link) -> String {
         let dest = link.destination ?? ""
         let inner = renderChildren(of: link)
+        let title = link.title.map { " title=\"\(Self.attr($0))\"" } ?? ""
         // In-page `#fragment` anchors and external links (http/https/mailto, or
         // any explicit scheme) keep their real href — the nav policy lets the
         // anchor scroll and hands external schemes to the browser. A relative /
@@ -311,10 +357,10 @@ struct HTMLRenderer: MarkupVisitor {
         // through the app's document graph reliably (independent of how WebKit
         // rewrites relative hrefs under `baseURL: nil`).
         if dest.hasPrefix("#") || Self.hasExternalScheme(dest) {
-            return "<a href=\"\(Self.attr(dest))\">\(inner)</a>"
+            return "<a href=\"\(Self.attr(dest))\"\(title)>\(inner)</a>"
         }
         let encoded = dest.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? dest
-        return "<a href=\"\(Self.linkScheme):\(encoded)\">\(inner)</a>"
+        return "<a href=\"\(Self.linkScheme):\(encoded)\"\(title)>\(inner)</a>"
     }
 
     /// Whether a link destination carries an explicit URL scheme (`http:`,

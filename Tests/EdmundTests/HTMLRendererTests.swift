@@ -46,12 +46,47 @@ struct HTMLRendererCoreTests {
 
     @Test("Unordered, ordered, and task lists")
     func lists() {
-        #expect(html("- a\n- b") == "<ul><li><p>a</p></li><li><p>b</p></li></ul>")
+        // A tight list (GFM §5.3): no <p> wrapper inside items.
+        #expect(html("- a\n- b") == "<ul><li>a</li><li>b</li></ul>")
         #expect(html("1. a").hasPrefix("<ol>"))
         #expect(html("3. a\n4. b").hasPrefix("<ol start=\"3\">"))
         let task = html("- [ ] todo\n- [x] done")
         #expect(task.contains("<li class=\"task\"><span class=\"task-check task-check--unchecked\"><svg"))
         #expect(task.contains("<span class=\"task-check task-check--checked\"><svg"))
+    }
+
+    @Test("A loose list (blank line between items) keeps <p> wrappers")
+    func looseList() {
+        let out = html("- a\n\n- b")
+        #expect(out.contains("<li><p>a</p></li>"))
+        #expect(out.contains("<li><p>b</p></li>"))
+    }
+
+    @Test("A multi-block item with a blank gap makes the whole list loose")
+    func looseByMultiBlockItem() {
+        let out = html("- a\n\n  second\n- b")
+        #expect(out.contains("<p>a</p>"))
+        #expect(out.contains("<p>second</p>"))
+        #expect(out.contains("<li><p>b</p></li>"))
+    }
+
+    @Test("Nested loose list gets <p>; the tight outer list doesn't")
+    func mixedNesting() {
+        let out = html("- a\n  - x\n\n  - y\n- b")
+        #expect(out.contains("<li><p>x</p></li>"))
+        #expect(out.contains("<p>y</p>"))
+        #expect(!out.contains("<p>a</p>"))
+        #expect(out.contains("<li>b</li>"))
+    }
+
+    @Test("Link title renders as an escaped title attribute")
+    func linkTitle() {
+        #expect(html("[x](https://example.com \"hi there\")")
+            == "<p><a href=\"https://example.com\" title=\"hi there\">x</a></p>")
+        #expect(html("[x](https://example.com \"a & b\")").contains("title=\"a &amp; b\""))
+        let internalLink = html("[o](other.md \"note\")")
+        #expect(internalLink.contains("<a href=\"x-edmund-link:"))
+        #expect(internalLink.contains("title=\"note\""))
     }
 
     @Test("Table emits thead/tbody with per-column alignment")
