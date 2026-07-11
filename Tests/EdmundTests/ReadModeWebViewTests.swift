@@ -20,4 +20,29 @@ struct ReadModeWebViewTests {
         let selector = NSSelectorFromString("webView:decidePolicyForNavigationAction:decisionHandler:")
         #expect(delegate?.responds(to: selector) == true)
     }
+
+    @Test("navigation policy only allows read-mode routes and browser handoffs")
+    func navigationPolicyClassifiesSchemes() {
+        #expect(ReadModeNavigationPolicy.decision(
+            for: URL(string: "about:blank#section")!,
+            navigationType: .linkActivated) == .allow)
+        #expect(ReadModeNavigationPolicy.decision(
+            for: URL(string: "x-edmund-wiki:Note%23Heading")!,
+            navigationType: .linkActivated) == .openWiki("Note#Heading"))
+        #expect(ReadModeNavigationPolicy.decision(
+            for: URL(string: "x-edmund-link:notes%2Ftoday.md")!,
+            navigationType: .linkActivated) == .openInternal("notes/today.md"))
+        #expect(ReadModeNavigationPolicy.decision(
+            for: URL(string: "https://example.com")!,
+            navigationType: .linkActivated) == .openExternal(URL(string: "https://example.com")!))
+        #expect(ReadModeNavigationPolicy.decision(
+            for: URL(string: "file:///etc/passwd")!,
+            navigationType: .linkActivated) == .cancel)
+        #expect(ReadModeNavigationPolicy.decision(
+            for: URL(string: "ftp://example.com/file")!,
+            navigationType: .linkActivated) == .cancel)
+        #expect(ReadModeNavigationPolicy.decision(
+            for: URL(string: "about:blank")!,
+            navigationType: .reload) == .reload)
+    }
 }

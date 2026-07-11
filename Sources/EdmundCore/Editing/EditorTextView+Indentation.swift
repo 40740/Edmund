@@ -138,7 +138,7 @@ extension EditorTextView {
         let sel = selectedRange()
         let rawStart = sel.location
         let rawEnd = sel.location + sel.length
-        let maxRemove = (Self.indentUnit as NSString).length
+        let maxRemove = Self.indentUnit.count
 
         // Compute how many leading whitespace characters to strip from each block.
         var removed: [Int] = Array(repeating: 0, count: blocks.count)

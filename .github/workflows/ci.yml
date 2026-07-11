@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 # Only the latest run per branch/PR matters; cancel older ones so private-repo
 # macOS minutes (billed at 10x) aren't spent on superseded commits.
 concurrency:
