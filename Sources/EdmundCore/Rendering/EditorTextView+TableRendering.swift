@@ -32,22 +32,50 @@ extension EditorTextView {
             let tableStr = tableNS.substring(with: span.fullRange)
             let lines = tableStr.components(separatedBy: "\n")
 
-            let boldFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
             let cellHPad = bodyFont.pointSize * 0.3
             let cellVPad = bodyFont.pointSize * 0.15
 
-            // --- Compute column widths (max cell width + horizontal padding) ---
+            // --- Style each cell's inline markdown and measure the result ---
+            // Each cell runs through styleBlock so `**bold**`, `code`, links,
+            // ==marks== etc. render inside tables; hidden delimiters measure
+            // ~zero, so column widths reflect what's actually visible. Header
+            // cells are bolded before measuring.
+            // ponytail: block-level markdown in a cell (`# x`, `- x`) keeps its
+            // fonts but loses its block chrome (paragraph styles / decorations
+            // are row-owned, see the transplant below); tall math or image
+            // overlays get no extra line height in cells.
             let headerCells = splitTableRow(lines[0])
             let numCols = headerCells.count
             guard numCols > 0 else { return }
             var colWidths = [CGFloat](repeating: 0, count: numCols)
+            // Per line: the cell's character range within the line + its
+            // styled form (empty for the separator row).
+            var rowCells: [[(start: Int, end: Int, styled: NSAttributedString)]] = []
             for (li, line) in lines.enumerated() {
-                guard li != 1 else { continue }
-                let cells = splitTableRow(line)
-                let f: NSFont = (li == 0) ? boldFont : bodyFont
+                guard li != 1 else { rowCells.append([]); continue }
+                let lineNS = line as NSString
+                var cells: [(start: Int, end: Int, styled: NSAttributedString)] = []
+                for cr in cellRanges(in: lineNS) {
+                    let text = lineNS.substring(with: NSRange(location: cr.start,
+                                                              length: cr.end - cr.start))
+                    let styled = NSMutableAttributedString(
+                        attributedString: styleBlock(text, cursorPosition: nil))
+                    if li == 0 {
+                        styled.enumerateAttribute(
+                            .font, in: NSRange(location: 0, length: styled.length)
+                        ) { value, r, _ in
+                            guard let f = value as? NSFont else { return }
+                            styled.addAttribute(
+                                .font,
+                                value: NSFontManager.shared.convert(f, toHaveTrait: .boldFontMask),
+                                range: r)
+                        }
+                    }
+                    cells.append((cr.start, cr.end, styled))
+                }
+                rowCells.append(cells)
                 for ci in 0..<min(cells.count, numCols) {
-                    let w = (cells[ci] as NSString).size(withAttributes: [.font: f]).width
-                    colWidths[ci] = max(colWidths[ci], w)
+                    colWidths[ci] = max(colWidths[ci], cells[ci].styled.size().width)
                 }
             }
             // Add horizontal padding to each column (space after cell text).
@@ -78,8 +106,6 @@ extension EditorTextView {
                 let lineRange = NSRange(location: lineOffset, length: lineLen)
                 guard lineRange.upperBound <= result.length else { break }
 
-                let rowFont: NSFont = (i == 0) ? boldFont : bodyFont
-
                 // Row geometry via the paragraph style; the borders are
                 // drawn by a .tableRow BlockDecoration. Vertical padding
                 // becomes paragraph spacing (row gap = trailing + leading
@@ -109,14 +135,27 @@ extension EditorTextView {
                                                      separator: i == 1)),
                     range: lineRange)
 
-                if i == 0 {
-                    result.addAttribute(.font, value: boldFont, range: lineRange)
-                }
-
                 if i == 1 {
                     // Separator row: hide all text
                     result.addAttribute(.font, value: hiddenFont, range: lineRange)
                     result.addAttribute(.foregroundColor, value: NSColor.clear, range: lineRange)
+                } else if i < rowCells.count {
+                    // Transplant each styled cell's attributes onto the table,
+                    // skipping .paragraphStyle and .blockDecoration — row
+                    // geometry and borders stay owned by the table code.
+                    for cell in rowCells[i] {
+                        let offset = lineOffset + cell.start
+                        cell.styled.enumerateAttributes(
+                            in: NSRange(location: 0, length: cell.styled.length)
+                        ) { attrs, r, _ in
+                            let target = NSRange(location: offset + r.location, length: r.length)
+                            guard target.upperBound <= result.length else { return }
+                            for (key, value) in attrs {
+                                guard key != .paragraphStyle && key != .blockDecoration else { continue }
+                                result.addAttribute(key, value: value, range: target)
+                            }
+                        }
+                    }
                 }
 
                 // Hide all pipes (zero-width + clear)
@@ -135,12 +174,10 @@ extension EditorTextView {
                 // which still adds advance though it's near-zero-width); center
                 // splits the slack. Kern adds advance *after* a glyph, so the
                 // "before" kern goes on the char preceding the cell content.
-                if i != 1 {
-                    let ranges = cellRanges(in: lineNS)
-                    for ci in 0..<min(ranges.count, numCols) {
-                        let cr = ranges[ci]
-                        let cellText = lineNS.substring(with: NSRange(location: cr.start, length: cr.end - cr.start))
-                        let cellWidth = (cellText as NSString).size(withAttributes: [.font: rowFont]).width
+                if i != 1, i < rowCells.count {
+                    for ci in 0..<min(rowCells[i].count, numCols) {
+                        let cr = rowCells[i][ci]
+                        let cellWidth = cr.styled.size().width
                         let padding = colWidths[ci] - cellWidth
                         guard padding > 0.5 else { continue }
                         let leadingIdx = (cr.start - 1 >= 0 && lineNS.character(at: cr.start - 1) == 0x7C)
