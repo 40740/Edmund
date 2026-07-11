@@ -486,10 +486,15 @@ struct HTMLRenderer: MarkupVisitor {
         // happens to start with `[^id]:`) since real definitions are handled at
         // the paragraph level in `visitParagraph` — ignored by the switch below.
 
+        // Bare autolinks last, so the guards above are in place. Real `[x](url)`
+        // links never appear here (they're Link nodes, not leaf text).
+        SyntaxHighlighter.parseAutolinks(s, into: &spans)
+
         // Keep only the kinds we emit, ordered, non-overlapping (earliest wins).
         let relevant = spans.filter {
             switch $0.kind {
-            case .highlight, .math(false), .wikilink, .comment, .footnoteReference: return true
+            case .highlight, .math(false), .wikilink, .comment, .footnoteReference,
+                 .link: return true
             default: return false
             }
         }.sorted { $0.fullRange.location < $1.fullRange.location }
@@ -543,6 +548,9 @@ struct HTMLRenderer: MarkupVisitor {
                        "<a href=\"#fn-\(safeID)\">\(escape(id))</a></sup>"
             case .comment:
                 break   // hidden in reading, like the editor
+            case .link(let destination):
+                // A bare autolink: a real external href (http/mailto).
+                out += "<a href=\"\(attr(destination))\">\(escape(ns.substring(with: span.contentRange)))</a>"
             default:
                 break
             }

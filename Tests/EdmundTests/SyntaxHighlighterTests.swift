@@ -1061,3 +1061,89 @@ struct DisplayMathTests {
         #expect(mathSpans("just a paragraph").isEmpty)
     }
 }
+
+// MARK: - Autolinks (GFM extension)
+
+@Suite("SyntaxHighlighter — Autolinks")
+struct AutolinkTests {
+
+    private func links(_ text: String) -> [(text: String, dest: String)] {
+        SyntaxHighlighter.parse(text).compactMap { s in
+            guard case .link(let d) = s.kind else { return nil }
+            return ((text as NSString).substring(with: s.contentRange), d)
+        }
+    }
+
+    @Test("Bare www autolink gets an http:// destination")
+    func www() {
+        let l = links("visit www.example.com now")
+        #expect(l.count == 1)
+        #expect(l[0].text == "www.example.com")
+        #expect(l[0].dest == "http://www.example.com")
+    }
+
+    @Test("Scheme autolink keeps its own destination")
+    func scheme() {
+        let l = links("see https://example.com/page?x=1 there")
+        #expect(l.map(\.dest) == ["https://example.com/page?x=1"])
+    }
+
+    @Test("Trailing punctuation is trimmed")
+    func trailingPunct() {
+        #expect(links("go to www.example.com.").map(\.text) == ["www.example.com"])
+        #expect(links("really, www.example.com!").map(\.text) == ["www.example.com"])
+    }
+
+    @Test("Unbalanced trailing paren is trimmed; balanced is kept")
+    func parens() {
+        #expect(links("(see www.example.com)").map(\.text) == ["www.example.com"])
+        #expect(links("https://en.wikipedia.org/wiki/Markdown_(language)").map(\.text)
+                == ["https://en.wikipedia.org/wiki/Markdown_(language)"])
+    }
+
+    @Test("Trailing &entity; is trimmed")
+    func entity() {
+        #expect(links("www.example.com/foo&amp;").map(\.text) == ["www.example.com/foo"])
+    }
+
+    @Test("Email autolink gets a mailto destination")
+    func email() {
+        let l = links("mail foo.bar+baz@sub.example.com please")
+        #expect(l.map(\.dest) == ["mailto:foo.bar+baz@sub.example.com"])
+    }
+
+    @Test("Invalid domains don't autolink")
+    func invalidDomain() {
+        #expect(links("http://nodot").isEmpty)
+        #expect(links("www.ex_ample.com").isEmpty)   // _ in the last two labels
+        #expect(links("it cost $5 www").isEmpty)
+    }
+
+    @Test("A URL mid-word doesn't autolink")
+    func midWord() {
+        #expect(links("xhttp://example.com").isEmpty)
+    }
+
+    @Test("No autolink inside code spans")
+    func insideCode() {
+        #expect(links("`www.example.com`").isEmpty)
+    }
+
+    @Test("No autolink inside a real markdown link; a bare one next to it still links")
+    func besideRealLink() {
+        let l = links("[x](http://a.com) http://b.com")
+        // The [x](…) link comes from the walker; the autolink pass adds b only.
+        let autos = l.filter { $0.dest == "http://b.com" }
+        #expect(autos.count == 1)
+        #expect(!l.contains { $0.text.contains("a.com") && $0.dest == "http://a.com" && $0.text == "http://a.com" })
+    }
+
+    @Test("No autolink inside an <img> src attribute")
+    func insideImgTag() {
+        let spans = SyntaxHighlighter.parse("<img src=\"http://example.com/x.png\">")
+        let autos = spans.filter {
+            if case .link = $0.kind { return true }; return false
+        }
+        #expect(autos.isEmpty)
+    }
+}

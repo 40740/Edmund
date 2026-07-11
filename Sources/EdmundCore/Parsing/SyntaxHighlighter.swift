@@ -125,6 +125,11 @@ public enum SyntaxHighlighter {
         // Inline HTML tags: whitelist pairs render (`<u>…</u>`); any other tag is
         // colored source. Runs after escapes so an escaped `\<` isn't seen as a tag.
         parseHTMLTags(text, into: &walker.spans)
+
+        // Bare www./http(s)/email autolinks (GFM extension). Last, so every
+        // guard (code, math, real links, HTML tags, …) is already in place.
+        parseAutolinks(text, into: &walker.spans)
+
         let opaqueRanges: [NSRange] = walker.spans.compactMap { span in
             switch span.kind {
             case .comment, .wikilink: return span.fullRange
