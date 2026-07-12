@@ -21,6 +21,13 @@ import AppKit
 //   forbids. Instead the anchor character is hidden, `.kern` reserves the
 //   image's advance width (the same trick the table renderer uses for column
 //   alignment), and the fragment draws the image at the anchor's position.
+// - `.tableCellWraps` (paragraph-level): a table cell too wide for its column
+//   can't wrap in place — TextKit 2 only wraps a whole paragraph at the
+//   container's edge, it has no notion of an independent per-cell flow region
+//   (that's what NSTextTable/NSTextBlock exist for, and they're banned). So an
+//   overflowing cell's real characters are hidden, and its styled text is laid
+//   out separately in a small detached text stack sized to the column's
+//   width; the fragment draws the resulting lines stacked at the cell's x.
 
 public extension NSAttributedString.Key {
     /// Paragraph-level decoration drawn behind the text by
@@ -30,6 +37,9 @@ public extension NSAttributedString.Key {
     /// `DecoratedTextLayoutFragment`. Value: `FragmentOverlay`. The styling
     /// code pairs it with a hidden anchor glyph plus `.kern` for layout space.
     static let fragmentOverlay = NSAttributedString.Key("MarkdownEditor.fragmentOverlay")
+    /// A table row's overflowing cells, wrapped and drawn by
+    /// `DecoratedTextLayoutFragment`. Value: `TableCellWrapList`.
+    static let tableCellWraps = NSAttributedString.Key("MarkdownEditor.tableCellWraps")
 }
 
 /// Value object describing what to draw behind a decorated paragraph.
@@ -169,6 +179,47 @@ public final class FragmentOverlay: NSObject, @unchecked Sendable {
     public override var hash: Int { Int(bounds.width) ^ Int(bounds.height) }
 }
 
+/// A table cell too wide for its column: its real characters are hidden, and
+/// this holds what to draw instead. `x` is text-relative (same coordinate
+/// space as `BlockDecoration.tableRow`'s `columnXOffsets`) — the cell's
+/// content start. `contentWidth` is the column's clamped content width (the
+/// width the cell's text must wrap within).
+public final class TableCellWrap: NSObject, @unchecked Sendable {
+    public let styled: NSAttributedString
+    public let x: CGFloat
+    public let contentWidth: CGFloat
+
+    public init(styled: NSAttributedString, x: CGFloat, contentWidth: CGFloat) {
+        self.styled = styled
+        self.x = x
+        self.contentWidth = contentWidth
+    }
+
+    public override func isEqual(_ object: Any?) -> Bool {
+        guard let other = object as? TableCellWrap else { return false }
+        return other.styled.string == styled.string
+            && abs(other.x - x) < 0.5 && abs(other.contentWidth - contentWidth) < 0.5
+    }
+
+    public override var hash: Int { styled.string.hashValue }
+}
+
+/// A table row's overflowing cells, one `TableCellWrap` per overflowing cell.
+public final class TableCellWrapList: NSObject, @unchecked Sendable {
+    public let wraps: [TableCellWrap]
+
+    public init(_ wraps: [TableCellWrap]) {
+        self.wraps = wraps
+    }
+
+    public override func isEqual(_ object: Any?) -> Bool {
+        guard let other = object as? TableCellWrapList else { return false }
+        return wraps == other.wraps
+    }
+
+    public override var hash: Int { wraps.count }
+}
+
 /// Layout fragment that draws its paragraph's `BlockDecoration` behind the
 /// text and any `FragmentOverlay` images at their characters' positions.
 final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
@@ -179,15 +230,54 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     let overlays: [(offset: Int, overlay: FragmentOverlay)]
     /// Whether the text is antialiased (editor-wide setting).
     let antialias: Bool
+    /// Each overflowing cell's x and pre-laid-out lines, from a detached
+    /// scratch text stack sized to the column's content width. The stack
+    /// itself is retained (`scratchStacks`) so the line fragments stay valid.
+    private let resolvedCellWraps: [(x: CGFloat, lines: [NSTextLineFragment])]
+    private let scratchStacks: [(NSTextContentStorage, NSTextLayoutManager, NSTextContainer)]
 
     init(textElement: NSTextElement, range: NSTextRange?,
          decorations: [BlockDecoration],
          overlays: [(offset: Int, overlay: FragmentOverlay)],
+         cellWraps: [TableCellWrap],
          antialias: Bool) {
         self.decorations = decorations
         self.overlays = overlays
         self.antialias = antialias
+        var resolved: [(x: CGFloat, lines: [NSTextLineFragment])] = []
+        var stacks: [(NSTextContentStorage, NSTextLayoutManager, NSTextContainer)] = []
+        for wrap in cellWraps {
+            let contentStorage = NSTextContentStorage()
+            contentStorage.textStorage = NSTextStorage(attributedString: wrap.styled)
+            let layoutManager = NSTextLayoutManager()
+            contentStorage.addTextLayoutManager(layoutManager)
+            let container = NSTextContainer(
+                size: NSSize(width: max(1, wrap.contentWidth), height: .greatestFiniteMagnitude))
+            container.lineFragmentPadding = 0
+            layoutManager.textContainer = container
+            var lines: [NSTextLineFragment] = []
+            layoutManager.enumerateTextLayoutFragments(
+                from: layoutManager.documentRange.location, options: [.ensuresLayout]
+            ) { frag in
+                lines.append(contentsOf: frag.textLineFragments)
+                return true
+            }
+            resolved.append((wrap.x, lines))
+            stacks.append((contentStorage, layoutManager, container))
+        }
+        self.resolvedCellWraps = resolved
+        self.scratchStacks = stacks
         super.init(textElement: textElement, range: range)
+    }
+
+    /// Extra row height needed to fit the tallest wrapped cell, beyond the
+    /// row's natural (single-line) height.
+    private var tableRowExtraHeight: CGFloat {
+        guard !resolvedCellWraps.isEmpty else { return 0 }
+        let tallest = resolvedCellWraps
+            .map { $0.lines.reduce(0) { $0 + $1.typographicBounds.height } }
+            .max() ?? 0
+        return max(0, tallest - super.layoutFragmentFrame.height)
     }
 
     required init?(coder: NSCoder) {
@@ -246,7 +336,9 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
     override var layoutFragmentFrame: CGRect {
         var frame = super.layoutFragmentFrame
-        frame.size.height += boxBottomPad
+        // A row is never both a box and a table row, so at most one of these
+        // two is ever nonzero.
+        frame.size.height += boxBottomPad + tableRowExtraHeight
         return frame
     }
 
@@ -315,6 +407,18 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 context.setLineJoin(.round)
                 context.strokePath()
                 context.restoreGState()
+            }
+        }
+        // Overflowing table cells: the real characters are hidden, so draw
+        // each cell's pre-wrapped lines here instead, stacked top-down at the
+        // cell's column x. Left-aligned regardless of the column's declared
+        // alignment (ponytail: not requested; upgrade path is the same
+        // per-line x-shift math the kern-based alignment above already uses).
+        for cellWrap in resolvedCellWraps {
+            var y = point.y
+            for line in cellWrap.lines {
+                line.draw(at: CGPoint(x: point.x + cellWrap.x, y: y), in: context)
+                y += line.typographicBounds.height
             }
         }
     }
@@ -463,10 +567,13 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                 overlays.append((range.location, overlay))
             }
         }
+        let cellWrapsValue = str.attribute(.tableCellWraps, at: 0, effectiveRange: nil)
+        let cellWraps = (cellWrapsValue as? TableCellWrapList)?.wraps ?? []
         // A plain fragment suffices only when there's nothing to draw over the
         // text and antialiasing is on (the default); otherwise vend the custom
         // fragment so its draw can disable antialiasing.
-        guard !decorations.isEmpty || !overlays.isEmpty || !textAntialias else {
+        guard !decorations.isEmpty || !overlays.isEmpty || !cellWraps.isEmpty || !textAntialias
+        else {
             return NSTextLayoutFragment(textElement: textElement,
                                         range: textElement.elementRange)
         }
@@ -474,6 +581,7 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                            range: textElement.elementRange,
                                            decorations: decorations,
                                            overlays: overlays,
+                                           cellWraps: cellWraps,
                                            antialias: textAntialias)
     }
 }

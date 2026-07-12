@@ -457,7 +457,18 @@ them and route through the app's document graph without JavaScript.
 - **Edit-mode table alignment** distributes each cell's slack via `.kern`,
   putting the right/center "before" pad on the cell's *hidden* leading pipe
   (0.01pt glyph) — kern still adds advance there. See
-  `EditorTextView+TableRendering.swift`.
+  `EditorTextView+TableRendering.swift`. Column widths are clamped to the
+  available line width (`distributeColumnWidths`, `EditorTextView+TableSupport.swift`)
+  so one very wide cell can't stretch the table off screen; a cell whose
+  styled width still exceeds its clamped column hides its real characters and
+  is redrawn wrapped instead, via a `.tableCellWraps` attribute
+  (`EditorTextView+TextKit2.swift`) resolved through a detached scratch
+  `NSTextContentStorage`/`NSTextLayoutManager` sized to the column's content
+  width — the same "hide the real chars, draw the visual yourself" pattern as
+  `.fragmentOverlay`, needed because TextKit 2 only wraps a whole paragraph at
+  the container edge and has no per-cell flow region (that's what
+  NSTextTable/NSTextBlock are for, and they're banned, see §2). Click-to-caret
+  placement inside a wrapped, non-active cell is approximate as a result.
 - *(Track larger roadmap items in README/ROADMAP; track code-debt here.)*
 
 ---
