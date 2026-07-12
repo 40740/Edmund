@@ -249,6 +249,8 @@ extension EditorTextView {
             }
         }
 
+        renumberOrderedListRunsIfNeeded(touching: changed)
+
         traceEdit("synced cursorRaw=\(cursorRaw) changed=\(changed.lowerBound)..<\(changed.upperBound) oldActive=\(oldActive.map(String.init) ?? "nil")")
         verifyEditorInvariants("syncRawSourceFromDisplay")
     }
