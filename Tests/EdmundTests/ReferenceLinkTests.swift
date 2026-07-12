@@ -114,4 +114,31 @@ struct LinkDefinitionStateTests {
         var b = LinkDefinitionState(); b.add("[y]: 2"); b.add("[x]: 1")
         #expect(a == b)
     }
+
+    @Test("Definition inside a block quote is collected (GFM ex. 187)")
+    func definitionInsideBlockQuote() {
+        #expect(LinkDefinitionState.canonicalDefinition(from: "> [foo]: /url") == "[foo]: /url")
+        #expect(LinkDefinitionState.canonicalDefinition(from: ">> [foo]: /url") == "[foo]: /url")
+        #expect(LinkDefinitionState.build(from: "> [foo]: /url").defsText == "[foo]: /url")
+    }
+
+    @Test("Definition on a list-marker line is collected")
+    func definitionInsideListItem() {
+        #expect(LinkDefinitionState.canonicalDefinition(from: "- [foo]: /url") == "[foo]: /url")
+        #expect(LinkDefinitionState.canonicalDefinition(from: "1. [foo]: /url") == "[foo]: /url")
+    }
+
+    @Test("A task-list checkbox is not mistaken for a definition")
+    func taskListNotDefinition() {
+        #expect(LinkDefinitionState.canonicalDefinition(from: "- [ ] todo") == nil)
+        #expect(LinkDefinitionState.canonicalDefinition(from: "- [x] done") == nil)
+    }
+
+    @Test("Container and plain forms of the same def dedupe to one line")
+    func containerAndPlainDedupe() {
+        var s = LinkDefinitionState()
+        s.add("> [foo]: /url")
+        s.add("[foo]: /url")
+        #expect(s.defsText == "[foo]: /url")
+    }
 }
