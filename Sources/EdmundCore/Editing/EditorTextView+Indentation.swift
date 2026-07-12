@@ -119,7 +119,8 @@ extension EditorTextView {
         // The indented blocks changed depth: they may now belong to a
         // different ordered run (or start a new one), and the old depth's
         // remaining siblings lost a member — both need renumbering.
-        renumberOrderedListRunsIfNeeded(touching: startBlock..<(endBlock + 1))
+        renumberOrderedListRunsIfNeeded(touching: startBlock..<(endBlock + 1),
+                                        depthChanged: Set(startBlock...endBlock))
         document?.updateChangeCount(.changeDone)
     }
 
@@ -216,7 +217,8 @@ extension EditorTextView {
         // The dedented blocks changed depth: they may now belong to a
         // different ordered run (or merge into an existing one), and the
         // old depth's remaining siblings lost a member — both need renumbering.
-        renumberOrderedListRunsIfNeeded(touching: startBlock..<(endBlock + 1))
+        renumberOrderedListRunsIfNeeded(touching: startBlock..<(endBlock + 1),
+                                        depthChanged: Set(startBlock...endBlock))
         document?.updateChangeCount(.changeDone)
     }
 }

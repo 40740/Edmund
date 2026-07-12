@@ -42,7 +42,14 @@ extension EditorTextView {
     /// depth). `touchedBlocks`' block count is assumed unchanged by any
     /// rewrite this makes (only digit widths inside existing lines change),
     /// so indices computed up front stay valid across the whole call.
-    func renumberOrderedListRunsIfNeeded(touching touchedBlocks: Range<Int>) {
+    ///
+    /// `depthChanged` — block indices whose nesting depth this specific edit
+    /// just altered (Tab/Shift-Tab; empty for every other caller, which never
+    /// change depth) — lets a run tell "merging into an existing list" apart
+    /// from "forming a brand-new one": a run made up entirely of just-moved
+    /// items starts at 1 instead of inheriting whatever number its first
+    /// member happened to have at its old depth.
+    func renumberOrderedListRunsIfNeeded(touching touchedBlocks: Range<Int>, depthChanged: Set<Int> = []) {
         guard !blocks.isEmpty else { return }
         let lo = max(0, touchedBlocks.lowerBound - 1)
         let hi = min(blocks.count, touchedBlocks.upperBound + 1)
@@ -55,24 +62,28 @@ extension EditorTextView {
                   orderedMarker(blocks[idx].content) != nil else { continue }
             let depth = depthOf(blocks[idx])
             let bounds = orderedRunBounds(seedIndex: idx, depth: depth)
-            // Only the same-depth members actually belong to this run's
-            // numbering — `bounds` also spans deeper nested children purely
-            // as pass-through text, and marking those processed here would
-            // wrongly suppress their own, separate depth's renumbering pass
-            // later in this loop.
-            let sequence = bounds.filter { depthOf(blocks[$0]) == depth }
+            // Only the same-depth ordered members actually belong to this
+            // run's numbering — `bounds` also spans deeper nested children
+            // and tolerated blank-line separators purely as pass-through
+            // text, and marking those processed here would wrongly suppress
+            // their own, separate depth's renumbering pass later in this loop.
+            let sequence = bounds.filter {
+                depthOf(blocks[$0]) == depth && orderedMarker(blocks[$0].content) != nil
+            }
             for seqIdx in sequence { processed.insert(seqIdx) }
-            renumberOrderedListRun(bounds: bounds, sequence: sequence)
+            renumberOrderedListRun(bounds: bounds, sequence: sequence, depthChanged: depthChanged)
         }
     }
 
     /// Walks outward from `seedIndex` to the bounds of the contiguous
-    /// same-depth ordered run: stops (exclusive) at a blank line, a
-    /// non-listItem block, a shallower list item, or a same-depth list item
-    /// that isn't ordered (a marker-type change starts a new list). A
+    /// same-depth ordered run: stops (exclusive) at a non-listItem block, a
+    /// shallower list item, a same-depth list item that isn't ordered (a
+    /// marker-type change starts a new list), or two consecutive blanks. A
+    /// single blank line is tolerated (CommonMark's "loose list" — one blank
+    /// line doesn't end a list) as long as the run continues past it; a
     /// deeper list item is included in the span but not the numbering.
     private func orderedRunBounds(seedIndex: Int, depth: Int) -> ClosedRange<Int> {
-        func continues(_ idx: Int) -> Bool {
+        func sameOrDeeper(_ idx: Int) -> Bool {
             guard blocks[idx].kind == .listItem else { return false }
             let d = depthOf(blocks[idx])
             if d < depth { return false }
@@ -80,19 +91,44 @@ extension EditorTextView {
             return true // deeper: nested child, part of the span
         }
         var lo = seedIndex
-        while lo > 0, continues(lo - 1) { lo -= 1 }
+        while lo > 0 {
+            if sameOrDeeper(lo - 1) { lo -= 1; continue }
+            if blocks[lo - 1].kind == .blank, lo >= 2, sameOrDeeper(lo - 2) { lo -= 2; continue }
+            break
+        }
         var hi = seedIndex
-        while hi < blocks.count - 1, continues(hi + 1) { hi += 1 }
+        while hi < blocks.count - 1 {
+            if sameOrDeeper(hi + 1) { hi += 1; continue }
+            if blocks[hi + 1].kind == .blank, hi + 2 < blocks.count, sameOrDeeper(hi + 2) { hi += 2; continue }
+            break
+        }
         return lo...hi
     }
 
     /// Renumbers the contiguous ordered run spanning `bounds`; `sequence` —
-    /// precomputed by the caller — is the same-depth subset of `bounds` that
-    /// actually gets numbered. Preserves the run's starting number. No-op
-    /// (no storage mutation) when the run is already sequential.
-    private func renumberOrderedListRun(bounds: ClosedRange<Int>, sequence: [Int]) {
-        guard let first = sequence.first,
-              let start = orderedMarker(blocks[first].content)?.number else { return }
+    /// precomputed by the caller — is the same-depth ordered subset of
+    /// `bounds` that actually gets numbered. No-op (no storage mutation)
+    /// when the run is already sequential.
+    ///
+    /// Start number: when at least one sequence member predates this edit
+    /// (isn't in `depthChanged`), this run is continuing/merging into
+    /// something that already existed, so it preserves whatever number its
+    /// first member already had — same as the plain-edit case, where
+    /// `depthChanged` is always empty. Only when EVERY member just arrived
+    /// together (a brand-new run, nothing pre-existing to continue) does it
+    /// start at 1 instead of inheriting a number from wherever its first
+    /// member used to live.
+    private func renumberOrderedListRun(bounds: ClosedRange<Int>, sequence: [Int], depthChanged: Set<Int>) {
+        guard let first = sequence.first else { return }
+        let isBrandNew = sequence.allSatisfy { depthChanged.contains($0) }
+        let start: Int
+        if isBrandNew {
+            start = 1
+        } else if let firstNumber = orderedMarker(blocks[first].content)?.number {
+            start = firstNumber
+        } else {
+            return
+        }
 
         var rewrites: [(idx: Int, digits: NSRange, newNumber: String)] = []
         for (i, idx) in sequence.enumerated() {

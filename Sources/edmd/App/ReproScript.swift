@@ -12,6 +12,7 @@ import EdmundCore
 ///   caret <needle>    place the caret before the first occurrence of <needle>
 ///   type <text>       type text, one key event per character
 ///   backspace <n>     press delete n times (300ms apart)
+///   tab / backtab     indent / dedent the selected list line(s)
 ///   scroll <y>        scroll the clip view to y (bypasses the caret/typewriter
 ///                     recentering, so a block can be driven off-screen)
 ///   logsel            log the current selection
@@ -109,6 +110,12 @@ enum ReproScript {
                 }
             case "return":
                 schedule(after: delay) { $0.insertText("\n", replacementRange: NSRange(location: NSNotFound, length: 0)) }
+                delay += 0.05
+            case "tab":
+                schedule(after: delay) { $0.insertTab(nil) }
+                delay += 0.05
+            case "backtab":
+                schedule(after: delay) { $0.insertBacktab(nil) }
                 delay += 0.05
             case "bypassdelete":
                 // Mimics AppKit's drag-move source deletion (the issue-#156

@@ -96,21 +96,76 @@ struct ListRenumberingTests {
         #expect(fgColor(at: editor.blocks[0].range.location, in: editor) == NSColor.tertiaryLabelColor)
     }
 
-    @Test("Splitting one list into two at the same depth renumbers both halves")
-    @MainActor func splittingIntoTwoRunsRenumbersBoth() {
+    @Test("Enter on an empty item leaves a blank line but still renumbers across it")
+    @MainActor func enterOnEmptyItemStillRenumbersAcrossBlankLine() {
         // Enter on an already-empty list item removes its marker
         // (EditorTextView+ListContinuation.swift's root-level-empty branch),
-        // leaving a blank line that splits one depth-0 run into two disjoint
-        // ones. Both must still get renumbered independently — a naive
-        // "one depth, one run" dedup would fix the first (trivially, since
-        // "1." alone is already correct) and silently skip the second.
+        // leaving a blank line — a single blank line is a CommonMark "loose
+        // list" separator, not a list boundary, so "b"/"c" after it are
+        // still part of the SAME run as "a" and renumber against its start.
         let editor = makeEditor()
         editor.loadContent("1. a\n2. \n4. b\n4. c")
         // Caret at the end of the empty "2. " item.
         let caret = (editor.rawSource as NSString).range(of: "2. ").upperBound
         editor.setSelectedRange(NSRange(location: caret, length: 0))
         editor.insertNewline(nil)
-        #expect(editor.rawSource == "1. a\n\n4. b\n5. c")
+        #expect(editor.rawSource == "1. a\n\n2. b\n3. c")
+    }
+
+    @Test("Two disjoint same-depth runs in one touched window both renumber")
+    @MainActor func twoDisjointSameDepthRunsBothRenumber() {
+        // Two consecutive blank lines are a real list boundary (only a
+        // single blank is tolerated as a loose-list separator), so "a, b"
+        // and "c, d" are genuinely disjoint runs at the same depth. Calling
+        // the hook with a window spanning both (as widening ±1 around a
+        // touched block near the boundary could) must renumber both — a
+        // naive "one depth, one run" dedup would fix the first and silently
+        // skip the second, leaving "d" duplicating "c"'s wrong number.
+        let editor = makeEditor()
+        editor.loadContent("1. a\n2. b\n\n\n5. c\n5. d")
+        editor.renumberOrderedListRunsIfNeeded(touching: 1..<5)
+        #expect(editor.rawSource == "1. a\n2. b\n\n\n5. c\n6. d")
+    }
+
+    @Test("Deleting a line's text but not its break still renumbers across the gap")
+    @MainActor func deleteLeavingBlankLineStillRenumbers() {
+        // Selecting a full line's text (e.g. via triple-click) and deleting
+        // it removes the content but not the line break, leaving a blank
+        // line behind rather than merging — "4. Four" then sits across a
+        // blank line from "1./2.", not immediately after them. It must
+        // still renumber: a single blank line is a CommonMark "loose list"
+        // separator, not a list boundary.
+        let editor = makeEditor()
+        editor.loadContent("1. One\n2. Two\n3. Three\n4. Four")
+        let range = (editor.rawSource as NSString).range(of: "3. Three")
+        editor.setSelectedRange(range)
+        editor.insertText("", replacementRange: range)
+        #expect(editor.rawSource == "1. One\n2. Two\n\n3. Four")
+    }
+
+    @Test("Indenting into a brand-new sublist restarts numbering at 1")
+    @MainActor func indentIntoBrandNewSublistRestartsAtOne() {
+        // Indenting a multi-line selection with no pre-existing nested
+        // siblings creates a sublist from scratch — it should start at 1,
+        // not inherit the top-level numbers ("2.", "3.") the moved items
+        // happened to have before the indent.
+        let editor = makeEditor()
+        editor.loadContent("1. One\n2. Two\n3. Three\n4. Four")
+        let start = (editor.rawSource as NSString).range(of: "2. Two").location
+        let end = (editor.rawSource as NSString).range(of: "3. Three").upperBound
+        editor.setSelectedRange(NSRange(location: start, length: end - start))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "1. One\n  1. Two\n  2. Three\n2. Four")
+    }
+
+    @Test("Indenting a single item into a brand-new sublist restarts at 1")
+    @MainActor func indentSingleItemIntoBrandNewSublistRestartsAtOne() {
+        let editor = makeEditor()
+        editor.loadContent("1. One\n2. Two\n3. Three")
+        let caret = (editor.rawSource as NSString).range(of: "2. Two").location
+        editor.setSelectedRange(NSRange(location: caret, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "1. One\n  1. Two\n2. Three")
     }
 
     @Test("Indenting a list item renumbers both the old and new level")
