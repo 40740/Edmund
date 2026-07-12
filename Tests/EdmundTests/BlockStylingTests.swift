@@ -134,7 +134,7 @@ struct BlockStylingActiveTests {
     @Test("Active blockquote shows its raw text")
     @MainActor func activeBlockquoteLine() {
         let editor = makeEditor()
-        editor.loadContent("> line1\n> line2\nother")
+        editor.loadContent("> line1\n> line2\n\nother")
         activateBlock(0, in: editor)
 
         // Consecutive `>` lines merge into one block.
@@ -353,7 +353,7 @@ struct BlockStylingNonActiveTests {
     @Test("Non-active > quote: prefix invisible (width-preserving), content has secondary color")
     @MainActor func nonActiveBlockquote() {
         let editor = makeEditor()
-        editor.loadContent("> wise words\nother")
+        editor.loadContent("> wise words\n\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
@@ -386,7 +386,7 @@ struct BlockStylingNonActiveTests {
     @MainActor func nonActiveConsecutiveBlockquoteLines() {
         let editor = makeEditor()
         // Consecutive `>` lines merge into one block; "other" is the next block.
-        editor.loadContent("> line1\n> line2\nother")
+        editor.loadContent("> line1\n> line2\n\nother")
         activateBlock(1, in: editor)   // activate "other"; the quote stays rendered
 
         #expect(displayText(for: 0, in: editor) == "> line1\n> line2")
@@ -410,7 +410,7 @@ struct BlockStylingNonActiveTests {
     @Test("Non-active bold inside blockquote: all delimiters hidden")
     @MainActor func nonActiveBoldInBlockquote() {
         let editor = makeEditor()
-        editor.loadContent("> **important**\nother")
+        editor.loadContent("> **important**\n\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)

@@ -57,6 +57,22 @@ struct BlockquoteNestingTests {
         #expect(second?.hugsTextTop == false)
     }
 
+    @Test("A lazy continuation line carries the quote bar and hides no marker")
+    func lazyContinuationBar() {
+        let editor = makeEditor()
+        let md = "> a\nb"   // `b` lazily continues the quote (one block)
+        let s = editor.styleBlock(md)
+        let ns = md as NSString
+        // First line: marker hidden, bar at inset 0.
+        #expect(isMarkerHidden(at: 0, in: s))
+        #expect(barInsets(s.attribute(.blockDecoration, at: 2, effectiveRange: nil)) == [0])
+        // Lazy line: the span extends over it, so the bar is present too; there
+        // is no `>` on this line, so nothing is marker-hidden.
+        let bLoc = ns.range(of: "b").location
+        #expect(barInsets(s.attribute(.blockDecoration, at: bLoc, effectiveRange: nil)) == [0])
+        #expect(!isMarkerHidden(at: bLoc, in: s))
+    }
+
     @Test("A nested quote (> >) hides both markers and stacks two bars, outer leftmost")
     func nestedOnce() {
         let editor = makeEditor()

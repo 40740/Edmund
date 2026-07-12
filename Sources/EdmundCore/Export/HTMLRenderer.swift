@@ -239,7 +239,7 @@ struct HTMLRenderer: MarkupVisitor {
             if let marker = Callout.parseMarker(firstLine),
                let style = Callout.style(for: marker.type) {
                 return renderCallout(marker: marker, style: style,
-                                     firstLine: firstLine, inner: inner)
+                                     firstLine: firstLine, blockQuote: blockQuote)
             }
         }
         return "<blockquote>\(renderChildren(of: blockQuote))</blockquote>"
@@ -515,7 +515,7 @@ struct HTMLRenderer: MarkupVisitor {
     // MARK: - Callouts
 
     private mutating func renderCallout(marker: Callout.Marker, style: CalloutStyle,
-                                        firstLine: String, inner: String) -> String {
+                                        firstLine: String, blockQuote: BlockQuote) -> String {
         // Custom title = whatever follows `]` on the first line.
         let ns = firstLine as NSString
         let afterMarker = marker.closeBracket.upperBound <= ns.length
@@ -523,14 +523,19 @@ struct HTMLRenderer: MarkupVisitor {
             : ""
         let title = Callout.title(type: marker.type, customTitle: afterMarker)
 
-        // Body = the de-quoted content after the first line, re-parsed and
-        // rendered fresh (mirrors the editor stripping `>` and re-parsing).
-        let body: String
-        if let nl = inner.firstIndex(of: "\n") {
-            body = String(inner[inner.index(after: nl)...])
-        } else {
-            body = ""
-        }
+        // Callouts are strict: only the leading run of `>`-prefixed lines is the
+        // callout body. swift-markdown's CommonMark parse lazily continues a
+        // following bare line into the blockquote, but the editor keeps callouts
+        // strict (BlockParser splits the lazy line off) so a following
+        // `> [!type]` can't be pulled into a prior callout (GFM ex. 228). Split
+        // the raw source the same way and render the lazy tail as sibling
+        // content after the callout, matching edit-mode segmentation exactly.
+        let rawLines = (sourceText(blockQuote) ?? "").components(separatedBy: "\n")
+        let quotedCount = rawLines.prefix(while: Self.isQuotedLine).count
+
+        // Body = the de-quoted `>`-run after the first (marker) line, re-parsed.
+        let body = rawLines[min(1, quotedCount)..<quotedCount]
+            .map(Self.deQuoteLine).joined(separator: "\n")
         let bodyHTML = body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? ""
             : HTMLRenderer.render(markdown: body, options: options)
@@ -539,24 +544,40 @@ struct HTMLRenderer: MarkupVisitor {
         // `currentColor`, so the `.callout-title` accent color tints it — no
         // per-appearance asset pass, and no SF Symbol shipped in the export.
         let icon = "<span class=\"callout-icon\">\(LucideIcons.inlineSVG(style.iconName) ?? "")</span>"
-        return "<div class=\"callout callout-\(Self.attr(marker.type))\">"
+        let calloutHTML = "<div class=\"callout callout-\(Self.attr(marker.type))\">"
             + "<div class=\"callout-title\">\(icon)<span class=\"callout-title-text\">\(Self.escape(title))</span></div>"
             + "<div class=\"callout-body\">\(bodyHTML)</div></div>"
+
+        // Lazy tail (bare lines swift-markdown folded in) → sibling markdown.
+        let tail = rawLines[quotedCount...].joined(separator: "\n")
+        let tailHTML = tail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? ""
+            : HTMLRenderer.render(markdown: tail, options: options)
+        return calloutHTML + tailHTML
     }
 
     /// The raw source text of a block quote with each line's `>` prefix removed.
     private func deQuoted(_ blockQuote: BlockQuote) -> String? {
         guard let quoted = sourceText(blockQuote) else { return nil }
-        let lines = quoted.components(separatedBy: "\n").map { line -> String in
-            var l = Substring(line)
-            while l.first == " " { l = l.dropFirst() }
-            if l.first == ">" {
-                l = l.dropFirst()
-                if l.first == " " { l = l.dropFirst() }
-            }
-            return String(l)
+        return quoted.components(separatedBy: "\n")
+            .map(Self.deQuoteLine).joined(separator: "\n")
+    }
+
+    /// Strips one leading `>` marker (optional spaces, `>`, optional space).
+    private static func deQuoteLine(_ line: String) -> String {
+        var l = Substring(line)
+        while l.first == " " { l = l.dropFirst() }
+        if l.first == ">" {
+            l = l.dropFirst()
+            if l.first == " " { l = l.dropFirst() }
         }
-        return lines.joined(separator: "\n")
+        return String(l)
+    }
+
+    /// Whether a line carries a `>` marker (optional leading spaces then `>`) —
+    /// the same predicate the editor's BlockParser uses for quote membership.
+    private static func isQuotedLine(_ line: String) -> Bool {
+        line.drop(while: { $0 == " " }).first == ">"
     }
 
     // MARK: - Inline non-GFM (highlight / math / wikilink / comment)

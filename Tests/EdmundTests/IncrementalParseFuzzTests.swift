@@ -23,7 +23,9 @@ struct IncrementalParseFuzzTests {
                          "===\n", "===", "    code\n", "\tcode\n",
                          "<div>", "</div>\n", "<!--", "-->", "<script>",
                          "</script>\n", "<pre>", "<?", "<!DOCTYPE ",
-                         "<![CDATA[", "]]>", "<custom-tag>\n"]
+                         "<![CDATA[", "]]>", "<custom-tag>\n",
+                         // Blockquote lazy continuation: bare lines after `>`.
+                         "> q\nlazy", "> a\nb\n> c", "> a\n\nb", "lazy\n"]
 
         for _ in 0..<120 {
             let ns = editor.rawSource as NSString
