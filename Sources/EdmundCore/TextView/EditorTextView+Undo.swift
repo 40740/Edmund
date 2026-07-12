@@ -106,6 +106,7 @@ extension EditorTextView {
 
         rawSource = snapshot.rawSource
         rebuildListIndentState()
+        rebuildLinkDefState()
         let (newBlocks, changed) = BlockParser.parseWithDiff(rawSource, previous: blocks)
         blocks = newBlocks
 

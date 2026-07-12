@@ -158,6 +158,10 @@ extension EditorTextView {
         // full positional-diff parse as the fallback.
         let newBlocks: [Block]
         let changed: Range<Int>
+        // Whether the document's link reference definitions changed — a `[label]:
+        // url` line added/removed/edited can affect a reference link in *any*
+        // block, so on change every bracket-bearing block is restyled below.
+        var defsChanged = false
         if let pending = (ts as? EditorTextStorage)?.consumePendingEdit(),
            let incremental = BlockParser.incrementalParse(text: rawSource,
                                                           old: blocks,
@@ -167,20 +171,27 @@ extension EditorTextView {
             #if DEBUG
             verifyIncrementalParse(newBlocks)
             #endif
-            // Update the indent histogram from exactly the replaced blocks
-            // (old) and their replacements (new) — O(edit), same effect as a
-            // whole-document rescan.
+            // Update the indent histogram and link definitions from exactly the
+            // replaced blocks (old) and their replacements (new) — O(edit), same
+            // effect as a whole-document rescan.
+            let oldDefState = linkDefState
             let suffixCount = newBlocks.count - changed.upperBound
             for i in changed.lowerBound ..< (oldCount - suffixCount) {
                 listIndentState.remove(blocks[i].content)
+                linkDefState.remove(blocks[i].content)
             }
             for i in changed {
                 listIndentState.add(newBlocks[i].content)
+                linkDefState.add(newBlocks[i].content)
             }
             listIndentUnit = listIndentState.unit
+            defsChanged = linkDefState != oldDefState
         } else {
             (newBlocks, changed) = BlockParser.parseWithDiff(rawSource, previous: blocks)
+            let oldDefState = linkDefState
             rebuildListIndentState()
+            rebuildLinkDefState()
+            defsChanged = linkDefState != oldDefState
         }
         blocks = newBlocks
 
@@ -209,6 +220,15 @@ extension EditorTextView {
         // indentation of every list block changes with it.
         if listIndentUnit != oldIndentUnit {
             for (i, block) in blocks.enumerated() where block.kind == .listItem {
+                dirty.insert(i)
+            }
+        }
+
+        // A changed link definition can flip any reference link (even a bare
+        // `[label]` shortcut) elsewhere in the document, so restyle every block
+        // that could hold one. Bracket-free blocks can't, so skip them.
+        if defsChanged {
+            for (i, block) in blocks.enumerated() where block.content.contains("[") {
                 dirty.insert(i)
             }
         }

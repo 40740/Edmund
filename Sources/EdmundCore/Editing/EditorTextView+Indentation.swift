@@ -99,6 +99,7 @@ extension EditorTextView {
         let oldIndentUnit = listIndentUnit
         rawSource = parts.joined(separator: blockSeparator)
         rebuildListIndentState()
+        rebuildLinkDefState()
 
         // Cursor in startBlock shifts by 1 indent; rawEnd in endBlock
         // shifts by (endBlock - startBlock + 1) indents (one per block).
@@ -180,6 +181,7 @@ extension EditorTextView {
         let oldIndentUnit = listIndentUnit
         rawSource = parts.joined(separator: blockSeparator)
         rebuildListIndentState()
+        rebuildLinkDefState()
 
         // Adjust rawStart (in startBlock).  No blocks before startBlock
         // were modified, so its start position is unchanged.
