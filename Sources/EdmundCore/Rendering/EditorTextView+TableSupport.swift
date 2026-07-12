@@ -10,7 +10,38 @@ import AppKit
 // table row) that the BlockParser merges into a single block. Each row
 // carries a `.tableRow` BlockDecoration; because every row uses the same
 // column X offsets, the per-row vertical strokes line up into continuous
-// column borders.
+// column borders. A cell too wide for its column renders across multiple
+// *visual* sublines within that one paragraph, via `.tableCellWraps`
+// (EditorTextView+TextKit2.swift) — the paragraph/row count is unchanged.
+
+// MARK: - Column Width Distribution
+
+/// Clamps each column's natural (widest-cell) width to fit `available` total
+/// width, so one very wide cell doesn't stretch the whole table off screen.
+/// Columns already at or under their fair share (`available / count`) keep
+/// their natural width; the slack they don't use is handed to the columns
+/// that exceed fair share, split evenly among them and floored at `minWidth`.
+/// ponytail: single-pass, not CSS's iterative auto-table-layout fixed point —
+/// revisit only if real documents show pathological many-column cases.
+func distributeColumnWidths(natural: [CGFloat], available: CGFloat,
+                            minWidth: CGFloat) -> [CGFloat] {
+    let numCols = natural.count
+    guard numCols > 0, available > 0 else { return natural }
+    let fairShare = available / CGFloat(numCols)
+    var overIdx: [Int] = []
+    var usedByUnderShare: CGFloat = 0
+    for (ci, width) in natural.enumerated() {
+        if width <= fairShare { usedByUnderShare += width } else { overIdx.append(ci) }
+    }
+    guard !overIdx.isEmpty else { return natural }
+    let remaining = max(0, available - usedByUnderShare)
+    let perOverShare = remaining / CGFloat(overIdx.count)
+    var result = natural
+    for ci in overIdx {
+        result[ci] = max(minWidth, min(natural[ci], perOverShare))
+    }
+    return result
+}
 
 // MARK: - Column Alignment
 

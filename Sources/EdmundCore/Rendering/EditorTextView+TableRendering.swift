@@ -27,7 +27,9 @@ extension EditorTextView {
         } else {
             // Non-active: bold header, hidden pipes, column-width alignment
             // via kern, drawn vertical + horizontal borders via TableRowTextBlock,
-            // with cell padding for breathing room.
+            // with cell padding for breathing room. A cell wider than its
+            // column instead hides its real characters and gets redrawn
+            // wrapped via `.tableCellWraps` (see EditorTextView+TextKit2.swift).
             let tableNS = (result.string as NSString)
             let tableStr = tableNS.substring(with: span.fullRange)
             let lines = tableStr.components(separatedBy: "\n")
@@ -43,11 +45,16 @@ extension EditorTextView {
             // ponytail: block-level markdown in a cell (`# x`, `- x`) keeps its
             // fonts but loses its block chrome (paragraph styles / decorations
             // are row-owned, see the transplant below); tall math or image
-            // overlays get no extra line height in cells.
+            // overlays get no extra line height in cells. A wrapped (overflowing)
+            // cell is drawn from a detached scratch text layout rather than the
+            // live glyph run, so click-to-caret placement inside it is
+            // approximate while the table is non-active — clicking anywhere in
+            // the cell still enters the table and lands the caret at the raw
+            // source's nearest position once active.
             let headerCells = splitTableRow(lines[0])
             let numCols = headerCells.count
             guard numCols > 0 else { return }
-            var colWidths = [CGFloat](repeating: 0, count: numCols)
+            var natural = [CGFloat](repeating: 0, count: numCols)
             // Per line: the cell's character range within the line + its
             // styled form (empty for the separator row).
             var rowCells: [[(start: Int, end: Int, styled: NSAttributedString)]] = []
@@ -75,10 +82,19 @@ extension EditorTextView {
                 }
                 rowCells.append(cells)
                 for ci in 0..<min(cells.count, numCols) {
-                    colWidths[ci] = max(colWidths[ci], cells[ci].styled.size().width)
+                    natural[ci] = max(natural[ci], cells[ci].styled.size().width)
                 }
             }
+            // Clamp column content widths to the available line width so a
+            // pathologically wide cell doesn't stretch the whole table off
+            // screen — the overflow gets wrapped (below) instead. Columns
+            // that already fit their fair share keep their natural width.
+            let minColWidth = bodyFont.pointSize * 3
+            let available = max(0, availableContentWidth - CGFloat(numCols) * 2 * cellHPad)
+            let clamped = distributeColumnWidths(natural: natural, available: available,
+                                                 minWidth: minColWidth)
             // Add horizontal padding to each column (space after cell text).
+            var colWidths = clamped
             for ci in 0..<numCols {
                 colWidths[ci] += 2 * cellHPad
             }
@@ -88,8 +104,10 @@ extension EditorTextView {
             // so the 2*cellHPad per column splits evenly: hPad of right
             // padding for the current cell, hPad of left padding for the next.
             var borderXOffsets: [CGFloat] = []
+            var colStartX: [CGFloat] = []
             var cumX: CGFloat = 0
             for ci in 0..<numCols {
+                colStartX.append(cumX + cellHPad)
                 cumX += colWidths[ci]
                 if ci < numCols - 1 { borderXOffsets.append(cumX - cellHPad) }
             }
@@ -132,8 +150,22 @@ extension EditorTextView {
                     value: BlockDecoration(.tableRow(columnXOffsets: borderXOffsets,
                                                      width: totalWidth,
                                                      leftInset: cellHPad,
-                                                     separator: i == 1)),
+                                                     separator: i == 1,
+                                                     bottomBorder: i > 1)),
                     range: lineRange)
+
+                // Cells whose styled width exceeds their column's (clamped)
+                // content width can't be kern-aligned in place — they get
+                // hidden and redrawn wrapped by `.tableCellWraps` instead
+                // (see DecoratedTextLayoutFragment). Computed once per row so
+                // both the hide/transplant step and the kern step below agree.
+                var overflowsCol = [Bool](repeating: false, count: numCols)
+                if i != 1, i < rowCells.count {
+                    for ci in 0..<min(rowCells[i].count, numCols) {
+                        overflowsCol[ci] = rowCells[i][ci].styled.size().width
+                            > colWidths[ci] - 2 * cellHPad + 0.5
+                    }
+                }
 
                 if i == 1 {
                     // Separator row: hide all text
@@ -143,18 +175,34 @@ extension EditorTextView {
                     // Transplant each styled cell's attributes onto the table,
                     // skipping .paragraphStyle and .blockDecoration — row
                     // geometry and borders stay owned by the table code.
-                    for cell in rowCells[i] {
+                    // Overflowing cells instead hide their real characters and
+                    // get redrawn wrapped, since kern alone can't wrap text.
+                    var wraps: [TableCellWrap] = []
+                    for (ci, cell) in rowCells[i].enumerated() where ci < numCols {
                         let offset = lineOffset + cell.start
-                        cell.styled.enumerateAttributes(
-                            in: NSRange(location: 0, length: cell.styled.length)
-                        ) { attrs, r, _ in
-                            let target = NSRange(location: offset + r.location, length: r.length)
-                            guard target.upperBound <= result.length else { return }
-                            for (key, value) in attrs {
-                                guard key != .paragraphStyle && key != .blockDecoration else { continue }
-                                result.addAttribute(key, value: value, range: target)
+                        if overflowsCol[ci] {
+                            let hideRange = NSRange(location: offset, length: cell.end - cell.start)
+                            guard hideRange.upperBound <= result.length else { continue }
+                            result.addAttribute(.font, value: hiddenFont, range: hideRange)
+                            result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
+                            wraps.append(TableCellWrap(styled: cell.styled, x: colStartX[ci],
+                                                       contentWidth: colWidths[ci] - 2 * cellHPad))
+                        } else {
+                            cell.styled.enumerateAttributes(
+                                in: NSRange(location: 0, length: cell.styled.length)
+                            ) { attrs, r, _ in
+                                let target = NSRange(location: offset + r.location, length: r.length)
+                                guard target.upperBound <= result.length else { return }
+                                for (key, value) in attrs {
+                                    guard key != .paragraphStyle && key != .blockDecoration else { continue }
+                                    result.addAttribute(key, value: value, range: target)
+                                }
                             }
                         }
+                    }
+                    if !wraps.isEmpty {
+                        result.addAttribute(.tableCellWraps, value: TableCellWrapList(wraps),
+                                            range: lineRange)
                     }
                 }
 
@@ -179,6 +227,7 @@ extension EditorTextView {
                 // "before" kern goes on the char preceding the cell content.
                 if i != 1, i < rowCells.count {
                     for ci in 0..<min(rowCells[i].count, numCols) {
+                        guard !overflowsCol[ci] else { continue }
                         let cr = rowCells[i][ci]
                         let cellWidth = cr.styled.size().width
                         let padding = colWidths[ci] - cellWidth
