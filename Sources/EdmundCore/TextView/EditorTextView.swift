@@ -51,6 +51,15 @@ public class EditorTextView: NSTextView {
         listIndentState = ListIndentState.build(from: rawSource)
         listIndentUnit = listIndentState.unit
     }
+
+    /// Document-wide link reference definitions (`[label]: url`), fed into each
+    /// block's parse so GFM reference links resolve across blocks. Maintained
+    /// incrementally on the edit path; rebuilt by the whole-document paths.
+    var linkDefState = LinkDefinitionState()
+
+    func rebuildLinkDefState() {
+        linkDefState = LinkDefinitionState.build(from: rawSource)
+    }
     /// Line ending of the most recently loaded content. The buffer itself is
     /// always LF; this is remembered so saves preserve the file's style.
     public var originalLineEnding: LineEnding = .lf
@@ -277,6 +286,7 @@ public class EditorTextView: NSTextView {
 
         rawSource = ""
         rebuildListIndentState()
+        rebuildLinkDefState()
         blocks = BlockParser.parse(rawSource)
         recompose(cursorInRaw: 0)
 
@@ -438,6 +448,7 @@ public class EditorTextView: NSTextView {
         if hasMarkedText() { unmarkText() }
         rawSource = ts.string
         rebuildListIndentState()
+        rebuildLinkDefState()
         blocks = BlockParser.parse(rawSource, previous: blocks)
         recompose(cursorInRaw: min(selectedRange().location, (rawSource as NSString).length))
     }
@@ -495,6 +506,7 @@ public class EditorTextView: NSTextView {
             originalLineEnding = LineEnding.isInconsistent(in: content) ? .lf : LineEnding.detect(in: content)
             rawSource = LineEnding.normalize(content)
             rebuildListIndentState()
+            rebuildLinkDefState()
             blocks = BlockParser.parse(rawSource)
             Log.blockStructure(blocks)
             undoStack.removeAll()

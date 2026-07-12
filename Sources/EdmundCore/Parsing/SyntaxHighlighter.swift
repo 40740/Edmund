@@ -86,12 +86,26 @@ public enum SyntaxHighlighter {
     // MARK: - Parsing
 
     /// Returns all inline syntax spans found in `text`, ordered by position.
-    public static func parse(_ text: String) -> [Span] {
+    ///
+    /// `linkDefinitions` (the document's collected `[label]: url` lines, from
+    /// `LinkDefinitionState.defsText`) is appended after the block so
+    /// swift-markdown can resolve GFM reference links whose definition lives in
+    /// another block; spans landing in the appended region are dropped. Empty
+    /// (the common case) means no append and no cost.
+    public static func parse(_ text: String, linkDefinitions: String = "") -> [Span] {
         guard !text.isEmpty else { return [] }
 
-        let doc = Document(parsing: text, options: [.disableSmartOpts])
-        var walker = SpanCollector(source: text)
+        // Walk the AST over the block plus any appended reference definitions,
+        // then keep only spans within the original block. Custom parsers below
+        // still run on `text`, so their offsets need no adjustment.
+        let textLen = (text as NSString).length
+        let parseText = linkDefinitions.isEmpty ? text : text + "\n\n" + linkDefinitions
+        let doc = Document(parsing: parseText, options: [.disableSmartOpts])
+        var walker = SpanCollector(source: parseText)
         walker.visit(doc)
+        if !linkDefinitions.isEmpty {
+            walker.spans.removeAll { $0.fullRange.upperBound > textLen }
+        }
 
         // ==highlight== is not supported by swift-markdown; parse with regex.
         parseHighlight(text, into: &walker.spans)

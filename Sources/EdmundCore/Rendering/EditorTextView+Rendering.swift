@@ -153,7 +153,7 @@ extension EditorTextView {
         let result = NSMutableAttributedString(string: markdown, attributes: baseAttributes)
         guard !markdown.isEmpty else { return result }
 
-        let spans = SyntaxHighlighter.parse(markdown)
+        let spans = SyntaxHighlighter.parse(markdown, linkDefinitions: linkDefState.defsText)
 
         // The font already applied at `loc` — the enclosing heading's when
         // inside one, else the base body font. Inline spans derive their font
