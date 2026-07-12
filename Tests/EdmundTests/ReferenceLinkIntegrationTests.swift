@@ -24,4 +24,12 @@ struct ReferenceLinkIntegrationTests {
         activateBlock(2, in: editor)
         #expect(fgColor(at: 5, in: editor) != editor.linkColor)
     }
+
+    @Test("A definition inside a block quote resolves a use in another block")
+    @MainActor func definitionInsideBlockQuoteResolves() {
+        let editor = makeEditor()
+        editor.loadContent("use [foo] here\n\n> [foo]: https://e.com")
+        activateBlock(2, in: editor)
+        #expect(fgColor(at: 5, in: editor) == editor.linkColor)
+    }
 }
