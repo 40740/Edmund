@@ -67,6 +67,16 @@ struct ListContinuationTests {
         #expect(editor.rawSource == "1. first\n")
     }
 
+    @Test("Enter mid-list renumbers items below")
+    @MainActor func enterMidListRenumbers() {
+        let editor = makeEditor()
+        editor.loadContent("1. a\n2. b\n3. c")
+        // Cursor at end of "1. a" (offset 4)
+        editor.setSelectedRange(NSRange(location: 4, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "1. a\n2. \n3. b\n4. c")
+    }
+
     // MARK: - Checkbox Lists
 
     @Test("Enter after unchecked todo inserts new unchecked todo")

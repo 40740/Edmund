@@ -116,6 +116,10 @@ extension EditorTextView {
                                                      unitChanged: listIndentUnit != oldIndentUnit),
                                cursorInRaw: newRawStart, selectionInRaw: selInRaw)
         }
+        // The indented blocks changed depth: they may now belong to a
+        // different ordered run (or start a new one), and the old depth's
+        // remaining siblings lost a member — both need renumbering.
+        renumberOrderedListRunsIfNeeded(touching: startBlock..<(endBlock + 1))
         document?.updateChangeCount(.changeDone)
     }
 
@@ -209,6 +213,10 @@ extension EditorTextView {
                                                      unitChanged: listIndentUnit != oldIndentUnit),
                                cursorInRaw: newRawStart, selectionInRaw: selInRaw)
         }
+        // The dedented blocks changed depth: they may now belong to a
+        // different ordered run (or merge into an existing one), and the
+        // old depth's remaining siblings lost a member — both need renumbering.
+        renumberOrderedListRunsIfNeeded(touching: startBlock..<(endBlock + 1))
         document?.updateChangeCount(.changeDone)
     }
 }
