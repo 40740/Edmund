@@ -150,7 +150,8 @@ extension EditorTextView {
                     value: BlockDecoration(.tableRow(columnXOffsets: borderXOffsets,
                                                      width: totalWidth,
                                                      leftInset: cellHPad,
-                                                     separator: i == 1)),
+                                                     separator: i == 1,
+                                                     bottomBorder: i > 1)),
                     range: lineRange)
 
                 // Cells whose styled width exceeds their column's (clamped)

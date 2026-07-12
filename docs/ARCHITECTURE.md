@@ -469,6 +469,9 @@ them and route through the app's document graph without JavaScript.
   the container edge and has no per-cell flow region (that's what
   NSTextTable/NSTextBlock are for, and they're banned, see §2). Click-to-caret
   placement inside a wrapped, non-active cell is approximate as a result.
+  Every data row also draws a full-width bottom grid line (`.tableRow`'s
+  `bottomBorder`) — the header/body boundary already gets its line from
+  `separator`, so only rows after the separator set it.
 - *(Track larger roadmap items in README/ROADMAP; track code-debt here.)*
 
 ---

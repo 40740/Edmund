@@ -72,7 +72,7 @@ struct TableWrapRenderingTests {
         let s = styled.string as NSString
         var lineStart = 0
         while lineStart <= s.length {
-            if case .tableRow(let offsets, _, _, _)? =
+            if case .tableRow(let offsets, _, _, _, _)? =
                 blockDecoration(at: lineStart, in: styled)?.kind {
                 offsetsPerRow.append(offsets)
             }
@@ -82,6 +82,26 @@ struct TableWrapRenderingTests {
         }
         #expect(offsetsPerRow.count >= 2)
         #expect(offsetsPerRow.dropFirst().allSatisfy { $0 == offsetsPerRow[0] })
+    }
+
+    @Test("Every data row gets a bottom grid line; header and separator rows don't")
+    func bottomBorderOnDataRowsOnly() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("| a | b |\n|---|---|\n| x | y |\n| p | q |", cursorPosition: nil)
+        var bottoms: [Bool] = []
+        let s = styled.string as NSString
+        var lineStart = 0
+        while lineStart <= s.length {
+            if case .tableRow(_, _, _, _, let bottomBorder)? =
+                blockDecoration(at: lineStart, in: styled)?.kind {
+                bottoms.append(bottomBorder)
+            }
+            let nl = s.range(of: "\n", range: NSRange(location: lineStart, length: s.length - lineStart))
+            guard nl.location != NSNotFound else { break }
+            lineStart = nl.upperBound
+        }
+        // Rows: header, separator, "x | y", "p | q".
+        #expect(bottoms == [false, false, true, true])
     }
 
     @Test("distributeColumnWidths keeps under-fair-share columns, clamps the rest")

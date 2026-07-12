@@ -61,9 +61,11 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         /// Table-row chrome: vertical column borders at text-relative x
         /// offsets, and a horizontal rule through the separator row. `width`
         /// is the table's full width; `leftInset` the text's inset from the
-        /// table's left edge.
+        /// table's left edge. `bottomBorder` draws a full-width line at this
+        /// row's bottom edge — the grid line between data rows (the header/
+        /// separator boundary already gets its line from `separator`).
         case tableRow(columnXOffsets: [CGFloat], width: CGFloat,
-                      leftInset: CGFloat, separator: Bool)
+                      leftInset: CGFloat, separator: Bool, bottomBorder: Bool)
         /// Horizontal hairline across the text column, drawn `centerOffset`
         /// points below the fragment's vertical center. The offset compensates
         /// for adjacent text sitting at its baseline (low in its line box), so
@@ -509,7 +511,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             context.fill(CGRect(x: point.x - width + decoration.inset, y: barTop,
                                 width: width, height: barHeight))
 
-        case .tableRow(let xOffsets, let width, let leftInset, let separator):
+        case .tableRow(let xOffsets, let width, let leftInset, let separator, let bottomBorder):
             // Offsets are text-relative; the fragment's origin is the text start.
             context.setStrokeColor(NSColor.separatorColor.cgColor)
             context.setLineWidth(1)
@@ -520,6 +522,11 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             }
             if separator {
                 let y = round(point.y + frame.height / 2) + 0.5
+                context.move(to: CGPoint(x: point.x - leftInset, y: y))
+                context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
+            }
+            if bottomBorder {
+                let y = round(point.y + frame.height) + 0.5
                 context.move(to: CGPoint(x: point.x - leftInset, y: y))
                 context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
             }
