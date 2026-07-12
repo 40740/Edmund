@@ -1,4 +1,5 @@
 import Foundation
+import Markdown
 
 /// Splits a document string into `Block`s and preserves block identity
 /// across re-parses so the "active block" doesn't jump around.
@@ -299,18 +300,40 @@ public enum BlockParser {
             return (merged.joined(separator: "\n"), .mathDisplay, j)
         }
 
-        // Merge a run of consecutive block-quote lines (`>`) into one block.
-        // This covers callouts and plain multi-line block quotes alike, and
-        // gives the editor one styling/activation unit per quote.
+        // Merge block-quote lines into one block (the editor's styling /
+        // activation unit per quote).
         if isBlockquoteLine(first) {
-            let isCallout = quoteRunOpensCallout(first)
+            // Callouts stay strict: only consecutive `>` lines. Lazy
+            // continuation is deliberately suppressed so a following `> [!type]`
+            // can't be pulled into a prior callout's paragraph (GFM ex. 228).
+            // Read mode matches this (HTMLRenderer.renderCallout splits at the
+            // first non-`>` line).
+            if quoteRunOpensCallout(first) {
+                var merged = [first]
+                var j = i + 1
+                while let line = buf.line(at: j), isBlockquoteLine(line) {
+                    merged.append(line)
+                    j += 1
+                }
+                return (merged.joined(separator: "\n"), .quoteRun(isCallout: true), j)
+            }
+            // Plain block quote: honor CommonMark lazy continuation (a bare
+            // non-blank line after a quote paragraph joins the quote). The
+            // extent depends only on this line and following lines up to the
+            // next blank (a blank always ends a quote), so the parse stays
+            // forward-only and the incremental invariant holds.
+            if let (content, next) = mergePlainQuote(&buf, at: i) {
+                return (content, .quoteRun(isCallout: false), next)
+            }
+            // Fallback (candidate's first child wasn't a BlockQuote — shouldn't
+            // happen): strict `>`-run.
             var merged = [first]
             var j = i + 1
             while let line = buf.line(at: j), isBlockquoteLine(line) {
                 merged.append(line)
                 j += 1
             }
-            return (merged.joined(separator: "\n"), .quoteRun(isCallout: isCallout), j)
+            return (merged.joined(separator: "\n"), .quoteRun(isCallout: false), j)
         }
 
         // Detect table: header row followed by separator row with the same
@@ -614,6 +637,40 @@ public enum BlockParser {
     /// then `>`).
     private static func isBlockquoteLine(_ line: String) -> Bool {
         return line.drop(while: { $0 == " " }).first == ">"
+    }
+
+    /// Extent of a plain block quote starting at line `i`, honoring CommonMark
+    /// lazy continuation. Gathers the run of non-blank candidate lines (a blank
+    /// always ends a quote), parses them with swift-markdown, and truncates the
+    /// quote to the first `BlockQuote` node's line span — so the exact rules
+    /// (heading/list/fence/thematic-break interrupt; an empty `>` closes the
+    /// paragraph; a bare paragraph line continues it) come straight from the
+    /// CommonMark parser, matching read mode. Returns the quote content and the
+    /// index of the line after it, or nil when the candidate's first child
+    /// isn't a BlockQuote (caller falls back to the strict `>`-run).
+    private static func mergePlainQuote(_ buf: inout LineBuffer, at i: Int)
+        -> (content: String, next: Int)? {
+        var candidate: [String] = []
+        var j = i
+        while let line = buf.line(at: j), !isBlankLine(line) {
+            candidate.append(line)
+            j += 1
+        }
+        let doc = Document(parsing: candidate.joined(separator: "\n"),
+                           options: [.disableSmartOpts])
+        guard doc.child(at: 0) is BlockQuote else { return nil }
+        // The candidate has no blank lines, so its top-level blocks are
+        // contiguous: the quote spans lines 1 ..< (second child's start line).
+        // swift-markdown line numbers are 1-based within the candidate, and
+        // candidate line 1 == buffer line `i`.
+        let quoteLineCount: Int
+        if doc.childCount > 1, let nextStart = doc.child(at: 1)?.range?.lowerBound.line {
+            quoteLineCount = min(max(nextStart - 1, 1), candidate.count)
+        } else {
+            quoteLineCount = candidate.count
+        }
+        let content = candidate[0..<quoteLineCount].joined(separator: "\n")
+        return (content, i + quoteLineCount)
     }
 
     /// Returns true if the line contains a pipe character (potential table row).

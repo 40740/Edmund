@@ -449,4 +449,34 @@ struct HTMLRendererCalloutTests {
         #expect(out.hasPrefix("<blockquote>"))
         #expect(!out.contains("callout"))
     }
+
+    // Callouts are strict in BOTH modes: a bare (lazy) line after a callout body
+    // does NOT join the callout — it renders as a sibling, matching edit-mode
+    // block segmentation (BlockParser keeps callouts strict; see
+    // BlockquoteLazyContinuationTests.calloutStaysStrict for the edit side).
+    @Test("A lazy line after a callout renders as a sibling, not in the body")
+    func calloutBodyStrict() {
+        let out = html("> [!note]\n> body\nlazy")
+        #expect(out.contains("<div class=\"callout-body\"><p>body</p></div>"))
+        // `lazy` sits after the callout div closes, not inside the body.
+        #expect(out.contains("</div></div><p>lazy</p>"))
+        #expect(!out.contains("body\nlazy"))
+    }
+
+    @Test("GFM ex.228 tail: `> y` after a lazy line is a sibling quote, not the callout")
+    func calloutLazyTailWithQuote() {
+        let out = html("> [!note]\n> body\nlazy\n> y")
+        #expect(out.contains("<div class=\"callout-body\"><p>body</p></div>"))
+        #expect(out.contains("<p>lazy</p>"))
+        #expect(out.contains("<blockquote><p>y</p></blockquote>"))
+        // Exactly one callout — the second `> y` was not pulled into it.
+        #expect(out.components(separatedBy: "class=\"callout ").count == 2)
+    }
+
+    @Test("A fully `>`-prefixed callout body is unchanged (no lazy split)")
+    func calloutFullyQuotedUnchanged() {
+        let out = html("> [!note]\n> a\n> b")
+        #expect(out.contains("<div class=\"callout-body\"><p>a\nb</p></div>"))
+        #expect(!out.contains("</div></div><p>"))
+    }
 }

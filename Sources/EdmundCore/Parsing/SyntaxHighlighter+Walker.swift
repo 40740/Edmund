@@ -299,12 +299,16 @@ extension SyntaxHighlighter {
             // this quote's own `>`) — every subsequent line is the raw source
             // verbatim, ancestor markers and all. So each later line must peel
             // exactly `depth` ancestor markers before this quote's own can be
-            // at hand. A line that runs out of markers partway through that
-            // peel is CommonMark "lazy continuation" (e.g. a bare `>` line
-            // right after a `> >` one, absorbed by swift-markdown as a
-            // continuation of the deepest active quote's paragraph) — it
-            // belongs to a shallower ancestor's span instead. Bail out of the
-            // scan there, clipping `fullRange` before that line.
+            // at hand.
+            //
+            // A no-marker line is CommonMark "lazy continuation". Which quote
+            // it belongs to depends on depth: at the OUTERMOST quote (depth 0)
+            // it continues *this* quote's paragraph — BlockParser already
+            // merged it into the block, so keep it in the span (the bar extends
+            // over it) with no marker to hide. Deeper in (depth > 0), a line
+            // that runs out of ancestor markers, or lacks this quote's own,
+            // belongs to a shallower ancestor's span — clip `fullRange` before
+            // it.
             var delims: [NSRange] = []
             var cursor = full.location
             var clippedEnd = full.upperBound
@@ -323,11 +327,23 @@ extension SyntaxHighlighter {
                     }
                     p = after
                 }
-                guard !ranOut, let markerEnd = Self.peelOneMarker(nsSource, from: p, lineEnd: lineEnd) else {
+                if ranOut {
+                    // Ran out of ancestor markers: line belongs to a shallower
+                    // ancestor (nested lazy continuation). Clip here.
                     clippedEnd = cursor
                     break
                 }
-                delims.append(NSRange(location: p, length: markerEnd - p))
+                if let markerEnd = Self.peelOneMarker(nsSource, from: p, lineEnd: lineEnd) {
+                    delims.append(NSRange(location: p, length: markerEnd - p))
+                } else if depth == 0 {
+                    // Lazy continuation of the outermost quote: keep it in the
+                    // span, no marker to hide, and keep scanning.
+                } else {
+                    // Nested quote missing its own marker: belongs to a
+                    // shallower ancestor. Clip here.
+                    clippedEnd = cursor
+                    break
+                }
 
                 cursor = nlRange.location != NSNotFound ? nlRange.location + 1 : clippedEnd
                 isFirstLine = false

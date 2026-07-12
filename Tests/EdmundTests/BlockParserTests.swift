@@ -377,14 +377,14 @@ struct BlockParserTests {
         #expect(blocks[0].content == "> line1\n> line2\n> line3")
     }
 
-    @Test("Blockquote between paragraphs")
+    @Test("A blockquote lazily continues a following bare line")
     func blockquoteBetweenParagraphs() {
         let text = "above\n> line1\n> line2\nbelow"
         let blocks = BlockParser.parse(text)
-        #expect(blocks.count == 3)
+        // `below` lacks `>` but lazily continues the quote's paragraph (CommonMark).
+        #expect(blocks.count == 2)
         #expect(blocks[0].content == "above")
-        #expect(blocks[1].content == "> line1\n> line2")
-        #expect(blocks[2].content == "below")
+        #expect(blocks[1].content == "> line1\n> line2\nbelow")
     }
 
     @Test("Single blockquote line is one block")
@@ -403,14 +403,14 @@ struct BlockParserTests {
         #expect(blocks[0].range == NSRange(location: 0, length: 7))
     }
 
-    @Test("Non-consecutive blockquotes are separate blocks")
+    @Test("A bare line then `> second` all lazily continue one quote (GFM ex. 228)")
     func nonConsecutiveBlockquotes() {
         let text = "> first\nparagraph\n> second"
         let blocks = BlockParser.parse(text)
-        #expect(blocks.count == 3)
-        #expect(blocks[0].content == "> first")
-        #expect(blocks[1].content == "paragraph")
-        #expect(blocks[2].content == "> second")
+        // No blank line separates them, so `paragraph` lazily continues the
+        // quote and `> second` continues the same still-open paragraph.
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == "> first\nparagraph\n> second")
     }
 
     // MARK: - Changed Window (parseWithDiff)
@@ -442,14 +442,15 @@ struct BlockParserTests {
         #expect(b2[2].id == b1[1].id)   // suffix keeps its ID
     }
 
-    @Test("Merging two blocks yields a one-block window")
+    @Test("Deleting a blank merges a paragraph into the quote (lazy continuation)")
     func diffMerge() {
-        let (b1, _) = BlockParser.parseWithDiff("> a\nplain\ntail")
-        // "plain" becomes a quote line and merges into the run.
-        let (b2, changed) = BlockParser.parseWithDiff("> a\n> plain\ntail", previous: b1)
-        #expect(b2.count == 2)
-        #expect(changed == 0..<1)
-        #expect(b2[1].id == b1[2].id)
+        let (b1, _) = BlockParser.parseWithDiff("> a\n\ntail")   // quote, blank, paragraph
+        #expect(b1.count == 3)
+        // Removing the blank lets `tail` lazily continue the quote's paragraph.
+        let (b2, _) = BlockParser.parseWithDiff("> a\ntail", previous: b1)
+        #expect(b2.count == 1)
+        #expect(b2[0].content == "> a\ntail")
+        #expect(b2[0].kind == .quoteRun(isCallout: false))
     }
 
     @Test("Identical-content documents: window covers only the edit")
