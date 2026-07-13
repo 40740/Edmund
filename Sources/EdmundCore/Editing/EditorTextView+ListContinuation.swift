@@ -16,10 +16,9 @@ extension EditorTextView {
         pattern: #"^(\s*)([-*+]\s+(?:\[[ xX]\]\s+)?|\d+\.\s+)"#
     )
 
-    /// If the cursor is on a list line, returns (leadingWhitespace, marker, hasContent, prefixLength).
+    /// If the cursor is on a list line, returns (leadingWhitespace, marker, hasContent).
     /// `marker` is the bullet/number portion (e.g. "- ", "1. ", "- [ ] ").
-    /// `prefixLength` is the UTF-16 length of indent+marker, for checking caret position.
-    private func parseListMarker(_ line: String) -> (indent: String, marker: String, hasContent: Bool, prefixLength: Int)? {
+    private func parseListMarker(_ line: String) -> (indent: String, marker: String, hasContent: Bool)? {
         let ns = line as NSString
         let range = NSRange(location: 0, length: ns.length)
         guard let match = Self.listMarkerRegex.firstMatch(in: line, range: range) else {
@@ -29,7 +28,15 @@ extension EditorTextView {
         let marker = ns.substring(with: match.range(at: 2))
         let prefixLen = match.range.length
         let hasContent = prefixLen < ns.length
-        return (indent, marker, hasContent, prefixLen)
+        return (indent, marker, hasContent)
+    }
+
+    /// True if `text` itself starts with a valid list marker (after optional
+    /// leading whitespace) — i.e. it would be parsed as its own list item if
+    /// it started a new line.
+    private func startsWithListMarker(_ text: String) -> Bool {
+        let ns = text as NSString
+        return Self.listMarkerRegex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) != nil
     }
 
     /// Builds the next marker for list continuation.
@@ -72,18 +79,22 @@ extension EditorTextView {
               blockIdx < blocks.count else { return false }
 
         let block = blocks[blockIdx]
-        guard let (indent, marker, hasContent, prefixLength) = parseListMarker(block.content) else {
+        guard let (indent, marker, hasContent) = parseListMarker(block.content) else {
             return false
         }
 
-        // Caret still inside the indent/marker itself (e.g. right before "- "
-        // or "- [ ] "): this isn't "continue the list", it's splitting before
-        // the marker even exists yet. Let a plain newline happen instead of
-        // duplicating the marker onto the new line.
-        let caretInBlock = sel.location - block.range.location
-        guard caretInBlock >= prefixLength else { return false }
-
         if hasContent {
+            // Caret sits right before text that already reads as a list
+            // marker itself — either the block's own untouched marker
+            // (caret at the very start of the line) or a "- "/"- [ ] " typed
+            // literally mid-sentence. Splicing a fresh marker in front of it
+            // would double it up (e.g. "- - rest"); instead let a plain
+            // newline fall through so that existing text becomes the new
+            // line's marker on its own.
+            let caretInBlock = sel.location - block.range.location
+            let remainder = String((block.content as NSString).substring(from: caretInBlock))
+            guard !startsWithListMarker(remainder) else { return false }
+
             // Content present → insert newline + next marker.
             // If splitting mid-line and the next char is a space, consume it
             // so we don't get a double space after the marker.
