@@ -158,4 +158,55 @@ struct ListContinuationTests {
         editor.insertNewline(nil)
         #expect(editor.rawSource == "- hello\n- world")
     }
+
+    // MARK: - Caret Before Marker
+
+    @Test("Enter with caret right before bullet marker does plain newline")
+    @MainActor func enterBeforeBulletMarker() {
+        let editor = makeEditor()
+        editor.loadContent("- hello")
+        // Cursor at offset 0, before "-"
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "\n- hello")
+    }
+
+    @Test("Enter with caret right before checkbox marker does plain newline")
+    @MainActor func enterBeforeCheckboxMarker() {
+        let editor = makeEditor()
+        editor.loadContent("- [ ] task")
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "\n- [ ] task")
+    }
+
+    @Test("Enter with caret inside marker (before trailing space) does plain newline")
+    @MainActor func enterInsideMarker() {
+        let editor = makeEditor()
+        editor.loadContent("- hello")
+        // Cursor at offset 1, right after "-" but before the space
+        editor.setSelectedRange(NSRange(location: 1, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "-\n- hello")
+    }
+
+    @Test("Enter with caret before a literal dash typed mid-sentence doesn't double it")
+    @MainActor func enterBeforeEmbeddedDash() {
+        let editor = makeEditor()
+        editor.loadContent("- hello - world")
+        // Cursor right before the embedded "- " (offset 8)
+        editor.setSelectedRange(NSRange(location: 8, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "- hello \n- world")
+    }
+
+    @Test("Enter with caret before a literal checkbox typed mid-sentence doesn't double it")
+    @MainActor func enterBeforeEmbeddedCheckbox() {
+        let editor = makeEditor()
+        editor.loadContent("- hello - [ ] world")
+        // Cursor right before the embedded "- [ ] " (offset 8)
+        editor.setSelectedRange(NSRange(location: 8, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "- hello \n- [ ] world")
+    }
 }

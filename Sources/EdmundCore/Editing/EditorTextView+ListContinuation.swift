@@ -31,6 +31,14 @@ extension EditorTextView {
         return (indent, marker, hasContent)
     }
 
+    /// True if `text` itself starts with a valid list marker (after optional
+    /// leading whitespace) — i.e. it would be parsed as its own list item if
+    /// it started a new line.
+    private func startsWithListMarker(_ text: String) -> Bool {
+        let ns = text as NSString
+        return Self.listMarkerRegex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) != nil
+    }
+
     /// Builds the next marker for list continuation.
     /// - Ordered lists: increments the number (e.g. "1. " → "2. ")
     /// - Checkbox items: resets to unchecked (e.g. "- [x] " → "- [ ] ")
@@ -76,6 +84,17 @@ extension EditorTextView {
         }
 
         if hasContent {
+            // Caret sits right before text that already reads as a list
+            // marker itself — either the block's own untouched marker
+            // (caret at the very start of the line) or a "- "/"- [ ] " typed
+            // literally mid-sentence. Splicing a fresh marker in front of it
+            // would double it up (e.g. "- - rest"); instead let a plain
+            // newline fall through so that existing text becomes the new
+            // line's marker on its own.
+            let caretInBlock = sel.location - block.range.location
+            let remainder = String((block.content as NSString).substring(from: caretInBlock))
+            guard !startsWithListMarker(remainder) else { return false }
+
             // Content present → insert newline + next marker.
             // If splitting mid-line and the next char is a space, consume it
             // so we don't get a double space after the marker.
