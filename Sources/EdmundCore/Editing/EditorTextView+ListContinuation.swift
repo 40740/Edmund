@@ -16,9 +16,10 @@ extension EditorTextView {
         pattern: #"^(\s*)([-*+]\s+(?:\[[ xX]\]\s+)?|\d+\.\s+)"#
     )
 
-    /// If the cursor is on a list line, returns (leadingWhitespace, marker, hasContent).
+    /// If the cursor is on a list line, returns (leadingWhitespace, marker, hasContent, prefixLength).
     /// `marker` is the bullet/number portion (e.g. "- ", "1. ", "- [ ] ").
-    private func parseListMarker(_ line: String) -> (indent: String, marker: String, hasContent: Bool)? {
+    /// `prefixLength` is the UTF-16 length of indent+marker, for checking caret position.
+    private func parseListMarker(_ line: String) -> (indent: String, marker: String, hasContent: Bool, prefixLength: Int)? {
         let ns = line as NSString
         let range = NSRange(location: 0, length: ns.length)
         guard let match = Self.listMarkerRegex.firstMatch(in: line, range: range) else {
@@ -28,7 +29,7 @@ extension EditorTextView {
         let marker = ns.substring(with: match.range(at: 2))
         let prefixLen = match.range.length
         let hasContent = prefixLen < ns.length
-        return (indent, marker, hasContent)
+        return (indent, marker, hasContent, prefixLen)
     }
 
     /// Builds the next marker for list continuation.
@@ -71,9 +72,16 @@ extension EditorTextView {
               blockIdx < blocks.count else { return false }
 
         let block = blocks[blockIdx]
-        guard let (indent, marker, hasContent) = parseListMarker(block.content) else {
+        guard let (indent, marker, hasContent, prefixLength) = parseListMarker(block.content) else {
             return false
         }
+
+        // Caret still inside the indent/marker itself (e.g. right before "- "
+        // or "- [ ] "): this isn't "continue the list", it's splitting before
+        // the marker even exists yet. Let a plain newline happen instead of
+        // duplicating the marker onto the new line.
+        let caretInBlock = sel.location - block.range.location
+        guard caretInBlock >= prefixLength else { return false }
 
         if hasContent {
             // Content present → insert newline + next marker.
