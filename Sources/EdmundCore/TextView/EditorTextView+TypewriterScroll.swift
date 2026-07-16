@@ -20,15 +20,9 @@ extension EditorTextView {
     /// consistent measurement. A mis-measure degrades to no scroll — never a
     /// yank or a jump to the document start.
     func preservingViewportAnchor(_ body: () -> Void) {
-        guard let scrollView = enclosingScrollView, let tlm = textLayoutManager else {
-            body(); return
-        }
-        tlm.textViewportLayoutController.layoutViewport()
+        guard let scrollView = enclosingScrollView else { body(); return }
         let visible = scrollView.contentView.bounds
-        let topPoint = CGPoint(x: 0, y: visible.minY - textContainerOrigin.y)
-        guard let frag = tlm.textLayoutFragment(for: topPoint) else { body(); return }
-        let anchorOffset = tlm.offset(from: tlm.documentRange.location,
-                                      to: frag.rangeInElement.location)
+        guard let anchorOffset = topmostVisibleCharacterOffset() else { body(); return }
         let beforeY = lineRect(forCharacterAt: anchorOffset)?.minY
 
         body()
@@ -39,6 +33,17 @@ extension EditorTextView {
         let newY = max(0, visible.origin.y + delta)
         scrollView.contentView.scroll(to: NSPoint(x: visible.origin.x, y: newY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    /// Character offset of the first character of the topmost visible layout
+    /// fragment, or nil when there's no scroll view / layout manager / fragment.
+    public func topmostVisibleCharacterOffset() -> Int? {
+        guard let scrollView = enclosingScrollView, let tlm = textLayoutManager else { return nil }
+        tlm.textViewportLayoutController.layoutViewport()
+        let visible = scrollView.contentView.bounds
+        let topPoint = CGPoint(x: 0, y: visible.minY - textContainerOrigin.y)
+        guard let frag = tlm.textLayoutFragment(for: topPoint) else { return nil }
+        return tlm.offset(from: tlm.documentRange.location, to: frag.rangeInElement.location)
     }
 
     /// Runs a restyle (`body`) while keeping the viewport visually stable: in
@@ -104,26 +109,58 @@ extension EditorTextView {
         }
     }
 
-    /// Lays out the span between the current viewport and the caret so the
-    /// caret's line geometry is real rather than a TextKit 2 estimate. Returns
+    /// Scrolls so the line containing character `offset` sits at the top of
+    /// the viewport (small margin allowed). Does not touch the caret or
+    /// selection. See `centerViewportOnCaret` for why this needs a settle-pass
+    /// loop (TextKit 2 height estimates above the target can throw off the
+    /// first scroll).
+    public func scrollCharacterToTop(_ offset: Int) {
+        guard let scrollView = enclosingScrollView else { return }
+        guard ensureRegionLaidOut(upTo: offset) else {
+            scrollRangeToVisible(NSRange(location: offset, length: 0)); return
+        }
+        guard let rect = lineRect(forCharacterAt: offset) else { return }
+        let targetY = rect.minY + textContainerOrigin.y
+
+        let visibleHeight = scrollView.contentView.bounds.height
+        let maxY = max(0, frame.height - visibleHeight)
+        let clampedY = min(max(0, targetY), maxY)
+
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
+        guard let tlm = textLayoutManager else { return }
+        for _ in 0..<3 {
+            tlm.textViewportLayoutController.layoutViewport()
+            guard let settled = lineRect(forCharacterAt: offset) else { return }
+            let settledTarget = settled.minY + textContainerOrigin.y
+            let settledMaxY = max(0, frame.height - visibleHeight)
+            let settledY = min(max(0, settledTarget), settledMaxY)
+            guard abs(settledY - scrollView.contentView.bounds.origin.y) > 1 else { return }
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: settledY))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+    }
+
+    /// Lays out the span between the current viewport and `offset` so that
+    /// offset's line geometry is real rather than a TextKit 2 estimate. Returns
     /// false when that span is too large to lay out cheaply (the caller should
     /// fall back to a plain reveal) — this is the guard that keeps a deep caret
     /// in a 1–2 MB document from triggering the process-killing full-document
     /// layout that motivated the rest of this file.
     @discardableResult
-    func ensureCaretRegionLaidOut() -> Bool {
+    func ensureRegionLaidOut(upTo offset: Int) -> Bool {
         guard let tlm = textLayoutManager else { return false }
-        let caretOffset = selectedRange().location
         tlm.textViewportLayoutController.layoutViewport()
 
         let lo: Int, hi: Int
         if let vp = tlm.textViewportLayoutController.viewportRange {
             let vpStart = tlm.offset(from: tlm.documentRange.location, to: vp.location)
             let vpEnd = tlm.offset(from: tlm.documentRange.location, to: vp.endLocation)
-            lo = min(vpStart, caretOffset); hi = max(vpEnd, caretOffset)
+            lo = min(vpStart, offset); hi = max(vpEnd, offset)
         } else {
             // No viewport yet (first layout): lay out from the document start.
-            lo = 0; hi = caretOffset
+            lo = 0; hi = offset
         }
 
         let cap = 60_000   // ~a few screenfuls; bounds the layout cost
@@ -133,6 +170,13 @@ extension EditorTextView {
               let range = NSTextRange(location: a, end: b) else { return false }
         tlm.ensureLayout(for: range)
         return true
+    }
+
+    /// `ensureRegionLaidOut(upTo:)` anchored at the caret. See that method for
+    /// the layout-cost rationale.
+    @discardableResult
+    func ensureCaretRegionLaidOut() -> Bool {
+        ensureRegionLaidOut(upTo: selectedRange().location)
     }
 
     /// Whether the caret's line fragment lies within the viewport defined by
@@ -234,5 +278,39 @@ extension EditorTextView {
         let clampedY = min(max(0, targetY), maxY)
         scrollView.contentView.scroll(to: NSPoint(x: visible.origin.x, y: clampedY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    /// 1-indexed source line containing character `offset` (counts "\n" only —
+    /// matches swift-markdown's SourceLocation convention; no CRLF handling,
+    /// same as the rest of the pipeline).
+    public func line(forOffset offset: Int) -> Int {
+        let utf16 = rawSource.utf16
+        let clamped = min(max(0, offset), utf16.count)
+        var line = 1
+        var i = 0
+        for unit in utf16 {
+            if i >= clamped { break }
+            if unit == 0x000A { line += 1 }
+            i += 1
+        }
+        return line
+    }
+
+    /// Character offset of the start of 1-indexed `line`, clamped to the
+    /// document (line < 1 → 0; past the last line → start of the last line).
+    public func offset(forLine line: Int) -> Int {
+        guard line > 1 else { return 0 }
+        var currentLine = 1
+        var lastLineStart = 0
+        var i = 0
+        for unit in rawSource.utf16 {
+            if currentLine == line { return i }
+            if unit == 0x000A {
+                currentLine += 1
+                lastLineStart = i + 1
+            }
+            i += 1
+        }
+        return currentLine == line ? i : lastLineStart
     }
 }
