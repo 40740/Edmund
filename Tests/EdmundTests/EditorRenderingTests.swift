@@ -659,13 +659,20 @@ struct EditorStylingTests {
         #expect(!isHidden(at: 0, in: styled))
     }
 
-    @Test("Code block fences are dimmed; content is monospace and syntax-highlighted")
+    @Test("Non-active code block fences draw no ink at normal size; a background box decorates it; content is monospace and syntax-highlighted")
     @MainActor func codeBlockStyling() {
         let editor = makeEditor()
         let styled = editor.styleBlock("```swift\nlet hello = 1\n```")
         #expect(styled.string == "```swift\nlet hello = 1\n```")
-        // Fences dimmed.
-        #expect(isDimmed(at: 0, in: styled))
+        // Fence: clear color, normal-size monospace (blockquote-marker
+        // treatment — the fence line's height is the box's breathing room).
+        #expect(styled.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == NSColor.clear)
+        let fenceFont = styled.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(fenceFont?.isFixedPitch == true)
+        #expect((fenceFont?.pointSize ?? 0) > 1.0)
+        if let deco = blockDecoration(at: 0, in: styled), case .box = deco.kind {} else {
+            Issue.record("expected a .box decoration")
+        }
         let ns = styled.string as NSString
         let kwLoc = ns.range(of: "let").location
         let plainLoc = ns.range(of: "hello").location
@@ -677,6 +684,54 @@ struct EditorStylingTests {
         let plain = styled.attribute(.foregroundColor, at: plainLoc, effectiveRange: nil) as? NSColor
         #expect(kw != nil && plain != nil)
         #expect(kw != plain)
+    }
+
+    @Test("Active code block fences are dimmed, not hidden, and not boxed")
+    @MainActor func codeBlockStylingActive() {
+        let editor = makeEditor()
+        let source = "```swift\nlet hello = 1\n```"
+        let styled = editor.styleBlock(source, cursorPosition: 12)   // caret inside "let hello = 1"
+        #expect(isDimmed(at: 0, in: styled))
+        #expect(!isHidden(at: 0, in: styled))
+        #expect(blockDecoration(at: 0, in: styled) == nil)
+    }
+
+    @Test("Indented code block renders monospace, with no box and no fence treatment")
+    @MainActor func indentedCodeBlockStyling() {
+        let editor = makeEditor()
+        let source = "    let hello = 1\n    let x = 2"
+        let styled = editor.styleBlock(source)
+        #expect(styled.string == source)
+        // Whole block (indentation included) is monospace.
+        let first = styled.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        let last = styled.attribute(.font, at: styled.length - 1, effectiveRange: nil) as? NSFont
+        #expect(first?.isFixedPitch == true)
+        #expect(last?.isFixedPitch == true)
+        // No box: only fenced blocks get one (no fence lines exist here to
+        // serve as the box's breathing room).
+        #expect(blockDecoration(at: 0, in: styled) == nil)
+    }
+
+    @Test("A fenced code block inside a callout still boxes, nested under the callout's own box")
+    @MainActor func codeBlockInsideCalloutStacks() {
+        let editor = makeEditor()
+        let source = "> [!note]\n> ```swift\n> let x = 1\n> ```"
+        let styled = editor.styleBlock(source)
+        // The callout's own box is the outer decoration at offset 0.
+        if let outer = blockDecoration(at: 0, in: styled), case .box = outer.kind {} else {
+            Issue.record("expected the callout's own box at offset 0")
+        }
+        // Somewhere inside, the nested code block's box should also be
+        // present (as part of a BlockDecorationList once spliced in).
+        let ns = styled.string as NSString
+        let fenceLoc = ns.range(of: "```swift").location
+        #expect(fenceLoc != NSNotFound)
+        let value = styled.attribute(.blockDecoration, at: fenceLoc, effectiveRange: nil)
+        let boxes: [BlockDecoration]
+        if let list = value as? BlockDecorationList { boxes = list.decorations }
+        else if let single = value as? BlockDecoration { boxes = [single] }
+        else { boxes = [] }
+        #expect(boxes.filter { if case .box = $0.kind { return true }; return false }.count == 2)
     }
 
     // MARK: - Active Token (cursor inside)

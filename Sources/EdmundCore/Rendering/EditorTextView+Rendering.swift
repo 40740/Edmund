@@ -205,9 +205,15 @@ extension EditorTextView {
                 result.addAttribute(.backgroundColor, value: inlineCodeBackground, range: span.contentRange)
 
             case .codeBlock(let language):
-                guard span.contentRange.upperBound <= result.length else { continue }
-                result.addAttribute(.font, value: codeBlockFont, range: span.contentRange)
+                guard span.fullRange.upperBound <= result.length else { continue }
+                // Monospace across the fullRange, fences included: the fence
+                // line keeps its natural (now code-line) height whether shown
+                // dimmed (active) or ink-cleared (rendered, blockquote-style).
+                result.addAttribute(.font, value: codeBlockFont, range: span.fullRange)
                 highlightCodeBlock(result, contentRange: span.contentRange, language: language)
+                if !cursorInToken {
+                    styleCodeBlockBox(result, span: span)
+                }
 
             case .strikethrough:
                 guard span.contentRange.upperBound <= result.length else { continue }
@@ -554,6 +560,15 @@ extension EditorTextView {
                         result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                     }
                     // Non-active: already hidden by content styling, don't override
+                } else if case .codeBlock = span.kind {
+                    // Fenced code: like blockquote's `>`, the fence keeps its
+                    // normal size (its line is the box's top/bottom breathing
+                    // room) but draws no ink when rendered; dimmed when active.
+                    if cursorInToken {
+                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                    } else {
+                        result.addAttribute(.foregroundColor, value: NSColor.clear, range: dr)
+                    }
                 } else if case .listItem(let ordered, let checkbox) = span.kind {
                     // List markers: custom styling when non-active, dimmed when active
                     if cursorInToken {

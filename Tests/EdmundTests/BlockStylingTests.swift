@@ -534,18 +534,21 @@ struct CodeBlockActiveTests {
 @Suite("Integration — Code Block (Non-Active Block)")
 struct CodeBlockNonActiveTests {
 
-    @Test("Non-active code block shows raw text, fences are dimmed")
-    @MainActor func nonActiveFencesDimmed() {
+    @Test("Non-active code block keeps the raw fence text in storage, ink-cleared and boxed")
+    @MainActor func nonActiveFencesInkClearedAndBoxed() {
         let editor = makeEditor()
         editor.loadContent("```\nhello\n```\nother")
         activateBlock(1, in: editor)
 
-        // Text storage has the raw text
+        // Text storage has the raw text (attribute-only rendering, Invariant 1).
         let text = displayText(for: 0, in: editor)
         #expect(text == "```\nhello\n```")
-        // Fences dimmed
-        let color = fgColor(at: 0, in: editor)
-        #expect(color == NSColor.tertiaryLabelColor)
+        // Fence draws no ink but keeps its normal size (blockquote-marker
+        // treatment, NOT hiddenFont) — its line is the box's breathing room.
+        let a = attrs(at: 0, in: editor)
+        #expect((a[.foregroundColor] as? NSColor) == NSColor.clear)
+        #expect(((a[.font] as? NSFont)?.pointSize ?? 0) > 1.0)
+        #expect(blockDecoration(at: 0, in: editor) != nil)
     }
 
     @Test("Non-active code block content has monospace font")
