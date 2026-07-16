@@ -16,7 +16,7 @@ struct DocumentHTMLTests {
         let out = doc("# Hi")
         #expect(out.hasPrefix("<!DOCTYPE html>"))
         #expect(out.contains("<style>"))
-        #expect(out.contains("<div class=\"page\"><h1>Hi</h1></div>"))
+        #expect(out.contains("<div class=\"page\"><h1 id=\"edmund-l1\">Hi</h1></div>"))
     }
 
     @Test("Callout icon is an inline (vector) Lucide SVG, not a rasterized SF Symbol")
@@ -51,7 +51,7 @@ struct DocumentHTMLTests {
     @Test("Display math placeholder becomes a centered image")
     func displayMath() {
         let out = doc("$$\nx^2\n$$")
-        #expect(out.contains("<div class=\"math-display\"><img class=\"math\""))
+        #expect(out.contains("<div id=\"edmund-l1\" class=\"math-display\"><img class=\"math\""))
         #expect(out.contains("src=\"data:image/png;base64,"))
     }
 
@@ -67,7 +67,7 @@ struct DocumentHTMLTests {
     @Test("Display environment renders to an image, not the source fallback")
     func displayEnvironmentRenders() {
         let out = doc("$$\n\\begin{aligned} \\pi &= 3 \\\\ e &= 2 \\end{aligned}\n$$")
-        #expect(out.contains("<div class=\"math-display\"><img class=\"math\""))
+        #expect(out.contains("<div id=\"edmund-l1\" class=\"math-display\"><img class=\"math\""))
         #expect(!out.contains("<code>"))
     }
 

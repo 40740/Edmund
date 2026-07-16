@@ -12,34 +12,34 @@ struct HTMLRendererCoreTests {
 
     @Test("Headings render h1…h6")
     func headings() {
-        #expect(html("# Title") == "<h1>Title</h1>")
-        #expect(html("### Sub") == "<h3>Sub</h3>")
-        #expect(html("###### Six") == "<h6>Six</h6>")
+        #expect(html("# Title") == "<h1 id=\"edmund-l1\">Title</h1>")
+        #expect(html("### Sub") == "<h3 id=\"edmund-l1\">Sub</h3>")
+        #expect(html("###### Six") == "<h6 id=\"edmund-l1\">Six</h6>")
     }
 
     @Test("Setext headings render h1/h2")
     func setextHeadings() {
-        #expect(html("Title\n===") == "<h1>Title</h1>")
-        #expect(html("Title\n---") == "<h2>Title</h2>")
+        #expect(html("Title\n===") == "<h1 id=\"edmund-l1\">Title</h1>")
+        #expect(html("Title\n---") == "<h2 id=\"edmund-l1\">Title</h2>")
     }
 
     @Test("Paragraph wraps in <p>")
     func paragraph() {
-        #expect(html("hello world") == "<p>hello world</p>")
+        #expect(html("hello world") == "<p id=\"edmund-l1\">hello world</p>")
     }
 
     @Test("Emphasis, strong, strikethrough, inline code")
     func inlineMarks() {
-        #expect(html("*i*") == "<p><em>i</em></p>")
-        #expect(html("**b**") == "<p><strong>b</strong></p>")
-        #expect(html("~~s~~") == "<p><del>s</del></p>")
-        #expect(html("`x`") == "<p><code>x</code></p>")
+        #expect(html("*i*") == "<p id=\"edmund-l1\"><em>i</em></p>")
+        #expect(html("**b**") == "<p id=\"edmund-l1\"><strong>b</strong></p>")
+        #expect(html("~~s~~") == "<p id=\"edmund-l1\"><del>s</del></p>")
+        #expect(html("`x`") == "<p id=\"edmund-l1\"><code>x</code></p>")
     }
 
     @Test("Fenced code block keeps language class and escapes content")
     func codeBlock() {
         let out = html("```swift\nlet x = a < b && c > d\n```")
-        #expect(out.contains("<pre><code class=\"language-swift\">"))
+        #expect(out.contains("<pre id=\"edmund-l1\"><code class=\"language-swift\">"))
         #expect(out.contains("a &lt; b &amp;&amp; c &gt; d"))
         #expect(!out.contains("a < b"))
     }
@@ -47,9 +47,9 @@ struct HTMLRendererCoreTests {
     @Test("Unordered, ordered, and task lists")
     func lists() {
         // A tight list (GFM §5.3): no <p> wrapper inside items.
-        #expect(html("- a\n- b") == "<ul><li>a</li><li>b</li></ul>")
-        #expect(html("1. a").hasPrefix("<ol>"))
-        #expect(html("3. a\n4. b").hasPrefix("<ol start=\"3\">"))
+        #expect(html("- a\n- b") == "<ul id=\"edmund-l1\"><li>a</li><li>b</li></ul>")
+        #expect(html("1. a").hasPrefix("<ol id=\"edmund-l1\">"))
+        #expect(html("3. a\n4. b").hasPrefix("<ol id=\"edmund-l1\" start=\"3\">"))
         let task = html("- [ ] todo\n- [x] done")
         #expect(task.contains("<li class=\"task\"><span class=\"task-check task-check--unchecked\"><svg"))
         #expect(task.contains("<span class=\"task-check task-check--checked\"><svg"))
@@ -82,7 +82,7 @@ struct HTMLRendererCoreTests {
     @Test("Link title renders as an escaped title attribute")
     func linkTitle() {
         #expect(html("[x](https://example.com \"hi there\")")
-            == "<p><a href=\"https://example.com\" title=\"hi there\">x</a></p>")
+            == "<p id=\"edmund-l1\"><a href=\"https://example.com\" title=\"hi there\">x</a></p>")
         #expect(html("[x](https://example.com \"a & b\")").contains("title=\"a &amp; b\""))
         let internalLink = html("[o](other.md \"note\")")
         #expect(internalLink.contains("<a href=\"x-edmund-link:"))
@@ -92,7 +92,7 @@ struct HTMLRendererCoreTests {
     @Test("Table emits thead/tbody with per-column alignment")
     func table() {
         let out = html("| a | b | c |\n|:--|:-:|--:|\n| 1 | 2 | 3 |")
-        #expect(out.contains("<div class=\"table-wrap\"><table><thead><tr>"))
+        #expect(out.contains("<div id=\"edmund-l1\" class=\"table-wrap\"><table><thead><tr>"))
         #expect(out.contains("</tbody></table></div>"))
         #expect(out.contains("<th style=\"text-align:left\">a</th>"))
         #expect(out.contains("<th style=\"text-align:center\">b</th>"))
@@ -102,12 +102,12 @@ struct HTMLRendererCoreTests {
 
     @Test("Thematic break → <hr>")
     func thematicBreak() {
-        #expect(html("---").contains("<hr>"))
+        #expect(html("---").contains("<hr id=\"edmund-l1\">"))
     }
 
     @Test("External links keep their real href")
     func links() {
-        #expect(html("[text](https://example.com)") == "<p><a href=\"https://example.com\">text</a></p>")
+        #expect(html("[text](https://example.com)") == "<p id=\"edmund-l1\"><a href=\"https://example.com\">text</a></p>")
         #expect(html("[m](mailto:a@b.com)").contains("<a href=\"mailto:a@b.com\">"))
     }
 
@@ -161,7 +161,7 @@ struct HTMLRendererCoreTests {
 
     @Test("Plain block quote stays a blockquote")
     func blockQuote() {
-        #expect(html("> quoted") == "<blockquote><p>quoted</p></blockquote>")
+        #expect(html("> quoted") == "<blockquote id=\"edmund-l1\"><p>quoted</p></blockquote>")
     }
 }
 
@@ -181,7 +181,7 @@ struct HTMLRendererEscapingTests {
     @Test("Raw HTML block passes through with event handlers stripped")
     func blockPassthroughHardened() {
         let out = html("<div onclick=\"x\">hi</div>")
-        #expect(out.contains("<div>hi</div>"))
+        #expect(out.contains("<div id=\"edmund-l1\">hi</div>"))
         #expect(!out.contains("onclick"))
     }
 }
@@ -199,13 +199,13 @@ struct HTMLRendererRawHTMLTests {
         #expect(out.contains("<strong> &lt;title> &lt;style> <em>"))
         #expect(out.contains("&lt;xmp>"))
         #expect(out.contains("&lt;XMP>"))
-        #expect(out.contains("<blockquote>"))
+        #expect(out.contains("<blockquote id=\"edmund-l3\">"))
     }
 
     @Test("HTML block passes through raw; markdown inside is NOT rendered")
     func blockPassthroughRaw() {
         let out = html("<div>\n*hello*\n</div>")
-        #expect(out.contains("<div>\n*hello*\n</div>"))
+        #expect(out.contains("<div id=\"edmund-l1\">\n*hello*\n</div>"))
         #expect(!out.contains("<em>"))
     }
 
@@ -234,14 +234,14 @@ struct HTMLRendererRawHTMLTests {
     @Test("An <img> inside an HTML block becomes the asset-pass placeholder")
     func blockInteriorImg() {
         let out = html("<div><img src=\"cat.png\" alt=\"c\"></div>")
-        #expect(out.contains("<div>"))
+        #expect(out.contains("<div id=\"edmund-l1\">"))
         #expect(out.contains("<img class=\"md-image\" data-src=\"cat.png\""))
     }
 
     @Test("A raw <table> block passes through")
     func tableBlock() {
         let out = html("<table><tr><td>x</td></tr></table>")
-        #expect(out.contains("<table><tr><td>x</td></tr></table>"))
+        #expect(out.contains("<table id=\"edmund-l1\"><tr><td>x</td></tr></table>"))
     }
 
     @Test("A single-quoted <img src> still becomes the asset-pass placeholder")
@@ -270,7 +270,7 @@ struct HTMLRendererInlineTests {
     @Test("Display $$math$$ → math-display div")
     func displayMath() {
         let out = html("$$\n\\int_0^1 x\\,dx\n$$")
-        #expect(out.contains("<div class=\"math-display\" data-tex=\""))
+        #expect(out.contains("<div id=\"edmund-l1\" class=\"math-display\" data-tex=\""))
         #expect(out.contains("\\int_0^1"))
     }
 
@@ -290,7 +290,7 @@ struct HTMLRendererInlineTests {
     @Test("Display environment keeps its `\\\\` row separators in data-tex")
     func displayEnvironmentRowSeparators() {
         let out = html("$$\n\\begin{aligned} \\pi &= 3 \\\\ e &= 2 \\end{aligned}\n$$")
-        #expect(out.contains("<div class=\"math-display\" data-tex=\""))
+        #expect(out.contains("<div id=\"edmund-l1\" class=\"math-display\" data-tex=\""))
         #expect(out.contains("\\begin{aligned}"))
         #expect(out.contains("\\\\ e"))          // the `\\` survived
     }
@@ -391,7 +391,7 @@ struct HTMLRendererFootnoteTests {
         #expect(out.contains("<hr class=\"footnotes-sep\"><ol class=\"footnotes\">"))
         #expect(out.contains("<li id=\"fn-1\">the note text <a href=\"#fnref-1\" class=\"footnote-backref\">↩</a></li>"))
         // The unrelated paragraph after the definition still renders normally.
-        #expect(out.contains("<p>More content.</p>"))
+        #expect(out.contains("<p id=\"edmund-l5\">More content.</p>"))
     }
 
     @Test("Definition body keeps its inline markdown formatting")
@@ -426,14 +426,14 @@ struct HTMLRendererCalloutTests {
     @Test("Known callout type → callout div with title and body")
     func basicCallout() {
         let out = html("> [!note]\n> Body text.")
-        #expect(out.contains("<div class=\"callout callout-note\">"))
+        #expect(out.contains("<div id=\"edmund-l1\" class=\"callout callout-note\">"))
         #expect(out.contains("<div class=\"callout-title\">"))
         // Inline Lucide SVG (note → pencil), tinted by CSS via currentColor.
         #expect(out.contains("<span class=\"callout-icon\"><svg"))
         #expect(out.contains(LucideIcons.geometry["pencil"]!))
         #expect(!out.contains("data-symbol"))
         #expect(out.contains("<span class=\"callout-title-text\">Note</span>"))
-        #expect(out.contains("<div class=\"callout-body\"><p>Body text.</p></div>"))
+        #expect(out.contains("<div class=\"callout-body\"><p id=\"edmund-l1\">Body text.</p></div>"))
     }
 
     @Test("Custom title is used verbatim")
@@ -446,7 +446,7 @@ struct HTMLRendererCalloutTests {
     @Test("Unknown type stays a plain block quote")
     func unknownType() {
         let out = html("> [!bogus]\n> hi")
-        #expect(out.hasPrefix("<blockquote>"))
+        #expect(out.hasPrefix("<blockquote id=\"edmund-l1\">"))
         #expect(!out.contains("callout"))
     }
 
@@ -457,18 +457,18 @@ struct HTMLRendererCalloutTests {
     @Test("A lazy line after a callout renders as a sibling, not in the body")
     func calloutBodyStrict() {
         let out = html("> [!note]\n> body\nlazy")
-        #expect(out.contains("<div class=\"callout-body\"><p>body</p></div>"))
+        #expect(out.contains("<div class=\"callout-body\"><p id=\"edmund-l1\">body</p></div>"))
         // `lazy` sits after the callout div closes, not inside the body.
-        #expect(out.contains("</div></div><p>lazy</p>"))
+        #expect(out.contains("</div></div><p id=\"edmund-l1\">lazy</p>"))
         #expect(!out.contains("body\nlazy"))
     }
 
     @Test("GFM ex.228 tail: `> y` after a lazy line is a sibling quote, not the callout")
     func calloutLazyTailWithQuote() {
         let out = html("> [!note]\n> body\nlazy\n> y")
-        #expect(out.contains("<div class=\"callout-body\"><p>body</p></div>"))
-        #expect(out.contains("<p>lazy</p>"))
-        #expect(out.contains("<blockquote><p>y</p></blockquote>"))
+        #expect(out.contains("<div class=\"callout-body\"><p id=\"edmund-l1\">body</p></div>"))
+        #expect(out.contains("<p id=\"edmund-l1\">lazy</p>"))
+        #expect(out.contains("<blockquote id=\"edmund-l2\"><p>y</p></blockquote>"))
         // Exactly one callout — the second `> y` was not pulled into it.
         #expect(out.components(separatedBy: "class=\"callout ").count == 2)
     }
@@ -476,7 +476,41 @@ struct HTMLRendererCalloutTests {
     @Test("A fully `>`-prefixed callout body is unchanged (no lazy split)")
     func calloutFullyQuotedUnchanged() {
         let out = html("> [!note]\n> a\n> b")
-        #expect(out.contains("<div class=\"callout-body\"><p>a\nb</p></div>"))
+        #expect(out.contains("<div class=\"callout-body\"><p id=\"edmund-l1\">a\nb</p></div>"))
         #expect(!out.contains("</div></div><p>"))
+    }
+}
+
+@Suite("HTMLRenderer — Read-mode source-line anchors")
+struct HTMLRendererAnchorTests {
+
+    private func html(_ md: String, preserveBlankLines: Bool) -> String {
+        HTMLRenderer.render(markdown: md, options: ReadRenderOptions(preserveBlankLines: preserveBlankLines))
+    }
+
+    @Test("Each top-level block gets an id anchored to its starting source line")
+    func topLevelBlocksAnchored() {
+        let md = "# H\n\npara one\nline two\n\n- a\n- b\n"
+        for preserveBlankLines in [true, false] {
+            let out = html(md, preserveBlankLines: preserveBlankLines)
+            #expect(out.contains("<h1 id=\"edmund-l1\">H</h1>"))
+            #expect(out.contains("<p id=\"edmund-l3\">para one\nline two</p>"))
+            #expect(out.contains("<ul id=\"edmund-l6\">"))
+        }
+    }
+
+    @Test("A footnote-definition first block renders empty and doesn't crash; the next block still gets its id")
+    func emptyFirstBlockSkipped() {
+        let out = html("[^1]: note\n\npara\n", preserveBlankLines: true)
+        #expect(out.contains("<p id=\"edmund-l3\">para</p>"))
+    }
+
+    @Test("topLevelBlockSpans reports each block's start/end source line")
+    func topLevelBlockSpans() {
+        let spans = ReadModeAnchors.topLevelBlockSpans(for: "# H\n\npara one\nline two\n\n- a\n- b\n")
+        #expect(spans.count == 3)
+        #expect(spans[0].startLine == 1 && spans[0].endLine == 1)
+        #expect(spans[1].startLine == 3 && spans[1].endLine == 4)
+        #expect(spans[2].startLine == 6 && spans[2].endLine == 7)
     }
 }
