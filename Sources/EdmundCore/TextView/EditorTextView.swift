@@ -400,6 +400,33 @@ public class EditorTextView: NSTextView {
         traceEdit("mouseDown done")
     }
 
+    /// Drag ticks: while a drag-select is in flight AppKit updates the
+    /// selection with `stillSelecting == true` and suppresses the delegate
+    /// notification, so `selectionDidChange` never sees a failed or clamped
+    /// drag. Tracing the ticks shows whether the tracking loop is computing
+    /// ranges at all, and where the endpoint lands while sweeping hidden
+    /// (zero-width) delimiter runs — e.g. rendered math (see
+    /// `misc/bug-repros/selection-doesnot-fully-expand-math-so-copies-less-characters.mov`).
+    /// Only `stillSelecting` calls are traced: final calls surface through
+    /// `selectionDidChange`, and tracing every caret move would double the log.
+    public override func setSelectedRanges(_ ranges: [NSValue],
+                                           affinity: NSSelectionAffinity,
+                                           stillSelecting: Bool) {
+        if stillSelecting, let first = ranges.first?.rangeValue {
+            traceEdit("dragTick sel'={\(first.location),\(first.length)}")
+        }
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+    }
+
+    /// The range actually copied, for the "selection over rendered math copies
+    /// fewer characters than highlighted" report — the highlight is drawn over
+    /// the overlay while the underlying character range can stop at the hidden
+    /// run's boundary; this line shows the truth at ⌘C time.
+    public override func copy(_ sender: Any?) {
+        traceEdit("copy")
+        super.copy(sender)
+    }
+
     /// The storage character index directly under a mouse event, or nil if the
     /// click doesn't land on a laid-out glyph (e.g. past the end of a line).
     func clickCharIndex(at event: NSEvent) -> Int? {
