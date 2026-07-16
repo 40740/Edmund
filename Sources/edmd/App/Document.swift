@@ -489,11 +489,17 @@ class Document: NSDocument, HeadingNavigable {
             if let read = readView, !read.isHidden {
                 // While the webview is still alive, capture where the user
                 // actually scrolled to in Read mode and map it back onto the
-                // editor's source lines.
+                // editor's source lines. The view swap waits for this
+                // completion: swapping immediately showed the editor at its
+                // stale position for a few frames before the scroll landed —
+                // a visible up-then-down hop. Positioning while hidden and
+                // swapping after keeps the hop off-screen; the JS round trip
+                // is a few ms, and the completion fires exactly once even on
+                // error, so the swap can't be dropped.
                 read.readScrollPosition { [weak self] pos in
                     // Still in edit/source when this lands? A rapid toggle
                     // back into Read mode means the editor is hidden again —
-                    // don't scroll it.
+                    // don't scroll it (or swap).
                     guard let self, self.editor.viewMode != .reading else { return }
                     var targetOffset: Int?
                     if let pos {
@@ -515,20 +521,24 @@ class Document: NSDocument, HeadingNavigable {
                     if let offset = targetOffset ?? self.lastReadAnchorOffset {
                         self.editor.scrollCharacterToTop(offset)
                     }
+                    self.swapToEditor()
                 }
+            } else {
+                swapToEditor()
             }
-            // Swap views immediately — don't wait for the JS round-trip above.
-            readView?.isHidden = true
-            scrollView.isHidden = false
-            editor.window?.makeFirstResponder(editor)
-            // Nothing else forces TextKit 2 viewport layout/redraw when a
-            // hidden scroll view is unhidden — a click used to supply the
-            // missing event, leaving the editor blank until one arrived. The
-            // async scroll above also forces layout when it lands; this poke
-            // covers the no-anchor path and the gap before the JS returns.
-            editor.textLayoutManager?.textViewportLayoutController.layoutViewport()
-            editor.needsDisplay = true
         }
+    }
+
+    /// Reveals the editor's scroll view (hiding any read view) and repairs
+    /// TextKit 2 state: nothing else forces viewport layout/redraw when a
+    /// hidden scroll view is unhidden — a click used to supply the missing
+    /// event, leaving the editor blank until one arrived.
+    private func swapToEditor() {
+        readView?.isHidden = true
+        scrollView.isHidden = false
+        editor.window?.makeFirstResponder(editor)
+        editor.textLayoutManager?.textViewportLayoutController.layoutViewport()
+        editor.needsDisplay = true
     }
 
     /// Re-renders an open Read view from the editor's current source + theme.
