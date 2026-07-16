@@ -368,6 +368,20 @@ public class EditorTextView: NSTextView {
     /// that the resulting selection change does not re-center the viewport —
     /// centering when the user merely clicks somewhere feels glitchy.
     public override func mouseDown(with event: NSEvent) {
+        // Field diagnostics for the intermittent "click/drag to select does
+        // nothing" report (backlog, 7/14 occurrences): AppKit suppresses
+        // selection notifications while `stillSelecting`, so a failed drag
+        // leaves NO trace in `selectionDidChange` — the before/after pair here
+        // is the only place the failure is observable. The entry line's
+        // hit-vs-selection relation discriminates the two candidate
+        // mechanisms: a hit index inside a non-empty prior selection means
+        // AppKit ran its drag-*move* gesture (no new selection by design); a
+        // sane hit with an unchanged selection at exit means the click never
+        // anchored (hit-test / tracking dead zone).
+        traceEdit("mouseDown hit=\(clickCharIndex(at: event).map(String.init) ?? "nil") "
+            + "pendingRecompose=\(pendingRecompose ? "Y" : "N") "
+            + "firstResponder=\(window?.firstResponder === self ? "Y" : "N") "
+            + "clicks=\(event.clickCount)")
         if event.modifierFlags.contains(.command) {
             if let target = wikiTarget(at: event) {
                 followWikiLink(target)
@@ -381,6 +395,36 @@ public class EditorTextView: NSTextView {
         suppressTypewriterCentering = true
         super.mouseDown(with: event)
         suppressTypewriterCentering = false
+        // `super.mouseDown` returns only after the whole tracking loop (drag +
+        // mouse-up) finishes; `sel` in this line is the gesture's net result.
+        traceEdit("mouseDown done")
+    }
+
+    /// Drag ticks: while a drag-select is in flight AppKit updates the
+    /// selection with `stillSelecting == true` and suppresses the delegate
+    /// notification, so `selectionDidChange` never sees a failed or clamped
+    /// drag. Tracing the ticks shows whether the tracking loop is computing
+    /// ranges at all, and where the endpoint lands while sweeping hidden
+    /// (zero-width) delimiter runs — e.g. rendered math (see
+    /// `misc/bug-repros/selection-doesnot-fully-expand-math-so-copies-less-characters.mov`).
+    /// Only `stillSelecting` calls are traced: final calls surface through
+    /// `selectionDidChange`, and tracing every caret move would double the log.
+    public override func setSelectedRanges(_ ranges: [NSValue],
+                                           affinity: NSSelectionAffinity,
+                                           stillSelecting: Bool) {
+        if stillSelecting, let first = ranges.first?.rangeValue {
+            traceEdit("dragTick sel'={\(first.location),\(first.length)}")
+        }
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+    }
+
+    /// The range actually copied, for the "selection over rendered math copies
+    /// fewer characters than highlighted" report — the highlight is drawn over
+    /// the overlay while the underlying character range can stop at the hidden
+    /// run's boundary; this line shows the truth at ⌘C time.
+    public override func copy(_ sender: Any?) {
+        traceEdit("copy")
+        super.copy(sender)
     }
 
     /// The storage character index directly under a mouse event, or nil if the
