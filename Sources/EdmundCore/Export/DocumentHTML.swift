@@ -43,19 +43,24 @@ enum DocumentHTML {
     // MARK: Math (SwiftMath → PNG data URI)
 
     private static let inlineMathPattern = "<span class=\"math-inline\" data-tex=\"([^\"]*)\"></span>"
-    private static let displayMathPattern = "<div class=\"math-display\" data-tex=\"([^\"]*)\"></div>"
+    // Group 1 is the block's `edmund-l<N>` source-line anchor (see
+    // `HTMLRenderer.addingAnchorID`), when the display-math div is a top-level
+    // block — carried through into the replacement so the anchor survives the
+    // asset-fill pass.
+    private static let displayMathPattern = "<div( id=\"[^\"]*\")? class=\"math-display\" data-tex=\"([^\"]*)\"></div>"
 
     private static func fillMath(_ html: String, theme: EditorTheme, dark: Bool) -> String {
         let color = NSColor(hex: dark ? "#e6e6e6" : "#1a1a1a") ?? .textColor
         var out = replaceMatches(html, pattern: displayMathPattern) { groups in
-            let tex = unescapeAttr(groups[1])
+            let id = groups[1]
+            let tex = unescapeAttr(groups[2])
             guard let r = mathImage(latex: tex, display: true,
                                     fontSize: theme.fontSize, color: color),
                   let data = pngData(r.image, scale: 2) else {
-                return "<div class=\"math-display\"><code>\(HTMLRenderer.escape(tex))</code></div>"
+                return "<div\(id) class=\"math-display\"><code>\(HTMLRenderer.escape(tex))</code></div>"
             }
             let uri = "data:image/png;base64,\(data.base64EncodedString())"
-            return "<div class=\"math-display\"><img class=\"math\" style=\"height:\(fmt(r.image.size.height))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\"></div>"
+            return "<div\(id) class=\"math-display\"><img class=\"math\" style=\"height:\(fmt(r.image.size.height))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\"></div>"
         }
         out = replaceMatches(out, pattern: inlineMathPattern) { groups in
             let tex = unescapeAttr(groups[1])

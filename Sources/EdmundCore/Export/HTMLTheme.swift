@@ -13,12 +13,25 @@ import AppKit
 // the system appearance flips.
 enum HTMLTheme {
 
+    /// The page background hex for the given appearance — shared by the CSS
+    /// `--bg` variable and `ReadModeWebView.underPageBackgroundColor` so the
+    /// webview's own background can't drift from the page it's about to show.
+    private static func backgroundHex(dark: Bool) -> String {
+        dark ? "#1e1e1e" : "#ffffff"
+    }
+
+    /// `NSColor` form of `backgroundHex`, for `WKWebView.underPageBackgroundColor`.
+    @MainActor
+    static func backgroundColor(dark: Bool) -> NSColor {
+        NSColor(hex: backgroundHex(dark: dark)) ?? .textBackgroundColor
+    }
+
     @MainActor
     static func css(_ theme: EditorTheme,
                     callouts: [String: CalloutStyle],
                     dark: Bool,
                     maxContentWidthPoints: Double = .greatestFiniteMagnitude) -> String {
-        let bg = dark ? "#1e1e1e" : "#ffffff"
+        let bg = backgroundHex(dark: dark)
         let fg = dark ? "#e6e6e6" : "#1a1a1a"
         let faint = dark ? "#9a9a9a" : "#6a6a6a"
         let rule = dark ? "#3a3a3a" : "#e0e0e0"

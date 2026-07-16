@@ -45,4 +45,16 @@ struct ReadModeWebViewTests {
             for: URL(string: "about:blank")!,
             navigationType: .reload) == .reload)
     }
+
+    @Test("scroll position string parser")
+    func parseScrollPosition() {
+        let parsed = ReadModeWebView.parseScrollPosition("42,0.5")
+        #expect(parsed?.line == 42)
+        #expect(parsed?.fraction == 0.5)
+
+        #expect(ReadModeWebView.parseScrollPosition("") == nil)
+        #expect(ReadModeWebView.parseScrollPosition("notanumber,0.5") == nil)
+        #expect(ReadModeWebView.parseScrollPosition("3,notanumber") == nil)
+        #expect(ReadModeWebView.parseScrollPosition("3") == nil)
+    }
 }

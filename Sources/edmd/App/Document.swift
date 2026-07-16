@@ -27,6 +27,12 @@ class Document: NSDocument, HeadingNavigable {
     private var containerView: NSView!
     private var readView: ReadModeWebView?
 
+    /// Editor character offset captured when entering Read mode (the topmost
+    /// visible line at the moment of the switch), used to scroll the editor
+    /// back to roughly the same place if leaving Read mode returns no anchor
+    /// (e.g. the rendered document had no top-level blocks).
+    private var lastReadAnchorOffset: Int?
+
     /// Content loaded from disk before the editor window exists.
     /// `nonisolated(unsafe)` because `read(from:ofType:)` may be called
     /// off the main actor, but the value is only consumed on main via `showWindows`.
@@ -394,9 +400,41 @@ class Document: NSDocument, HeadingNavigable {
     }
 
     private func setViewMode(_ mode: EditorTextView.ViewMode) {
+        // Capture the Read-entry anchor BEFORE the `viewMode` setter runs: the
+        // setter's full recompose defers every far-from-viewport block back to
+        // base-height estimates, so a capture taken after it reads collapsed
+        // geometry (~17pt/line instead of styled heights) and lands the read
+        // view ~100+ lines too deep — the "viewport drifts down every toggle"
+        // bug. The pre-setter geometry is exactly what's on screen.
+        if mode == .reading { captureReadEntryAnchor() }
         editor.viewMode = mode
         applyViewMode(mode)
         refreshViewModeButton()
+    }
+
+    /// The Edit→Read entry position, captured by `setViewMode` while the
+    /// editor's on-screen geometry is still settled, consumed by
+    /// `applyViewMode(.reading)`.
+    private var pendingReadEntryRestore: (line: Int, fraction: Double)?
+
+    /// Captures the topmost visible source line (+ fraction into its block)
+    /// while the scroll view is the visible view; no-op when Read mode is
+    /// already showing (re-render case — the webview preserves its own scroll).
+    private func captureReadEntryAnchor() {
+        pendingReadEntryRestore = nil
+        guard !scrollView.isHidden, let offset = editor.topmostVisibleCharacterOffset() else { return }
+        let visibleLine = editor.line(forOffset: offset)
+        let spans = ReadModeAnchors.topLevelBlockSpans(for: editor.rawSource)
+        guard !spans.isEmpty else { return }
+        let span = spans.last(where: { $0.startLine <= visibleLine }) ?? spans[0]
+        // Clamped: `visibleLine` can sit on a blank line *between* blocks
+        // (past `span.endLine`), which would push the raw ratio above 1. Same
+        // denominator as the reverse mapping in `applyViewMode` — the two must
+        // stay exact inverses in line space or every round trip drifts a line.
+        let lineCount = Double(span.endLine - span.startLine + 1)
+        let fraction = min(1, Double(visibleLine - span.startLine) / max(1, lineCount))
+        pendingReadEntryRestore = (line: span.startLine, fraction: fraction)
+        lastReadAnchorOffset = offset
     }
 
     /// Swaps the on-screen view for the mode: Read mode shows the rendered-HTML
@@ -404,6 +442,13 @@ class Document: NSDocument, HeadingNavigable {
     private func applyViewMode(_ mode: EditorTextView.ViewMode) {
         guard let containerView else { return }
         if mode == .reading {
+            // Entry anchor: captured by `setViewMode` before the `viewMode`
+            // setter's recompose could collapse far geometry to estimates; nil
+            // when Read mode was already showing (re-render case — the
+            // webview's own scroll-preserving reload carries the position).
+            let pendingRestore = pendingReadEntryRestore
+            pendingReadEntryRestore = nil
+
             let read = readView ?? {
                 let v = ReadModeWebView()
                 v.frame = scrollView.frame
@@ -415,21 +460,74 @@ class Document: NSDocument, HeadingNavigable {
                 // NSDocumentController) instead of navigating the webview.
                 v.onOpenWikiLink = { [weak self] in self?.editor.followWikiLink($0) }
                 v.onOpenInternalLink = { [weak self] in self?.editor.followLinkDestination($0) }
+                // The ONLY place the Edit→Read view swap happens: the editor
+                // stays on screen (and interactive) until the rendered
+                // document is actually ready, so there's never a blank gap.
+                // Set once, at creation — every later render (re-entry, live
+                // re-render) reuses this same webview and callback.
+                v.onLoadFinished = { [weak self] in
+                    guard let self, self.editor.viewMode == .reading, let read = self.readView else { return }
+                    read.isHidden = false
+                    self.scrollView.isHidden = true
+                    self.editor.window?.makeFirstResponder(read)
+                }
                 readView = v
                 return v
             }()
+
+            if let pendingRestore {
+                read.setPendingScrollRestore(line: pendingRestore.line, fraction: pendingRestore.fraction)
+            }
+            // Cache hit inside the webview (HTML unchanged) fires
+            // `onLoadFinished` synchronously here → instant swap, no reload.
             read.render(markdown: editor.rawSource,
                         theme: editor.theme,
                         callouts: mergedCallouts,
                         baseURL: documentDirectory,
                         options: renderOptions)
-            read.isHidden = false
-            scrollView.isHidden = true
-            editor.window?.makeFirstResponder(read)
         } else {
+            if let read = readView, !read.isHidden {
+                // While the webview is still alive, capture where the user
+                // actually scrolled to in Read mode and map it back onto the
+                // editor's source lines.
+                read.readScrollPosition { [weak self] pos in
+                    // Still in edit/source when this lands? A rapid toggle
+                    // back into Read mode means the editor is hidden again —
+                    // don't scroll it.
+                    guard let self, self.editor.viewMode != .reading else { return }
+                    var targetOffset: Int?
+                    if let pos {
+                        let spans = ReadModeAnchors.topLevelBlockSpans(for: self.editor.rawSource)
+                        let span = spans.first(where: { $0.startLine == pos.line })
+                            ?? spans.last(where: { $0.startLine <= pos.line })
+                        if let span {
+                            // Exact inverse of the entry mapping above (same
+                            // `lineCount` denominator): an untouched round trip
+                            // returns to the same source line instead of
+                            // drifting. Clamped — fraction ≈ 1 would otherwise
+                            // land on the line after the block.
+                            let lineCount = Double(span.endLine - span.startLine + 1)
+                            let targetLine = min(span.endLine,
+                                span.startLine + Int((pos.fraction * lineCount).rounded()))
+                            targetOffset = self.editor.offset(forLine: targetLine)
+                        }
+                    }
+                    if let offset = targetOffset ?? self.lastReadAnchorOffset {
+                        self.editor.scrollCharacterToTop(offset)
+                    }
+                }
+            }
+            // Swap views immediately — don't wait for the JS round-trip above.
             readView?.isHidden = true
             scrollView.isHidden = false
             editor.window?.makeFirstResponder(editor)
+            // Nothing else forces TextKit 2 viewport layout/redraw when a
+            // hidden scroll view is unhidden — a click used to supply the
+            // missing event, leaving the editor blank until one arrived. The
+            // async scroll above also forces layout when it lands; this poke
+            // covers the no-anchor path and the gap before the JS returns.
+            editor.textLayoutManager?.textViewportLayoutController.layoutViewport()
+            editor.needsDisplay = true
         }
     }
 

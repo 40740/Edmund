@@ -97,22 +97,47 @@ struct HTMLRenderer: MarkupVisitor {
     /// back to its last non-blank source line; the blank run between blocks A and
     /// B is then `B.firstLine - clamp(A.end) - 1`.
     mutating func visitDocument(_ document: Document) -> String {
-        guard options.preserveBlankLines else { return renderChildren(of: document) }
         var out = ""
         var prevEndLine: Int?
         for child in document.children {
-            if let prevEndLine, let range = child.range {
+            if options.preserveBlankLines, let prevEndLine, let range = child.range {
                 let blanks = range.lowerBound.line - prevEndLine - 1
                 if blanks > 1 {
                     out += String(repeating: "<div class=\"blank-line\"></div>", count: blanks - 1)
                 }
             }
-            out += visit(child)
+            var html = visit(child)
             if let range = child.range {
+                html = addingAnchorID(html, line: range.lowerBound.line)
+            }
+            out += html
+            if options.preserveBlankLines, let range = child.range {
                 prevEndLine = lastContentLine(atOrBefore: range.upperBound.line)
             }
         }
         return out
+    }
+
+    /// Inserts `id="edmund-l<line>"` into the first opening tag of `html` — the
+    /// tag for a top-level block (`<p>`, `<ul>`, a raw `<div>` HTML block, …) —
+    /// so Read mode can scroll to the block whose source starts at `line` and
+    /// the editor can find the anchor nearest a given viewport line (see
+    /// `ReadModeAnchors`). Skips (returns `html` unchanged) when there's no tag
+    /// to anchor: empty (footnote-definition paragraphs render `""`), a closing
+    /// tag, or a `<!--`/`<!DOCTYPE` declaration — none of which should happen
+    /// for a top-level block, but the guard is cheap insurance against ever
+    /// emitting broken markup. A block whose visitor returns multiple sibling
+    /// elements (callouts: the callout `<div>` plus a lazy-tail sibling) only
+    /// gets the id on the first one, which is correct — that's the element that
+    /// starts at `line`.
+    private func addingAnchorID(_ html: String, line: Int) -> String {
+        guard html.hasPrefix("<"), !html.hasPrefix("</"), !html.hasPrefix("<!") else { return html }
+        var idx = html.index(after: html.startIndex)
+        while idx < html.endIndex, html[idx].isLetter || html[idx].isNumber {
+            idx = html.index(after: idx)
+        }
+        guard idx > html.index(after: html.startIndex) else { return html }
+        return String(html[..<idx]) + " id=\"edmund-l\(line)\"" + String(html[idx...])
     }
 
     /// The last source line at or before `line` (1-indexed) that has non-blank
@@ -764,5 +789,25 @@ struct HTMLRenderer: MarkupVisitor {
         var markerEnd = text.index(after: afterBracket)
         if markerEnd < text.endIndex, text[markerEnd] == " " { markerEnd = text.index(after: markerEnd) }
         return (String(id), text.distance(from: text.startIndex, to: markerEnd))
+    }
+}
+
+/// Start/end source lines (1-indexed) of each top-level block, in document
+/// order — the same blocks that get `id="edmund-l<start>"` anchors in the
+/// rendered HTML. Used to map editor viewport lines to read-mode anchors.
+///
+/// A public wrapper: `HTMLRenderer` itself stays internal (a public struct
+/// would leak its `MarkupVisitor` conformance and rendering internals to
+/// other targets), but callers outside EdmundCore need this line mapping.
+public enum ReadModeAnchors {
+
+    /// Parses `markdown` with the same options `HTMLRenderer.render` uses, so
+    /// the reported spans match the document that's actually rendered.
+    public static func topLevelBlockSpans(for markdown: String) -> [(startLine: Int, endLine: Int)] {
+        let document = Document(parsing: markdown, options: [.disableSmartOpts])
+        return document.children.compactMap { child in
+            guard let range = child.range else { return nil }
+            return (startLine: range.lowerBound.line, endLine: range.upperBound.line)
+        }
     }
 }
