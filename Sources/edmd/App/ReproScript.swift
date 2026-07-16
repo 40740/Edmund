@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import EdmundCore
+import WebKit
 
 /// In-process repro driver: `-debug.reproScript <path>` replays a keystroke
 /// script against the front document through the real AppKit key-event path
@@ -16,6 +17,10 @@ import EdmundCore
 ///   scroll <y>        scroll the clip view to y (bypasses the caret/typewriter
 ///                     recentering, so a block can be driven off-screen)
 ///   logsel            log the current selection
+///   viewmode          toggle Edit ↔ Read via the same action as ⌘E
+///   readscroll <y>    raw-scroll the Read-mode webview to y
+///   logstate          NSLog view-swap state (mode, hidden flags, clip y,
+///                     webview scrollTop) for mode-switch harness debugging
 @MainActor
 enum ReproScript {
 
@@ -175,11 +180,74 @@ enum ReproScript {
                     editor.enclosingScrollView?.reflectScrolledClipView(clipView)
                     Log.info("repro scroll y=\(y) clamped=\(clamped.origin.y)", category: .app)
                 }
+            case "viewmode":
+                // Toggles Edit ↔ Read through the same @objc action the ⌘E
+                // menu item fires, so the switch takes the real code path.
+                scheduleDoc(after: delay) { doc in
+                    doc.toggleViewMode(nil)
+                    Log.info("repro viewmode toggled", category: .app)
+                }
+            case "readscroll":
+                // Raw-scrolls the Read-mode webview to y (simulates the user
+                // scrolling while reading — arbitrary position, independent of
+                // the block anchors the scroll-sync bridge uses).
+                scheduleDoc(after: delay) { doc in
+                    guard let content = doc.windowControllers.first?.window?.contentView,
+                          let web = firstWebView(in: content) else {
+                        Log.info("repro readscroll: no webview", category: .app); return
+                    }
+                    let y = Double(arg) ?? 0
+                    web.evaluateJavaScript("document.scrollingElement.scrollTop = \(y)",
+                                           completionHandler: nil)
+                    Log.info("repro readscroll y=\(y)", category: .app)
+                }
+            case "logstate":
+                // Dumps view-swap state to stdout (shell-visible even when the
+                // file logger is off) for mode-switch harness debugging.
+                scheduleDoc(after: delay) { doc in
+                    let editor = doc.editor!
+                    let sv = editor.enclosingScrollView
+                    let web = doc.windowControllers.first?.window?.contentView
+                        .flatMap { firstWebView(in: $0) }
+                    NSLog("STATE mode=\(editor.viewMode) " +
+                          "scrollHidden=\(sv?.isHidden ?? false) " +
+                          "webHidden=\(web?.isHidden ?? true) webNil=\(web == nil) " +
+                          "clipY=\(sv?.contentView.bounds.origin.y ?? -1) " +
+                          "winKey=\(editor.window?.isKeyWindow ?? false) " +
+                          "occl=\(editor.window?.occlusionState.contains(.visible) ?? false)")
+                    let off = editor.topmostVisibleCharacterOffset()
+                    let line = off.map { editor.line(forOffset: $0) }
+                    let spans = ReadModeAnchors.topLevelBlockSpans(for: editor.rawSource)
+                    let span = line.flatMap { l in spans.last(where: { $0.startLine <= l }) }
+                    NSLog("MAP off=\(off ?? -1) line=\(line ?? -1) span=\(span.map { "\($0.startLine)-\($0.endLine)" } ?? "nil") spans=\(spans.count)")
+                    (web as? ReadModeWebView)?.readScrollPosition { pos in
+                        NSLog("READPOS \(pos.map { "line=\($0.line) f=\($0.fraction)" } ?? "nil")")
+                    }
+                    web?.evaluateJavaScript("document.scrollingElement.scrollTop + ',' + document.body.childElementCount") { v, e in
+                        NSLog("WEBSTATE \(v.map(String.init(describing:)) ?? "nil") err=\(e.map(String.init(describing:)) ?? "none")")
+                    }
+                }
             default:
                 break
             }
             delay += 0.02
         }
+    }
+
+    private static func scheduleDoc(after: TimeInterval,
+                                    _ body: @escaping @MainActor (Document) -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + after) {
+            guard let doc = NSDocumentController.shared.documents.first as? Document else { return }
+            body(doc)
+        }
+    }
+
+    private static func firstWebView(in view: NSView) -> WKWebView? {
+        if let web = view as? WKWebView { return web }
+        for sub in view.subviews {
+            if let web = firstWebView(in: sub) { return web }
+        }
+        return nil
     }
 
     private static func schedule(after: TimeInterval,

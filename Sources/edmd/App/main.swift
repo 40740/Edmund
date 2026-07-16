@@ -17,8 +17,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var settingsWindowController: SettingsWindowController?
     // startingUpdater: true kicks off the scheduled background check immediately;
     // the "Check for Updates…" menu item targets this controller directly.
+    // `-debug.disableUpdater YES` skips the start entirely: on dev builds the
+    // failed check throws a *modal* "updater failed" alert at launch that
+    // blocks the whole app (no document window until dismissed), which breaks
+    // scripted/automated runs.
     let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        startingUpdater: !UserDefaults.standard.bool(forKey: "debug.disableUpdater"),
+        updaterDelegate: nil, userDriverDelegate: nil)
 
     // MARK: - Typewriter Mode (persisted)
 

@@ -400,9 +400,41 @@ class Document: NSDocument, HeadingNavigable {
     }
 
     private func setViewMode(_ mode: EditorTextView.ViewMode) {
+        // Capture the Read-entry anchor BEFORE the `viewMode` setter runs: the
+        // setter's full recompose defers every far-from-viewport block back to
+        // base-height estimates, so a capture taken after it reads collapsed
+        // geometry (~17pt/line instead of styled heights) and lands the read
+        // view ~100+ lines too deep — the "viewport drifts down every toggle"
+        // bug. The pre-setter geometry is exactly what's on screen.
+        if mode == .reading { captureReadEntryAnchor() }
         editor.viewMode = mode
         applyViewMode(mode)
         refreshViewModeButton()
+    }
+
+    /// The Edit→Read entry position, captured by `setViewMode` while the
+    /// editor's on-screen geometry is still settled, consumed by
+    /// `applyViewMode(.reading)`.
+    private var pendingReadEntryRestore: (line: Int, fraction: Double)?
+
+    /// Captures the topmost visible source line (+ fraction into its block)
+    /// while the scroll view is the visible view; no-op when Read mode is
+    /// already showing (re-render case — the webview preserves its own scroll).
+    private func captureReadEntryAnchor() {
+        pendingReadEntryRestore = nil
+        guard !scrollView.isHidden, let offset = editor.topmostVisibleCharacterOffset() else { return }
+        let visibleLine = editor.line(forOffset: offset)
+        let spans = ReadModeAnchors.topLevelBlockSpans(for: editor.rawSource)
+        guard !spans.isEmpty else { return }
+        let span = spans.last(where: { $0.startLine <= visibleLine }) ?? spans[0]
+        // Clamped: `visibleLine` can sit on a blank line *between* blocks
+        // (past `span.endLine`), which would push the raw ratio above 1. Same
+        // denominator as the reverse mapping in `applyViewMode` — the two must
+        // stay exact inverses in line space or every round trip drifts a line.
+        let lineCount = Double(span.endLine - span.startLine + 1)
+        let fraction = min(1, Double(visibleLine - span.startLine) / max(1, lineCount))
+        pendingReadEntryRestore = (line: span.startLine, fraction: fraction)
+        lastReadAnchorOffset = offset
     }
 
     /// Swaps the on-screen view for the mode: Read mode shows the rendered-HTML
@@ -410,26 +442,12 @@ class Document: NSDocument, HeadingNavigable {
     private func applyViewMode(_ mode: EditorTextView.ViewMode) {
         guard let containerView else { return }
         if mode == .reading {
-            // Capture the editor's viewport-top anchor BEFORE anything else,
-            // and only when the scroll view is the currently-visible one —
-            // i.e. we're actually switching in from edit/source. If Read mode
-            // is already active (e.g. `applyViewMode(.reading)` re-called
-            // because render options changed), the editor is hidden and its
-            // "visible" viewport is stale, so keep the previous anchor and
-            // let the webview's own scroll-preserving re-render (see
-            // `ReadModeWebView.reloadHTML`) carry the position instead.
-            var pendingRestore: (line: Int, fraction: Double)?
-            if !scrollView.isHidden, let offset = editor.topmostVisibleCharacterOffset() {
-                let visibleLine = editor.line(forOffset: offset)
-                let spans = ReadModeAnchors.topLevelBlockSpans(for: editor.rawSource)
-                if !spans.isEmpty {
-                    let span = spans.last(where: { $0.startLine <= visibleLine }) ?? spans[0]
-                    let fraction = Double(visibleLine - span.startLine)
-                        / Double(max(1, span.endLine - span.startLine + 1))
-                    pendingRestore = (line: span.startLine, fraction: fraction)
-                }
-                lastReadAnchorOffset = offset
-            }
+            // Entry anchor: captured by `setViewMode` before the `viewMode`
+            // setter's recompose could collapse far geometry to estimates; nil
+            // when Read mode was already showing (re-render case — the
+            // webview's own scroll-preserving reload carries the position).
+            let pendingRestore = pendingReadEntryRestore
+            pendingReadEntryRestore = nil
 
             let read = readView ?? {
                 let v = ReadModeWebView()
@@ -483,8 +501,14 @@ class Document: NSDocument, HeadingNavigable {
                         let span = spans.first(where: { $0.startLine == pos.line })
                             ?? spans.last(where: { $0.startLine <= pos.line })
                         if let span {
-                            let targetLine = span.startLine
-                                + Int(round(pos.fraction * Double(max(0, span.endLine - span.startLine))))
+                            // Exact inverse of the entry mapping above (same
+                            // `lineCount` denominator): an untouched round trip
+                            // returns to the same source line instead of
+                            // drifting. Clamped — fraction ≈ 1 would otherwise
+                            // land on the line after the block.
+                            let lineCount = Double(span.endLine - span.startLine + 1)
+                            let targetLine = min(span.endLine,
+                                span.startLine + Int((pos.fraction * lineCount).rounded()))
                             targetOffset = self.editor.offset(forLine: targetLine)
                         }
                     }

@@ -41,7 +41,12 @@ extension EditorTextView {
         guard let scrollView = enclosingScrollView, let tlm = textLayoutManager else { return nil }
         tlm.textViewportLayoutController.layoutViewport()
         let visible = scrollView.contentView.bounds
-        let topPoint = CGPoint(x: 0, y: visible.minY - textContainerOrigin.y)
+        // +1pt: after `scrollCharacterToTop` the anchor line's top sits exactly
+        // on the viewport top, and sampling the exact boundary (or 1px above,
+        // from settle-loop rounding) picks the fragment *above* — walking the
+        // anchor up a line on every Edit→Read round trip. Sampling just inside
+        // the viewport keeps the round trip fixed-point.
+        let topPoint = CGPoint(x: 0, y: visible.minY + 1 - textContainerOrigin.y)
         guard let frag = tlm.textLayoutFragment(for: topPoint) else { return nil }
         return tlm.offset(from: tlm.documentRange.location, to: frag.rangeInElement.location)
     }
@@ -116,7 +121,21 @@ extension EditorTextView {
     /// first scroll).
     public func scrollCharacterToTop(_ offset: Int) {
         guard let scrollView = enclosingScrollView else { return }
-        guard ensureRegionLaidOut(upTo: offset) else {
+        // The target's absolute Y is only trustworthy once everything ABOVE it
+        // is laid out for real: a Y computed against estimates lands wrong, and
+        // then *keeps shifting* as idle promotion realizes those estimates —
+        // the viewport visibly drifts seconds after the scroll. Lay out from
+        // the document start when that span fits the usual cost cap; only far
+        // targets in huge documents degrade to the viewport-relative path.
+        if let tlm = textLayoutManager, offset <= 60_000,
+           let end = tlm.location(tlm.documentRange.location, offsetBy: offset),
+           let range = NSTextRange(location: tlm.documentRange.location, end: end) {
+            // Style before laying out: an unstyled block's laid-out height is
+            // provisional, and the styling that catches up moments later
+            // re-measures it and slides the just-anchored viewport.
+            ensureBlocksStyled(upTo: offset)
+            tlm.ensureLayout(for: range)
+        } else if !ensureRegionLaidOut(upTo: offset) {
             scrollRangeToVisible(NSRange(location: offset, length: 0)); return
         }
         guard let rect = lineRect(forCharacterAt: offset) else { return }
@@ -130,7 +149,7 @@ extension EditorTextView {
         scrollView.reflectScrolledClipView(scrollView.contentView)
 
         guard let tlm = textLayoutManager else { return }
-        for _ in 0..<3 {
+        for _ in 0..<6 {
             tlm.textViewportLayoutController.layoutViewport()
             guard let settled = lineRect(forCharacterAt: offset) else { return }
             let settledTarget = settled.minY + textContainerOrigin.y

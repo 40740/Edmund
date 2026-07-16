@@ -186,6 +186,46 @@ extension EditorTextView {
         recomposeDirty(unstyled, cursorInRaw: selectedRange().location)
     }
 
+    /// Synchronously styles every unstyled block from the document start
+    /// through the block containing `offset`. `scrollCharacterToTop` needs the
+    /// heights ABOVE its target to be final before it measures: an unstyled
+    /// block lays out at base-attribute height, and when the drain/promotion
+    /// styles it moments after the scroll, the re-measure slides the whole
+    /// just-anchored viewport (drain invalidation is not scroll-compensated).
+    /// Same per-block body as `drainStylingSlice`, without the time budget —
+    /// callers bound the cost by capping `offset` instead.
+    func ensureBlocksStyled(upTo offset: Int) {
+        guard let ts = textStorage, !isUpdating, !hasMarkedText() else { return }
+        guard let last = blocks.lastIndex(where: { $0.range.location <= offset }) else { return }
+        let unstyled = (0...last).filter { !blocks[$0].isStyled }
+        guard !unstyled.isEmpty else { return }
+        isUpdating = true
+        let nsString = ts.string as NSString
+        let cursor = selectedRange().location
+        autoreleasepool {
+            ts.beginEditing()
+            for idx in unstyled {
+                let cursorInBlock: Int? = (idx == activeBlockIndex)
+                    ? max(0, cursor - blocks[idx].range.location) : nil
+                restyleBlock(idx, cursorInBlock: cursorInBlock)
+                blocks[idx].isStyled = true
+                let sep = blocks[idx].range.upperBound
+                if sep < nsString.length && nsString.character(at: sep) == 0x0A {
+                    ts.setAttributes(baseAttributes, range: NSRange(location: sep, length: 1))
+                }
+            }
+            ts.endEditing()
+        }
+        if let tlm = textLayoutManager {
+            for idx in unstyled where idx < blocks.count {
+                if let range = blockTextRange(blocks[idx].range, tlm) {
+                    tlm.invalidateLayout(for: range)
+                }
+            }
+        }
+        isUpdating = false
+    }
+
     /// Observes clip-view scrolling for promotion. Called from
     /// `viewDidMoveToWindow`.
     func installScrollPromotionObserver() {

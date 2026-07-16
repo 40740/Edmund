@@ -206,7 +206,10 @@ public final class ReadModeWebView: WKWebView {
           var chosen = null;
           for (var i = 0; i < nodes.length; i++) {
             var elTop = nodes[i].getBoundingClientRect().top + top;
-            if (elTop <= top) { chosen = nodes[i]; } else { break; }
+            /* 1px tolerance: setScrollPosition puts the anchor's top exactly at
+               the viewport top; sub-pixel rounding must not flip the pick to
+               the previous block (which would drift the round trip). */
+            if (elTop <= top + 1) { chosen = nodes[i]; } else { break; }
           }
           var fraction;
           if (!chosen) {
