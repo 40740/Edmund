@@ -3,8 +3,8 @@ import { defineConfig } from "astro/config";
 import UnoCSS from "unocss/astro";
 
 export default defineConfig({
-  site: "https://i7t5.github.io",
-  base: "/Edmund",
+  site: "https://edmund.md",
+  base: "/",
   integrations: [
     UnoCSS({
       injectReset: true,
