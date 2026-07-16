@@ -368,6 +368,20 @@ public class EditorTextView: NSTextView {
     /// that the resulting selection change does not re-center the viewport —
     /// centering when the user merely clicks somewhere feels glitchy.
     public override func mouseDown(with event: NSEvent) {
+        // Field diagnostics for the intermittent "click/drag to select does
+        // nothing" report (backlog, 7/14 occurrences): AppKit suppresses
+        // selection notifications while `stillSelecting`, so a failed drag
+        // leaves NO trace in `selectionDidChange` — the before/after pair here
+        // is the only place the failure is observable. The entry line's
+        // hit-vs-selection relation discriminates the two candidate
+        // mechanisms: a hit index inside a non-empty prior selection means
+        // AppKit ran its drag-*move* gesture (no new selection by design); a
+        // sane hit with an unchanged selection at exit means the click never
+        // anchored (hit-test / tracking dead zone).
+        traceEdit("mouseDown hit=\(clickCharIndex(at: event).map(String.init) ?? "nil") "
+            + "pendingRecompose=\(pendingRecompose ? "Y" : "N") "
+            + "firstResponder=\(window?.firstResponder === self ? "Y" : "N") "
+            + "clicks=\(event.clickCount)")
         if event.modifierFlags.contains(.command) {
             if let target = wikiTarget(at: event) {
                 followWikiLink(target)
@@ -381,6 +395,9 @@ public class EditorTextView: NSTextView {
         suppressTypewriterCentering = true
         super.mouseDown(with: event)
         suppressTypewriterCentering = false
+        // `super.mouseDown` returns only after the whole tracking loop (drag +
+        // mouse-up) finishes; `sel` in this line is the gesture's net result.
+        traceEdit("mouseDown done")
     }
 
     /// The storage character index directly under a mouse event, or nil if the
