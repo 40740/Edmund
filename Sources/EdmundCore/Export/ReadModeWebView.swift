@@ -92,10 +92,23 @@ public final class ReadModeWebView: WKWebView {
         pendingScrollRestore = (line: line, fraction: fraction)
     }
 
+    /// The HTML from the most recent `loadHTMLString` call, so a re-render that
+    /// produces byte-identical HTML (e.g. a mode-switch re-entry with no
+    /// document change) can skip the reload entirely — instant, no white flash.
+    private var lastLoadedHTML: String?
+
     func reloadHTML() {
         guard let p = pending else { return }
         guard hasLoadedOnce else {
             hasLoadedOnce = true
+            performLoad(p)
+            return
+        }
+        // Externally-set restores (e.g. Edit→Read entry via
+        // `setPendingScrollRestore`) win over self-capture: skip straight to
+        // load rather than clobbering the caller's position with the current
+        // (pre-switch) scroll offset.
+        guard pendingScrollRestore == nil else {
             performLoad(p)
             return
         }
@@ -115,9 +128,19 @@ public final class ReadModeWebView: WKWebView {
                                    callouts: [String: CalloutStyle], baseURL: URL?,
                                    options: ReadRenderOptions)) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        // Kills the white flash between `loadHTMLString` and first paint (most
+        // visible in dark mode): the page background shows immediately instead
+        // of the system default white.
+        underPageBackgroundColor = HTMLTheme.backgroundColor(dark: dark)
         let html = DocumentHTML.full(markdown: p.markdown, theme: p.theme,
                                      callouts: p.callouts, dark: dark,
                                      baseURL: p.baseURL, options: p.options)
+        guard html != lastLoadedHTML else {
+            // Nothing changed — the document on screen is already correct.
+            applyPendingScrollRestoreAndNotify()
+            return
+        }
+        lastLoadedHTML = html
         loadHTMLString(html, baseURL: ReadModeNavigationPolicy.trustedBaseURL)
     }
 
@@ -126,9 +149,16 @@ public final class ReadModeWebView: WKWebView {
         reloadHTML()
     }
 
-    /// Forwarded from the navigation coordinator's `didFinish`. Applies any
-    /// pending scroll restore first, then notifies the owner the load is done.
+    /// Forwarded from the navigation coordinator's `didFinish`.
     fileprivate func handleDidFinishLoad() {
+        applyPendingScrollRestoreAndNotify()
+    }
+
+    /// Applies any pending scroll restore, then notifies the owner the
+    /// document is ready. Shared by a real load's `didFinish` and the
+    /// cache-hit path in `performLoad` (which has nothing to load, so there's
+    /// no `didFinish` to forward from).
+    private func applyPendingScrollRestoreAndNotify() {
         if let restore = pendingScrollRestore {
             pendingScrollRestore = nil
             setScrollPosition(line: restore.line, fraction: restore.fraction)
