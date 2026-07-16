@@ -272,6 +272,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // View menu — built in its own file (ViewMenu.swift).
         mainMenu.addItem(ViewMenu.build())
 
+        // Window menu — built in its own file (WindowMenu.swift). Assigning
+        // the submenu to `windowsMenu` (not just adding the item) makes
+        // AppKit auto-populate the open-window list and checkmark below the
+        // static Minimize/Zoom/Bring All to Front items.
+        let windowMenuItem = WindowMenu.build()
+        mainMenu.addItem(windowMenuItem)
+        NSApplication.shared.windowsMenu = windowMenuItem.submenu
+
         NSApplication.shared.mainMenu = mainMenu
     }
 }
