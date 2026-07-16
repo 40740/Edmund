@@ -1,0 +1,85 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const features = [
+  "Inline live preview for Markdown files",
+  "Native AppKit and TextKit 2 interface",
+  "No vaults, accounts, or Electron runtime",
+  "Opt-in GFM, math, and Obsidian-style syntax",
+];
+
+const base = import.meta.env.BASE_URL.endsWith("/")
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
+---
+
+<BaseLayout
+  pageTitle="Edmund - Markdown editor for macOS"
+  description="Edmund is a minimal native Markdown editor for macOS with inline live preview."
+>
+  <section class="grid gap-8 pb-12 sm:grid-cols-[1fr_220px] sm:items-start">
+    <div>
+      <p class="mb-3 font-mono text-sm text-teal-dark">native Markdown editor for macOS</p>
+      <h1 class="max-w-2xl text-5xl font-semibold leading-tight sm:text-6xl">Edmund</h1>
+      <p class="mt-5 max-w-2xl text-xl leading-8 text-quiet">
+        A minimal, file-based Markdown editor with inline live preview.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a
+          class="inline-flex items-center gap-2 border border-teal bg-teal px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-dark"
+          href="https://github.com/I7T5/Edmund/releases/latest"
+        >
+          <span class="i-lucide-download h-4 w-4" aria-hidden="true"></span>
+          Download
+        </a>
+        <a
+          class="inline-flex items-center gap-2 border border-line px-4 py-2 text-sm font-semibold text-ink transition hover:border-teal hover:text-teal-dark"
+          href="https://github.com/I7T5/Edmund"
+        >
+          <span class="i-lucide-github h-4 w-4" aria-hidden="true"></span>
+          Source
+        </a>
+      </div>
+    </div>
+    <figure class="justify-self-start sm:justify-self-end">
+      <img
+        class="h-28 w-28 sm:h-36 sm:w-36"
+        src={`${base}assets/app-icon.png`}
+        alt="Edmund app icon"
+        loading="eager"
+      />
+    </figure>
+  </section>
+
+  <section class="border-y border-line py-10">
+    <img
+      class="w-full border border-line"
+      src={`${base}assets/screenshot-basic.png`}
+      alt="Edmund showing a Markdown document in light and dark appearances"
+      loading="eager"
+    />
+  </section>
+
+  <section class="grid gap-8 py-12 sm:grid-cols-[180px_1fr]">
+    <h2 class="font-mono text-sm font-semibold text-clay">what it is</h2>
+    <div class="space-y-5 text-lg leading-8 text-quiet">
+      <p>
+        Edmund opens ordinary <code class="font-mono text-ink">.md</code> files and renders structure in place, so writing stays close to the source without switching panes.
+      </p>
+      <p>
+        The app is built in Swift for macOS 14 and newer. It aims to stay small, predictable, and at home on the desktop.
+      </p>
+    </div>
+  </section>
+
+  <section class="grid gap-8 pb-14 sm:grid-cols-[180px_1fr]">
+    <h2 class="font-mono text-sm font-semibold text-clay">basics</h2>
+    <ul class="grid gap-3 text-quiet sm:grid-cols-2">
+      {features.map((feature) => (
+        <li class="border border-line bg-wash px-4 py-3">
+          <span class="mr-2 text-teal-dark">/</span>{feature}
+        </li>
+      ))}
+    </ul>
+  </section>
+</BaseLayout>

@@ -17,6 +17,9 @@ Tests/EdmundTests/_RenderEdit.swift
 # dev stuff
 .build/
 build/
+site/.astro/
+site/dist/
+site/node_modules/
 Packages/
 xcuserdata/
 DerivedData/
