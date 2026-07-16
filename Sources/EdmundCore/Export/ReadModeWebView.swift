@@ -46,11 +46,32 @@ public final class ReadModeWebView: WKWebView {
     /// destination (e.g. `[text](other.md)`), routed the same way.
     public var onOpenInternalLink: ((String) -> Void)?
 
+    /// Called after a `loadHTMLString` finishes (including any pending scroll
+    /// restore, applied first — see `pendingScrollRestore`).
+    public var onLoadFinished: (() -> Void)?
+
     /// The most recent render inputs, so the view can re-render itself when the
     /// system appearance flips (light ↔ dark) without the document re-driving it.
     private var pending: (markdown: String, theme: EditorTheme,
                           callouts: [String: CalloutStyle], baseURL: URL?,
                           options: ReadRenderOptions)?
+
+    /// A scroll position (source line + fraction into that block) to apply once
+    /// the *next* load finishes. Set either by `reloadHTML()` itself (to carry
+    /// the current scroll position across an appearance-driven re-render) or
+    /// externally via `setPendingScrollRestore` (e.g. an Edit→Read entry point).
+    private var pendingScrollRestore: (line: Int, fraction: Double)?
+
+    /// Guards a `readScrollPosition` capture in flight against a second
+    /// `reloadHTML()` racing ahead of it — the completion only acts if this
+    /// hasn't moved on since it was captured.
+    private var loadGeneration = 0
+
+    /// True once the first `loadHTMLString` has been issued. The very first
+    /// load has nothing on-screen to capture a scroll position from, so
+    /// `reloadHTML()` skips straight to loading instead of awaiting
+    /// `readScrollPosition`.
+    private var hasLoadedOnce = false
 
     /// Renders `markdown` with the given theme; appearance is resolved from the
     /// view itself. `baseURL` is the document's directory (for resolving relative
@@ -64,8 +85,35 @@ public final class ReadModeWebView: WKWebView {
         reloadHTML()
     }
 
+    /// Sets the scroll position to restore on the *next* load, for callers that
+    /// need to drive where a fresh Read-mode render lands (e.g. entering Read
+    /// mode at the Edit-mode caret's position) rather than at the top.
+    public func setPendingScrollRestore(line: Int, fraction: Double) {
+        pendingScrollRestore = (line: line, fraction: fraction)
+    }
+
     func reloadHTML() {
         guard let p = pending else { return }
+        guard hasLoadedOnce else {
+            hasLoadedOnce = true
+            performLoad(p)
+            return
+        }
+        // Capture the current scroll position before we blow it away with a
+        // fresh `loadHTMLString`, so the re-render (appearance flip, settings
+        // change) can restore it once the new document finishes loading.
+        let generation = loadGeneration
+        readScrollPosition { [weak self] restored in
+            guard let self, self.loadGeneration == generation else { return }
+            self.pendingScrollRestore = restored
+            self.loadGeneration += 1
+            self.performLoad(p)
+        }
+    }
+
+    private func performLoad(_ p: (markdown: String, theme: EditorTheme,
+                                   callouts: [String: CalloutStyle], baseURL: URL?,
+                                   options: ReadRenderOptions)) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let html = DocumentHTML.full(markdown: p.markdown, theme: p.theme,
                                      callouts: p.callouts, dark: dark,
@@ -76,6 +124,93 @@ public final class ReadModeWebView: WKWebView {
     public override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         reloadHTML()
+    }
+
+    /// Forwarded from the navigation coordinator's `didFinish`. Applies any
+    /// pending scroll restore first, then notifies the owner the load is done.
+    fileprivate func handleDidFinishLoad() {
+        if let restore = pendingScrollRestore {
+            pendingScrollRestore = nil
+            setScrollPosition(line: restore.line, fraction: restore.fraction)
+        }
+        onLoadFinished?()
+    }
+
+    // MARK: - Scroll bridge
+    //
+    // QUIRK: `evaluateJavaScript` still runs even with
+    // `allowsContentJavaScript = false` and the page's `script-src 'none'` CSP
+    // (verified empirically) — those two only govern JS *in the page*;
+    // API-injected JS is a separate, trusted channel. That's load-bearing here:
+    // it's why this bridge can exist while content JS stays fully disabled. All
+    // JS below is a static template with only Swift-computed numeric values
+    // (Int/Double) interpolated — never document content — so nothing user- or
+    // document-controlled ever reaches `evaluateJavaScript`.
+
+    /// Scrolls so the block anchored at source `line` sits at the viewport top,
+    /// offset `fraction` (0–1) into the block's rendered height.
+    public func setScrollPosition(line: Int, fraction: Double) {
+        let clamped = min(max(fraction, 0), 1)
+        // QUIRK: wrapped in an IIFE — each `evaluateJavaScript` runs as a new
+        // program in the page's one global realm, so a top-level `const` here
+        // would throw a redeclaration SyntaxError on the second call without an
+        // intervening reload (and the scroll would silently no-op).
+        let js = """
+        (function() { \
+        var el = document.getElementById('edmund-l\(line)'); \
+        if (el) { var se = document.scrollingElement; \
+        se.scrollTop = el.getBoundingClientRect().top + se.scrollTop + \(String(describing: clamped)) * el.offsetHeight; } \
+        })()
+        """
+        evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    /// Reads the current scroll position as (anchor source line, fraction into
+    /// that block). nil when the document has no anchors or JS fails.
+    public func readScrollPosition(completion: @escaping ((line: Int, fraction: Double)?) -> Void) {
+        let js = """
+        (function() {
+          var nodes = document.querySelectorAll('[id^="edmund-l"]');
+          if (nodes.length === 0) return '';
+          var top = document.scrollingElement.scrollTop;
+          var chosen = null;
+          for (var i = 0; i < nodes.length; i++) {
+            var elTop = nodes[i].getBoundingClientRect().top + top;
+            if (elTop <= top) { chosen = nodes[i]; } else { break; }
+          }
+          var fraction;
+          if (!chosen) {
+            chosen = nodes[0];
+            fraction = 0;
+          } else {
+            var chosenTop = chosen.getBoundingClientRect().top + top;
+            fraction = (top - chosenTop) / Math.max(1, chosen.offsetHeight);
+            if (fraction < 0) fraction = 0;
+            if (fraction > 1) fraction = 1;
+          }
+          return chosen.id.slice(8) + ',' + fraction;
+        })()
+        """
+        evaluateJavaScript(js) { result, error in
+            Task { @MainActor in
+                guard error == nil, let str = result as? String else {
+                    completion(nil)
+                    return
+                }
+                completion(Self.parseScrollPosition(str))
+            }
+        }
+    }
+
+    /// Parses the `"<line>,<fraction>"` string produced by `readScrollPosition`'s
+    /// JS. Extracted as a pure helper so it's unit-testable without a webview.
+    internal static func parseScrollPosition(_ s: String) -> (line: Int, fraction: Double)? {
+        guard !s.isEmpty else { return nil }
+        let parts = s.split(separator: ",", maxSplits: 1)
+        guard parts.count == 2, let line = Int(parts[0]), let fraction = Double(parts[1]) else {
+            return nil
+        }
+        return (line: line, fraction: fraction)
     }
 }
 
@@ -126,6 +261,13 @@ private final class ReadModeNavigationCoordinator: NSObject, WKNavigationDelegat
         case .cancel:
             return .cancel
         }
+    }
+
+    // No completion handler on this one, so — unlike `decidePolicyFor` above —
+    // there's no Swift-6 async/completion-handler selector mismatch to worry
+    // about; the plain delegate method matches the requirement as written.
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        owner?.handleDidFinishLoad()
     }
 }
 
