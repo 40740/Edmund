@@ -225,6 +225,27 @@ relative markdown links use private URL schemes (`x-edmund-wiki:`,
 `x-edmund-link:`) in the rendered HTML so the nav coordinator can intercept
 them and route through the app's document graph without JavaScript.
 
+**Mode-switch viewport sync** (Edit ↔ Read, line-accurate both directions):
+every top-level block in the read HTML carries `id="edmund-l<startLine>"`
+(spliced in `HTMLRenderer.visitDocument`; `ReadModeAnchors.topLevelBlockSpans`
+exposes the same 1-indexed line spans to callers). `ReadModeWebView` reads and
+sets its scroll position as (anchor line, fraction-into-block) via
+`evaluateJavaScript` — which runs even with `allowsContentJavaScript = false`
+and the `script-src 'none'` CSP (both gate only *page content* JS; API-injected
+JS is a separate trusted channel), so the sandbox above is unchanged. The JS is
+static templates interpolating only Swift-computed numbers. `Document` maps the
+editor side with `topmostVisibleCharacterOffset()` / `line(forOffset:)` /
+`offset(forLine:)` / `scrollCharacterToTop(_:)`; entry and exit mappings use
+the same `lineCount` denominator so an untouched round trip is a fixed point.
+Both swap directions are deferred so no intermediate frame is visible: Edit→Read
+swaps in `onLoadFinished` (with an HTML cache making unchanged re-entries
+instant and skipping the reload), Read→Edit swaps in `readScrollPosition`'s
+completion after the editor is positioned while still hidden. Re-renders
+(appearance flip, settings) self-capture and restore their scroll. Two gotchas
+this feature learned the hard way (see also §8): the anchor must be captured
+*before* the `viewMode` setter runs, and far scrolls must style-then-lay-out
+everything above the target before measuring.
+
 ---
 
 ## 7. Settings & persistence
@@ -388,10 +409,25 @@ them and route through the app's document graph without JavaScript.
   fixup synchronously): use the in-process repro driver — DEBUG builds accept
   `-debug.reproScript <path>` (`Sources/edmd/App/ReproScript.swift`) and replay
   keystroke scripts (`caret` / `type` / `backspace` / `bypassdelete` /
-  `assertcaret` / `logsel`) through the real `window.sendEvent` key path — no
-  Accessibility/TCC needed, works with the window on an invisible Space. Full
-  chronicle: `docs/investigations/delete-drift-investigation.md` round 6; step-by-step method
-  for producing such repros: `docs/dev-guides/live-repro-guide.md`.
+  `assertcaret` / `logsel` / `scroll` / `viewmode` / `readscroll` / `logstate`)
+  through the real `window.sendEvent` key path — no Accessibility/TCC needed,
+  works with the window on an invisible Space. Pass `-debug.disableUpdater YES`
+  alongside it: Sparkle's failed-update alert on dev builds is **modal at
+  launch** and blocks everything (no document window, no script) until
+  dismissed. Full chronicle: `docs/investigations/delete-drift-investigation.md`
+  round 6; step-by-step method for producing such repros:
+  `docs/dev-guides/live-repro-guide.md`.
+- **The `viewMode` setter recomposes every block, collapsing far geometry to
+  estimates.** `recomposeDirty` on a large dirty set styles only the viewport
+  synchronously and defers the rest to the idle drain, so right after a mode
+  toggle everything far from the viewport is laid out at base-attribute height
+  (~17pt/line vs ~27pt styled). Two consequences (the read-mode viewport-drift
+  bug): capture any viewport anchor **before** `editor.viewMode = mode` runs
+  (`Document.setViewMode` does), and a far `scrollCharacterToTop` must
+  style-then-lay-out everything above its target before measuring
+  (`ensureBlocksStyled(upTo:)` + `ensureLayout`) — the drain's later layout
+  invalidation is *not* scroll-compensated, so landing first and letting
+  styling catch up slides the just-anchored viewport.
 - **A custom toolbar item can't win a right-click from a view-level handler.**
   With `NSToolbar.allowsUserCustomization = true`, the toolbar turns any
   secondary (right / control) click over the toolbar — *including* a custom item
