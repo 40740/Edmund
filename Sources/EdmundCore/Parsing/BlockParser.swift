@@ -300,6 +300,26 @@ public enum BlockParser {
             return (merged.joined(separator: "\n"), .mathDisplay, j)
         }
 
+        // A list item whose content is a `$$…$$` display block: the opener sits
+        // after the marker (`1. $$…`) and the closer is on a later line. Because
+        // BlockParser splits one block per list line, the opener and closer would
+        // otherwise land in different blocks and the display-math span could never
+        // form. Merge forward to the closing `$$` and emit one `.listItem` block —
+        // `parseDisplayMath` allows newlines inside `$$`, so the span forms and the
+        // renderer promotes it to a block (read mode gets this for free via
+        // swift-markdown's lazy continuation). Forward-only, like the fence merge
+        // above, so the incremental-reparse invariant holds.
+        if isListLine(first), displayMathClosedOnSameLine(contentAfterListMarker(first)) == false {
+            var merged = [first]
+            var j = i + 1
+            while let line = buf.line(at: j) {
+                merged.append(line)
+                j += 1
+                if line.contains("$$") { break }
+            }
+            return (merged.joined(separator: "\n"), .listItem, j)
+        }
+
         // Merge block-quote lines into one block (the editor's styling /
         // activation unit per quote).
         if isBlockquoteLine(first) {
@@ -516,6 +536,30 @@ public enum BlockParser {
         guard !digits.isEmpty else { return false }
         let rest = trimmed.dropFirst(digits.count)
         return rest.hasPrefix(". ") || rest.hasPrefix(") ")
+    }
+
+    /// The content of a list line after its bullet/ordered marker and the single
+    /// following space. Returns the whole line unchanged if it isn't a list line.
+    /// Used to test whether a list item's content opens display math.
+    static func contentAfterListMarker(_ line: String) -> String {
+        let trimmed = line.drop(while: { $0 == " " })
+        if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("+ ") {
+            return String(trimmed.dropFirst(2))
+        }
+        let digits = trimmed.prefix(while: { $0.isNumber })
+        guard !digits.isEmpty else { return line }
+        let rest = trimmed.dropFirst(digits.count)
+        if rest.hasPrefix(". ") || rest.hasPrefix(") ") {
+            return String(rest.dropFirst(2))
+        }
+        return line
+    }
+
+    /// True if `s` is a list line whose entire content after the marker is blank
+    /// — i.e. the marker alone. Lets the renderer treat a leading list marker as
+    /// "the block is owned by what follows" (e.g. a `$$…$$` display block).
+    static func isListMarkerOnly(_ s: String) -> Bool {
+        isListLine(s) && contentAfterListMarker(s).allSatisfy { $0 == " " || $0 == "\t" }
     }
 
     /// Returns the heading level if the line is a setext underline: ≤3 leading

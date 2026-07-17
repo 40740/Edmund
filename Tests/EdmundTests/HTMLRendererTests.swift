@@ -290,6 +290,18 @@ struct HTMLRendererInlineTests {
         #expect(out.contains("\\int_0^1"))
     }
 
+    // Read-mode parity with the editor's list-item block math: a `$$…$$` that is
+    // the whole content of a list item renders as a display-math block inside the
+    // <li> (swift-markdown lazy-continues the item's following lines into one
+    // paragraph, and visitParagraph emits the math-display div for it).
+    @Test("Display $$math$$ inside a list item → math-display div in the <li>")
+    func listDisplayMath() {
+        let out = html("1. $$\n\\int_0^1 x\\,dx\n$$")
+        #expect(out.contains("<li>"))
+        #expect(out.contains("class=\"math-display\""))
+        #expect(out.contains("\\int_0^1"))
+    }
+
     // Regression: LaTeX environments carry `\\` row separators. swift-markdown's
     // Text nodes have Markdown backslash-escapes collapsed (`\\`→`\`), so the tex
     // must be recovered from the raw source or `\begin{cases}`/`\begin{aligned}`

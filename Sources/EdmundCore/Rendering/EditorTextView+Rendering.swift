@@ -434,20 +434,25 @@ extension EditorTextView {
                         applyOverlay(overlay,
                                      anchor: NSRange(location: span.fullRange.location, length: 1),
                                      in: result)
-                        // A `$$…$$` run gets block layout (centered on its own
-                        // line) only when it owns the whole block. A run sharing
-                        // its line with prose flows inline like `$…$` math.
-                        let displayOwnsBlock: Bool = {
-                            guard display else { return false }
-                            let blockNS = markdown as NSString
-                            let full = span.fullRange
-                            let nonWS = CharacterSet.whitespacesAndNewlines.inverted
-                            let before = NSRange(location: 0, length: full.location)
-                            let after = NSRange(location: full.upperBound,
-                                                length: blockNS.length - full.upperBound)
-                            return blockNS.rangeOfCharacter(from: nonWS, options: [], range: before).location == NSNotFound
-                                && blockNS.rangeOfCharacter(from: nonWS, options: [], range: after).location == NSNotFound
-                        }()
+                        // A `$$…$$` run gets block layout only when it owns the
+                        // whole block — either the block is nothing but the run
+                        // (own-line display math, centered), or the only thing
+                        // before it is a list marker (`1. $$…$$` — the block sits
+                        // indented under the marker). Anything else on the line
+                        // (prose) flows inline like `$…$` math.
+                        let blockNS = markdown as NSString
+                        let full = span.fullRange
+                        let nonWS = CharacterSet.whitespacesAndNewlines.inverted
+                        let afterR = NSRange(location: full.upperBound,
+                                             length: blockNS.length - full.upperBound)
+                        let afterClear = blockNS.rangeOfCharacter(from: nonWS, options: [], range: afterR).location == NSNotFound
+                        let beforeStr = blockNS.substring(to: full.location)
+                        let beforeClear = beforeStr.allSatisfy { $0 == " " || $0 == "\t" || $0 == "\n" }
+                        // A leading list marker (and nothing else) still lets the
+                        // run own the block; keep the marker's paragraph style so
+                        // the equation sits indented under it.
+                        let listMarkerBefore = !beforeClear && BlockParser.isListMarkerOnly(beforeStr)
+                        let displayOwnsBlock = display && afterClear && (beforeClear || listMarkerBefore)
                         if !displayOwnsBlock {
                             // Inline math — and a display run sharing its line
                             // with prose — flows within the text line; reserve
@@ -457,26 +462,48 @@ extension EditorTextView {
                                               forOverlayAt: span.fullRange.location,
                                               in: result)
                         }
-                        // Display math sits centered on its own line, with
-                        // vertical padding and the image's ascent/descent
-                        // reserved on the (first) line that carries it.
+                        // Display math sits on its own line with the image's
+                        // ascent/descent reserved on the (first) line that carries
+                        // it, plus vertical padding.
                         if displayOwnsBlock {
                             let fullStr = result.string as NSString
-                            result.addAttribute(.paragraphStyle,
-                                                value: displayMathParagraphStyle(padded: false),
-                                                range: span.fullRange)
                             let nl = fullStr.range(of: "\n", options: [], range: span.fullRange)
-                            let firstLine = nl.location == NSNotFound
-                                ? span.fullRange
-                                : NSRange(location: span.fullRange.location,
-                                          length: nl.location - span.fullRange.location + 1)
                             let imageDescent = -overlay.bounds.minY
                             let imageAscent = overlay.bounds.height - imageDescent
-                            result.addAttribute(.paragraphStyle,
-                                                value: displayMathParagraphStyle(padded: true,
-                                                                                 imageAscent: imageAscent,
-                                                                                 imageDescent: imageDescent),
-                                                range: firstLine)
+                            if listMarkerBefore {
+                                // Inside a list item: keep the list paragraph style
+                                // (indent set by styleListItemSpan) and only reserve
+                                // the image height + display spacing on the marker's
+                                // line, so the equation reads as a block indented
+                                // under the marker instead of cramming the line. The
+                                // firstLine starts at the paragraph head (0) — the
+                                // marker precedes the span — so char 0's style, which
+                                // TextKit uses for the paragraph, carries the height.
+                                let firstLineEnd = nl.location == NSNotFound
+                                    ? span.fullRange.upperBound : nl.location + 1
+                                let firstLine = NSRange(location: 0, length: firstLineEnd)
+                                let base = (result.attribute(.paragraphStyle, at: 0, effectiveRange: nil)
+                                    as? NSParagraphStyle) ?? bodyParagraphStyle
+                                let ps = (base.mutableCopy() as! NSMutableParagraphStyle)
+                                let pad = bodyFont.pointSize * 0.9
+                                ps.paragraphSpacingBefore = pad
+                                ps.paragraphSpacing = pad + imageDescent
+                                ps.minimumLineHeight = imageAscent
+                                result.addAttribute(.paragraphStyle, value: ps, range: firstLine)
+                            } else {
+                                result.addAttribute(.paragraphStyle,
+                                                    value: displayMathParagraphStyle(padded: false),
+                                                    range: span.fullRange)
+                                let firstLine = nl.location == NSNotFound
+                                    ? span.fullRange
+                                    : NSRange(location: span.fullRange.location,
+                                              length: nl.location - span.fullRange.location + 1)
+                                result.addAttribute(.paragraphStyle,
+                                                    value: displayMathParagraphStyle(padded: true,
+                                                                                     imageAscent: imageAscent,
+                                                                                     imageDescent: imageDescent),
+                                                    range: firstLine)
+                            }
                         }
                     } else {
                         // Invalid LaTeX: surface the raw source in monospace, tinted.

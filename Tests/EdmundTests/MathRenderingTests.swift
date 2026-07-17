@@ -157,6 +157,49 @@ struct DisplayMathRenderingTests {
     }
 }
 
+@Suite("Math — Display math in a list item")
+struct ListDisplayMathRenderingTests {
+
+    // `1. $$…$$`: indices — 1=0, .=1, space=2, $=3, $=4, x=5, +=6, y=7, $=8, $=9.
+    @Test("Inactive $$…$$ in a list item renders a block indented under the marker")
+    @MainActor func inactiveListDisplayBlock() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("1. $$x+y$$")
+        // The equation overlay sits on the first `$` (after the "1. " marker).
+        #expect(styled.attribute(.fragmentOverlay, at: 3, effectiveRange: nil) is FragmentOverlay)
+        #expect(isHidden(at: 4, in: styled))              // source hidden when rendered
+        // The paragraph keeps the list indent (headIndent from styleListItemSpan)
+        // rather than centering, and reserves the image height on the first line
+        // so the equation reads as a block, not a crammed inline run.
+        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(ps != nil)
+        #expect((ps?.headIndent ?? 0) > 0)                // indented under the marker
+        #expect((ps?.minimumLineHeight ?? 0) > 0)         // image height reserved
+        #expect(ps?.alignment != .center)                 // not the own-line centered style
+    }
+
+    @Test("Active $$…$$ in a list item shows raw LaTeX (no overlay)")
+    @MainActor func activeListDisplayShowsRaw() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("1. $$x+y$$", cursorPosition: 5)
+        #expect(styled.attribute(.fragmentOverlay, at: 3, effectiveRange: nil) == nil)
+        #expect(!isHidden(at: 5, in: styled))             // raw source visible
+    }
+
+    @Test("A $$…$$ after prose on a list line stays inline, not a block")
+    @MainActor func proseBeforeStaysInline() {
+        let editor = makeEditor()
+        // "- First $$x+y$$": prose ("First") precedes the run, so it flows
+        // inline — no block promotion, no reserved block height.
+        let styled = editor.styleBlock("- First $$x+y$$")
+        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        // Inline math reserves line height via reserveLineHeight, but the
+        // paragraph is the ordinary list style (indented, left-aligned) — the
+        // distinguishing check is that it is not centered display math.
+        #expect(ps?.alignment != .center)
+    }
+}
+
 @Suite("Math — Fit to width")
 struct MathFitWidthTests {
 
