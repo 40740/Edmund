@@ -1,6 +1,6 @@
 ---
-import Header from "../components/Header.astro";
-import Footer from "../components/Footer.astro";
+import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
 
 interface Props {
   pageTitle?: string;
@@ -24,16 +24,58 @@ const base = import.meta.env.BASE_URL.endsWith("/")
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
     <meta name="generator" content={Astro.generator} />
-    <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml" />
+    <link rel="icon" type="image/x-icon" href={`${base}favicon.ico`} />
+    <link rel="apple-touch-icon" type="image/png" href=`${base}apple-touch-icon.png`>
     <title>{pageTitle}</title>
+    <style is:global>
+      :root {
+        color-scheme: light dark;
+        --color-background: #ffffff;
+        --color-surface: #ffffff;
+        --color-tertiary: #f2f2f7;
+        --color-border: #d1d1d6;
+        --color-text: #1d1d1f;
+        --color-secondary: #9e9ea0;
+        --color-primary: #ff6916; 
+        --color-primary-strong: #ee5605;
+        --color-link: #007aff;
+        --color-link-strong: #0051d5;
+        --color-link-soft: #dbe9ff;
+
+        color: var(--color-text); 
+
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      a { color: var(--color-link); transition: color 0.3s ease; } 
+      a:hover { color: var(--color-link-strong); }
+      #acknowledgements a, #acknowledgements a:hover { color: inherit; }
+      #acknowledgements a:hover { font-weight: bold; }
+      
+      /* Dark mode variant after I record a dark mode version of the video */
+      /* @media (prefers-color-scheme: dark) {
+        :root {
+          --color-background: #2d2f30;
+          --color-surface: #353739;
+          --color-tertiary: #404244;
+          --color-border: #4f5153;
+          --color-text: #f5f5f7;
+          --color-secondary: #a1a1aa;
+          --color-primary: #0a84ff;
+          --color-primary-strong: #409cff;
+          --color-primary-soft: #1e2a3d;
+        }
+      } */
+    </style>
   </head>
-  <body class="bg-paper text-ink font-sans antialiased">
+  <Header />
+  <body class="bg-background text-text font-serif antialiased">
     <div class="mx-auto max-w-3xl px-6 sm:px-8">
-      <Header />
       <main>
         <slot />
       </main>
-      <Footer />
     </div>
   </body>
+  <Footer />
 </html>

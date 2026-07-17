@@ -15,30 +15,34 @@ export default defineConfig({
     presetWebFonts({
       provider: "google",
       fonts: {
-        sans: [
-          {
-            name: "Karla",
-            weights: ["400", "500", "600", "700"],
-            italic: false,
-          },
-        ],
         mono: ["IBM Plex Mono"],
       },
     }),
   ],
   theme: {
+    fontFamily: {
+      sans: ["system-ui", "sans-serif"],
+      serif: ['"Iowan Old Style"', "ui-serif", "Georgia", "serif"],
+    },
     colors: {
-      ink: "#1d2421",
-      quiet: "#66736d",
-      line: "#dce5df",
-      paper: "#fbfcf9",
-      wash: "#f1f7f3",
-      teal: {
-        DEFAULT: "#168277",
-        dark: "#0c5f58",
-        soft: "#d7eee8",
+      background: "var(--color-background)",
+      surface: "var(--color-surface)",
+      tertiary: {
+        DEFAULT: "var(--color-tertiary)",
+        soft: "#f8f8f8"
       },
-      clay: "#a75534",
+      border: "var(--color-border)",
+      text: "var(--color-text)",
+      secondary: "var(--color-secondary)",
+      primary: {
+        DEFAULT: "var(--color-primary)",
+        strong: "var(--color-primary-strong)"
+      },
+      link: {
+        DEFAULT: "var(--color-link)",
+        strong: "var(--color-link-strong)",
+        soft: "var(--color-link-soft)",
+      },
     },
   },
 });
