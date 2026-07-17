@@ -198,9 +198,17 @@ public class EditorTextView: NSTextView {
     /// as warm amber rather than tracking the (potentially red) brand accent.
     var selectionHighlightColor: NSColor { .systemOrange.withAlphaComponent(0.3) }
 
-    /// Background color for the editor surface. `.textBackgroundColor` is the
-    /// standard semantic color for text-editing backgrounds (white / dark gray).
-    private var editorBackgroundColor: NSColor { .textBackgroundColor }
+    /// Background color for the editor surface. Light appearance keeps the
+    /// standard `.textBackgroundColor` semantic; dark appearance uses `#292929`,
+    /// matching Read mode's page background. Built with `srgbRed:` rather than
+    /// the shared `NSColor(hex:)` helper (which uses `calibratedRed:`) — the
+    /// calibrated color space renders visibly lighter than the sRGB hex value
+    /// once composited on screen.
+    private var editorBackgroundColor: NSColor {
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        guard dark else { return .textBackgroundColor }
+        return NSColor(srgbRed: 0x29 / 255.0, green: 0x29 / 255.0, blue: 0x29 / 255.0, alpha: 1.0)
+    }
 
     // MARK: - Font & Paragraph Style (derived from theme)
 
