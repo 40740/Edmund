@@ -267,7 +267,8 @@ extension EditorTextView {
                     applyOverlay(overlay,
                                  anchor: NSRange(location: span.fullRange.location, length: 1),
                                  in: result)
-                    reserveLineHeight(overlay.bounds.height,
+                    reserveLineHeight(ascent: overlay.bounds.height + overlay.bounds.minY,
+                                      descent: -overlay.bounds.minY,
                                       forOverlayAt: span.fullRange.location, in: result)
                 } else if (markdown as NSString).character(at: span.fullRange.location) == 0x3C {
                     // Active (or pending) `<img …>`: show the raw tag as colored
@@ -457,8 +458,10 @@ extension EditorTextView {
                             // Inline math — and a display run sharing its line
                             // with prose — flows within the text line; reserve
                             // the line height so a tall equation (e.g. scaled to
-                            // a heading's font) doesn't overlap the line below.
-                            reserveLineHeight(overlay.bounds.height,
+                            // a heading's font, or a lone integral with a big
+                            // descent) doesn't overlap the lines around it.
+                            reserveLineHeight(ascent: overlay.bounds.height + overlay.bounds.minY,
+                                              descent: -overlay.bounds.minY,
                                               forOverlayAt: span.fullRange.location,
                                               in: result)
                         }
