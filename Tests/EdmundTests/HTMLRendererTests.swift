@@ -290,6 +290,51 @@ struct HTMLRendererInlineTests {
         #expect(out.contains("\\int_0^1"))
     }
 
+    // Read-mode parity with the editor's list-item block math: a `$$…$$` that is
+    // the whole content of a list item renders as a display-math block inside the
+    // <li> (swift-markdown lazy-continues the item's following lines into one
+    // paragraph, and visitParagraph emits the math-display div for it).
+    @Test("Display $$math$$ inside a list item → math-display div in the <li>")
+    func listDisplayMath() {
+        let out = html("1. $$\n\\int_0^1 x\\,dx\n$$")
+        #expect(out.contains("<li>"))
+        #expect(out.contains("class=\"math-display\""))
+        #expect(out.contains("\\int_0^1"))
+    }
+
+    // A `$$…$$` inside inline code is literal source, not a display-math block.
+    // Regression: visitParagraph used to promote any paragraph containing a
+    // `$$…$$` span to a math block, blanking the surrounding text.
+    @Test("$$…$$ inside inline code renders verbatim, not as a math block")
+    func dollarsInInlineCodeAreVerbatim() {
+        let out = html("Inline code `$$a+b$$` should be verbatim.")
+        #expect(!out.contains("math-display"))
+        #expect(out.contains("<code>$$a+b$$</code>"))
+        #expect(out.contains("should be verbatim"))       // surrounding text kept
+    }
+
+    // A `$$…$$` amid prose keeps the surrounding text and renders the math
+    // inline in display mode (matching the editor), not as a block that blanks
+    // the paragraph.
+    @Test("$$…$$ amid prose renders inline display math, keeps the text")
+    func dollarsAmidProseRenderInline() {
+        let out = html("before $$\\int_0^1 x$$ after")
+        #expect(!out.contains("class=\"math-display\""))   // not a block div
+        #expect(out.contains("math-display-inline"))        // inline display math
+        #expect(out.contains("\\int_0^1"))
+        #expect(out.contains("before"))
+        #expect(out.contains("after"))
+    }
+
+    @Test("$$…$$ in a list item alongside prose renders inline, not as a block")
+    func dollarsInListItemWithProse() {
+        let out = html("- First $$\\int_0^1 x$$")
+        #expect(out.contains("<li>"))
+        #expect(out.contains("math-display-inline"))
+        #expect(!out.contains("class=\"math-display\""))
+        #expect(out.contains("First"))
+    }
+
     // Regression: LaTeX environments carry `\\` row separators. swift-markdown's
     // Text nodes have Markdown backslash-escapes collapsed (`\\`→`\`), so the tex
     // must be recovered from the raw source or `\begin{cases}`/`\begin{aligned}`

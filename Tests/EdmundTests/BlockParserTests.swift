@@ -360,6 +360,43 @@ struct BlockParserTests {
         #expect(blocks[0].content == "$$ x +\ny $$")
     }
 
+    // A `$$…$$` display block whose opener sits after a list marker spans
+    // several source lines; without merging, the opener and closer land in
+    // different blocks and the display-math span can't form.
+    @Test("A list item's multi-line $$ display block merges into one block")
+    func listDisplayMathMerges() {
+        let text = "1. $$\\begin{aligned}\nu&=1 \\\\ v&=2\n\\end{aligned}$$\n2. next"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 2)
+        #expect(blocks[0].content == "1. $$\\begin{aligned}\nu&=1 \\\\ v&=2\n\\end{aligned}$$")
+        #expect(blocks[1].content == "2. next")
+    }
+
+    @Test("A bullet item's multi-line $$ display block merges into one block")
+    func bulletDisplayMathMerges() {
+        let text = "- $$\na=b\n$$\n- next"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 2)
+        #expect(blocks[0].content == "- $$\na=b\n$$")
+        #expect(blocks[1].content == "- next")
+    }
+
+    @Test("A single-line list item with $$…$$ stays one block (no merge needed)")
+    func listDisplayMathSingleLine() {
+        let blocks = BlockParser.parse("1. $$x=y$$\n2. next")
+        #expect(blocks.count == 2)
+        #expect(blocks[0].content == "1. $$x=y$$")
+        #expect(blocks[1].content == "2. next")
+    }
+
+    @Test("A plain list item is unaffected by the display-math merge rule")
+    func plainListItemUnaffectedByMathMerge() {
+        let blocks = BlockParser.parse("1. hello\n2. world")
+        #expect(blocks.count == 2)
+        #expect(blocks[0].content == "1. hello")
+        #expect(blocks[1].content == "2. world")
+    }
+
     @Test("Code fence range covers full text")
     func codeFenceRange() {
         let text = "```\nhello\n```"

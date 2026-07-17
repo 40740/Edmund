@@ -232,13 +232,27 @@ extension SyntaxHighlighter {
             }
             guard closeLoc > afterOpen else { i += 2; continue }  // no close / empty content
 
-            spans.append(Span(
-                kind: .math(display: true),
-                fullRange: NSRange(location: i, length: closeLoc + 2 - i),
-                contentRange: NSRange(location: afterOpen, length: closeLoc - afterOpen),
-                delimiterRanges: [NSRange(location: i, length: 2),
-                                  NSRange(location: closeLoc, length: 2)]
-            ))
+            let full = NSRange(location: i, length: closeLoc + 2 - i)
+            // Don't match inside a code span or fenced code block — `$$…$$` there
+            // is literal source, not math (mirrors the guard in `parseMath`).
+            let inCode = spans.contains { existing in
+                switch existing.kind {
+                case .code, .codeBlock:
+                    return existing.fullRange.location <= full.location
+                        && existing.fullRange.upperBound >= full.upperBound
+                default:
+                    return false
+                }
+            }
+            if !inCode {
+                spans.append(Span(
+                    kind: .math(display: true),
+                    fullRange: full,
+                    contentRange: NSRange(location: afterOpen, length: closeLoc - afterOpen),
+                    delimiterRanges: [NSRange(location: i, length: 2),
+                                      NSRange(location: closeLoc, length: 2)]
+                ))
+            }
             i = closeLoc + 2
         }
     }

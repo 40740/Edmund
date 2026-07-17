@@ -43,13 +43,18 @@ extension EditorTextView {
         } else {
             let mode: MTMathUILabelMode = display ? .display : .text
             let math = MTMathImage(latex: latex, fontSize: fontSize, textColor: color, labelMode: mode)
-            // SwiftMath sizes the image to the exact typographic ascent+descent,
-            // which crops a glyph's ink overshoot below the baseline — the bottom
-            // of a lone `x`/`c` sits flush on the image edge and renders clipped.
-            // A small content inset gives the rasterizer room so the full glyph is
-            // drawn; it's folded into the descent below so alignment is unchanged.
+            // SwiftMath sizes the image to the exact typographic metrics, which
+            // crops a glyph's ink overshoot past those edges. Vertically the
+            // bottom of a lone `x`/`c` sits flush on the image edge and clips;
+            // horizontally an italic glyph's ink leans past its advance — the top
+            // hook of a lone italic `F` overshoots the right edge and clips. A
+            // small content inset gives the rasterizer room so the full glyph is
+            // drawn. Top/bottom is folded into the descent below so the baseline
+            // is unchanged; the right inset only adds trailing canvas (left stays
+            // 0 so no gap opens before inline math), reserved by the overlay's
+            // kern like any other advance.
             let insetPad: CGFloat = 2
-            math.contentInsets = MTEdgeInsets(top: insetPad, left: 0, bottom: insetPad, right: 0)
+            math.contentInsets = MTEdgeInsets(top: insetPad, left: 0, bottom: insetPad, right: insetPad)
             let (error, image) = math.asImage()
             guard error == nil, let image else { return nil }
 

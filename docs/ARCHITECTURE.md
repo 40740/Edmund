@@ -68,7 +68,9 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
   `.quoteRun(isCallout:)`). Indented code is the parser's only
   backward-looking rule (a run starts only after a blank line), so
   `consumeBlock` carries `prevLine` and the incremental parse won't resync
-  onto an indented-code-ish line.
+  onto an indented-code-ish line. Lists are one block per line, except a list
+  item whose content opens an unclosed `$$` merges its `$$…$$` display-math run
+  (forward, like the fence rules) so the span can form across lines.
 - **`SyntaxHighlighter`** + `+Walker`/`+WalkerInline`/`+CustomParsers`
   produce styling spans. Custom parsers handle the non-CommonMark syntax:
   callouts, `==highlight==`, wikilinks, `%%` and `<!-- -->` comments,

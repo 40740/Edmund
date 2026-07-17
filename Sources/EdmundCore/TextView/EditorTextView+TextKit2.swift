@@ -741,22 +741,31 @@ extension EditorTextView {
     /// Reserves vertical room for an overlay taller than the text line that
     /// carries it. A `FragmentOverlay` only reserves horizontal advance (kern),
     /// so — unlike the old `NSTextAttachment`, which grew its line fragment —
-    /// a tall image (e.g. inline math scaled to a heading's size) would
-    /// otherwise overlap the line below. Raises the enclosing paragraph's
-    /// `minimumLineHeight` to fit, preserving any other paragraph attributes.
-    func reserveLineHeight(_ height: CGFloat, forOverlayAt location: Int,
+    /// a tall image (inline math scaled to a heading, a big inline integral)
+    /// would otherwise overlap the lines around it.
+    ///
+    /// Reserves `ascent` (the part above the baseline) as the paragraph's
+    /// `minimumLineHeight` and folds `descent` (the part below) into its trailing
+    /// `paragraphSpacing`. Reserving the *full* height as `minimumLineHeight`
+    /// instead pins the baseline at the box bottom — so the descent hangs below
+    /// the line and overlaps the paragraph below (a lone integral's tail landing
+    /// on the next line). This mirrors the display-math reservation in
+    /// `displayMathParagraphStyle`. An image overlay has descent 0, so it keeps
+    /// its previous behavior (all height reserved as line height).
+    func reserveLineHeight(ascent: CGFloat, descent: CGFloat, forOverlayAt location: Int,
                            in result: NSMutableAttributedString) {
         guard location < result.length else { return }
         let ns = result.string as NSString
-        // The enclosing paragraph (between newlines): minimumLineHeight is a
-        // paragraph attribute, and for the heading/inline cases the math sits
-        // on a single line, so this grows exactly the line that needs it.
+        // The enclosing paragraph (between newlines): both are paragraph
+        // attributes, and for the heading/inline cases the math sits on a single
+        // line, so this grows exactly the line that needs it.
         let para = ns.paragraphRange(for: NSRange(location: location, length: 0))
         let base = (result.attribute(.paragraphStyle, at: location, effectiveRange: nil)
             as? NSParagraphStyle) ?? bodyParagraphStyle
-        guard height > base.minimumLineHeight else { return }
+        guard ascent > base.minimumLineHeight || descent > base.paragraphSpacing else { return }
         let ps = (base.mutableCopy() as! NSMutableParagraphStyle)
-        ps.minimumLineHeight = height
+        ps.minimumLineHeight = max(base.minimumLineHeight, ascent)
+        ps.paragraphSpacing = max(base.paragraphSpacing, descent)
         result.addAttribute(.paragraphStyle, value: ps, range: para)
     }
 }
