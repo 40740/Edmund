@@ -1,77 +1,116 @@
 # Edmund architecture: developer overview
 
-The human-readable tour of Edmund's internals. This doc is a summary: every
-claim here points at the section or doc that owns it. If you're an agent
-making a change fast, read [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
-instead; if you're a human getting oriented, start here.
+The human-readable tour of Edmund's internals, written for developers new to
+the codebase. Every claim here points at the doc or section that owns it. If
+you're an agent making a change fast, read
+[`../ARCHITECTURE.md`](../ARCHITECTURE.md) instead.
 
-## What Edmund is
+## 1. Why
 
-A native macOS Markdown editor with live preview: AppKit + TextKit 2, built
-with SwiftPM, targeting macOS 14+. Two SPM targets: `EdmundCore`, the
-library that holds all editor logic (parsing, rendering, the
-`EditorTextView`) plus the test suite, and `edmd`, the executable, an
-`NSDocument` app shell (Settings, menus, window setup) that depends on
-`EdmundCore`. Source: `../ARCHITECTURE.md` §1.
+Edmund is a native macOS Markdown editor with live preview: what you type is
+styled in place, in the same text view, with no split pane. AppKit +
+TextKit 2, built with SwiftPM, macOS 14+.
 
-## The two invariants
+Two design decisions explain almost everything else in the codebase. They
+are the project's invariants (owned by [`../ARCHITECTURE.md`](../ARCHITECTURE.md) §2):
 
-Everything else in the codebase is built to hold these:
+1. **The text storage always equals the raw Markdown source.** Styling only
+   ever changes *attributes* (fonts, colors, spacing) — never the characters.
+   Delimiters like `**` are hidden with a near-invisible font, not deleted.
+   *Why:* if the text on screen is byte-for-byte the file on disk, then
+   saving, undo, selection, and cursor math are all trivially correct — there
+   is no mapping layer between "what you see" and "what you have" to get
+   wrong.
+2. **TextKit 2 only.** TextKit 2 lays out only what's on screen, which is
+   what keeps huge documents fast. Certain API calls silently switch AppKit
+   back to TextKit 1 (whole-document layout), so they are banned.
+   *Why:* performance on large files is a core feature, and the fallback is
+   silent — you'd never know you lost it.
 
-1. **Text storage always equals `rawSource`.** Rendering is attribute-only.
-   Edmund never inserts or deletes display characters. Markdown delimiters
-   are hidden (near-zero font, clear color), never stripped.
-2. **TextKit 2 only.** The editor never touches `NSTextView.layoutManager`
-   and never stores `NSTextBlock`/`NSTextTable` attributes. Either one
-   silently and permanently reverts the view to TextKit 1.
+## 2. High-level overview
 
-The home of these rules is `../ARCHITECTURE.md` §2.
+```mermaid
+flowchart LR
+    subgraph edmd["edmd (app shell)"]
+        DOC["Document.swift<br/>(NSDocument, view modes)"]
+    end
+    subgraph EdmundCore["EdmundCore (library — most work happens here)"]
+        RAW["rawSource<br/>(the Markdown text)"]
+        BP["BlockParser"]
+        SH["SyntaxHighlighter"]
+        SB["styleBlock"]
+        TS["Text storage<br/>(same characters, styled attributes)"]
+        TK["TextKit 2 drawing<br/>(DecoratedTextLayoutFragment)"]
+        HTML["HTMLRenderer → WKWebView<br/>(Read mode, PDF, Print)"]
+    end
+    DOC --> RAW
+    RAW --> BP --> SH --> SB --> TS --> TK
+    RAW --> HTML
+```
 
-## Map of this folder
+One parser, two back-ends: the editor styles attributes in place; Read mode
+and export render the same parsed document to HTML. They share the theme, so
+they can't drift apart.
 
-- [`editor-pipeline.md`](editor-pipeline.md): `rawSource` → parse → style →
-  attributed storage, the recompose paths, lazy styling.
-- [`text-system.md`](text-system.md): why TextKit 2 only, the custom
-  layout-fragment decoration mechanism, hiding, the height-estimate and
-  image-wedge constraints.
-- Planned, not yet written: `reader-and-export.md`, `edit-flow-and-undo.md`,
+The most important files:
+
+| File | What it is |
+| --- | --- |
+| `Sources/EdmundCore/TextView/EditorTextView.swift` | The editor view itself; state lives here (plus many `EditorTextView+*.swift` extensions) |
+| `Sources/EdmundCore/Parsing/BlockParser.swift` | Splits the source into blocks (paragraph, heading, list, code fence, …) |
+| `Sources/EdmundCore/Parsing/SyntaxHighlighter.swift` | Finds the styling spans inside a block (bold, links, callouts, math, …) |
+| `Sources/EdmundCore/Rendering/EditorTextView+Rendering.swift` | `styleBlock` — turns one block's spans into attributes |
+| `Sources/EdmundCore/TextView/EditorTextView+Composition.swift` | The recompose paths — the only place styled attributes are written to storage |
+| `Sources/EdmundCore/TextView/EditorTextView+TextKit2.swift` | Custom drawing: callout boxes, quote bars, icons, math overlays |
+| `Sources/EdmundCore/Export/HTMLRenderer.swift` | Read mode / PDF / Print HTML back-end |
+| `Sources/edmd/App/Document.swift` | App shell: document lifecycle, Edit ↔ Read switching |
+
+Full file-to-feature map: [`../ARCHITECTURE.md`](../ARCHITECTURE.md) §6.
+
+## 3. Specs
+
+Most detailed specs live where they belong: as comments at the code, and in
+the dense agent doc. Start here instead for the two subsystems with deep
+write-ups:
+
+- [`editor-pipeline.md`](editor-pipeline.md) — source → parse → style →
+  storage, the recompose paths, lazy styling, incremental parsing.
+- [`text-system.md`](text-system.md) — why TextKit 2 only, how custom
+  drawing works, hiding, the height-estimate and image-wedge constraints.
+- [`reader-and-export.md`](reader-and-export.md) — Read mode's WKWebView,
+  the sandbox and raw-HTML policy, PDF/Print, mode-switch viewport sync.
+- Planned, not yet written: `edit-flow-and-undo.md`,
   `app-shell-and-settings.md`.
 
-## Map of sibling folders
+Sibling folders:
 
-- [`../investigations/`](../investigations/): chronicles of hard bugs, one
-  doc per bug class, written up round by round. `archives/` holds closed
-  classes (fixed and not expected to recur); the rest are still active.
-- [`../dev-guides/`](../dev-guides/): method docs (how to do something), not
-  bug chronicles. Start with
-  [`live-repro-guide.md`](../dev-guides/live-repro-guide.md) if you're
+- [`../investigations/`](../investigations/) — chronicles of hard bugs, one
+  doc per bug class, round by round. `archives/` holds closed classes.
+- [`../dev-guides/`](../dev-guides/) — method docs (how to do something).
+  Start with [`live-repro-guide.md`](../dev-guides/live-repro-guide.md) when
   reproducing a live-app bug.
 
-## Quirks you'll hit
+### Quirks you'll hit early
 
 - **A "successful" build can be stale.** `swift build` sometimes prints
-  `Build complete!` after compiling a changed file without relinking `edmd`,
-  so you run old code. `../ARCHITECTURE.md` §8 has the detection/cure.
+  `Build complete!` without relinking, so you run old code.
+  [`../ARCHITECTURE.md`](../ARCHITECTURE.md) §8 has the detection and cure.
 - **Delimiters are hidden, not stripped.** `**bold**` keeps its asterisks in
-  storage; they're rendered near-invisible. This is invariant 1 above. Home:
-  `../ARCHITECTURE.md` §2.
-- **TextKit 2 height estimates cause most viewport glitches.** A fragment
-  has a real frame only once laid out; everything else is an estimate that
-  gets corrected as layout catches up. `../ARCHITECTURE.md` §8 covers the
-  mitigations; the bug history is
+  storage; they're rendered near-invisible (invariant 1).
+- **TextKit 2 height estimates cause most viewport glitches.** A paragraph
+  has a real height only once laid out; before that it's an estimate.
+  Mitigations: [`../ARCHITECTURE.md`](../ARCHITECTURE.md) §8; history:
   [`../investigations/viewport-glitch-investigation.md`](../investigations/viewport-glitch-investigation.md).
-- **Images can't be drawn on wrapping (multi-line) layout fragments.**
-  Drawing one collapses the fragment's layout to one line.
-  `../ARCHITECTURE.md` §9; the full saga (and the stroked-path workaround)
-  is
+- **Images can't be drawn on wrapping (multi-line) lines** — drawing one
+  collapses the layout to one line. [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
+  §9; the saga:
   [`../investigations/archives/callout-title-wrap-investigation.md`](../investigations/archives/callout-title-wrap-investigation.md).
-- **Never mutate storage while an IME is composing.** Doing so can strand
-  marked text and permanently break the storage==rawSource sync, which
-  drifts the caret on every later edit. `../ARCHITECTURE.md` §8; the full
-  investigation is
+- **Never change the text storage while an IME is composing** (typing
+  Chinese/Japanese/accents) — it can permanently break the storage==source
+  sync. [`../ARCHITECTURE.md`](../ARCHITECTURE.md) §8; the investigation:
   [`../investigations/delete-drift-investigation.md`](../investigations/delete-drift-investigation.md).
 
-## Getting started
+### Getting started
 
 ```bash
 swift build   # debug build of both targets
@@ -79,4 +118,4 @@ swift test    # full suite
 ```
 
 Tests live in `Tests/EdmundTests`. Before committing, run the pre-commit
-checklist in `../ARCHITECTURE.md` §12.
+checklist in [`../ARCHITECTURE.md`](../ARCHITECTURE.md) §12.
