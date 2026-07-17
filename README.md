@@ -61,6 +61,7 @@ Get `Edmund.dmg` from the [latest release](https://github.com/I7T5/Edmund/releas
 
 Edmund checks for updates automatically; you can also browse version history [here](https://github.com/I7T5/Edmund/releases).
 
+
 ## Dependencies
 
 - [swift-markdown](https://github.com/swiftlang/swift-markdown)

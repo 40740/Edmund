@@ -1,0 +1,30 @@
+---
+interface Props {
+  title: string;
+  href?: string;
+  class?: string;
+}
+
+const { title, href, class: className } = Astro.props;
+---
+
+<div
+  class:list={[
+    "rounded-2xl border border-tertiary p-6 transition-transform duration-200 ease-out hover:scale-[1.01]",
+    className,
+  ]}
+>
+  <h3 class="font-semibold mb-2">
+    {href ? (
+      <a href={href} target="_blank" rel="noopener noreferrer" class="text-text hover:text-primary">
+        {title}
+      </a>
+    ) : (
+      title
+    )}
+  </h3>
+
+  <div class="leading-relaxed text-secondary">
+    <slot />
+  </div>
+</div>

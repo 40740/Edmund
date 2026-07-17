@@ -20,9 +20,15 @@ import AppKit
 // regardless of the setting (same reasoning as Read mode's DocumentHTML).
 
 // Loaded images are cached by resolved absolute path (local) or URL string
-// (remote), so a recompose doesn't re-read/re-fetch them. NSCache is
-// internally thread-safe.
-nonisolated(unsafe) private let imageCache = NSCache<NSString, NSImage>()
+// (remote), so a recompose doesn't re-read/re-fetch them. A plain dictionary,
+// not NSCache: NSCache is free to evict entries at any time for its own
+// heuristics, not just under memory pressure, which broke this cache's "never
+// re-fetch" promise — a remote badge that had already loaded would silently
+// drop out, flash back to its pending/placeholder state on the next restyle,
+// and get re-fetched, tripping rate limits on frequently-hit hosts (shields.io
+// badges). Mutated only on the main actor, same as `inFlightRemoteImages`/
+// `undecodableRemoteImages` below.
+nonisolated(unsafe) private var imageCache: [String: NSImage] = [:]
 
 // Remote URLs currently being fetched, so a burst of re-styles (scrolling,
 // cursor moves near the image) doesn't kick off duplicate downloads. Mutated
@@ -81,15 +87,15 @@ extension EditorTextView {
             return loadRemoteImage(dest)
         }
         guard let url = resolveImageURL(dest) else { return .blocked(.notFound) }
-        let key = url.path as NSString
-        if let cached = imageCache.object(forKey: key) { return .image(cached) }
+        let key = url.path
+        if let cached = imageCache[key] { return .image(cached) }
         // `resolveImageURL` builds a URL from the path string alone (it doesn't
         // check existence), so a missing file and an undecodable one both fail
         // `NSImage(contentsOf:)` the same way — check existence first so the two
         // get distinct, accurate messages.
         guard FileManager.default.fileExists(atPath: url.path) else { return .blocked(.notFound) }
         guard let image = NSImage(contentsOf: url) else { return .blocked(.notAnImage) }
-        imageCache.setObject(image, forKey: key)
+        imageCache[key] = image
         return .image(image)
     }
 
@@ -99,8 +105,7 @@ extension EditorTextView {
     /// decode failure) and re-styles the document so the result appears —
     /// without blocking the main thread on network I/O.
     private func loadRemoteImage(_ urlString: String) -> ImageDisplay {
-        let key = urlString as NSString
-        if let cached = imageCache.object(forKey: key) { return .image(cached) }
+        if let cached = imageCache[urlString] { return .image(cached) }
         if undecodableRemoteImages.contains(urlString) { return .blocked(.notAnImage) }
         guard !inFlightRemoteImages.contains(urlString), let url = URL(string: urlString) else { return .pending }
         inFlightRemoteImages.insert(urlString)
@@ -110,7 +115,7 @@ extension EditorTextView {
             Task { @MainActor in
                 inFlightRemoteImages.remove(urlString)
                 if let image {
-                    imageCache.setObject(image, forKey: urlString as NSString)
+                    imageCache[urlString] = image
                 } else {
                     undecodableRemoteImages.insert(urlString)
                 }

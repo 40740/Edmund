@@ -1,0 +1,206 @@
+---
+import Card from "./Card.astro";
+
+const apps = [
+  {
+    name: "Edmund",
+    url: "#",
+    editing: "Inline WYSIWYG",
+    files: "File-based",
+    native: true,
+    size: "16 MB",
+    pricing: "Free",
+    openSource: true,
+  },
+  {
+    name: "Typora",
+    url: "https://typora.io",
+    editing: "Inline WYSIWYG",
+    files: "File-based",
+    native: false,
+    size: "≈100 MB",
+    pricing: "$14.99",
+    openSource: false,
+  },
+  {
+    name: "Obsidian",
+    url: "https://obsidian.md",
+    editing: "Inline WYSIWYG",
+    files: "Folder-based",
+    native: false,
+    size: "≈250 MB",
+    pricing: "Free",
+    openSource: false,
+  },
+  {
+    name: "Lettera",
+    url: "https://lettera.md",
+    editing: "Inline WYSIWYG",
+    files: "Both",
+    native: true,
+    size: "≈45 MB",
+    pricing: "Free (Beta)",
+    openSource: false,
+  },
+  {
+    name: "VS Code",
+    url: "https://code.visualstudio.com",
+    editing: "Split Preview",
+    files: "Both",
+    native: false,
+    size: "≈350 MB",
+    pricing: "Free",
+    openSource: true,
+  },
+  {
+    name: "MacDown",
+    url: "https://macdown.app",
+    editing: "Split Preview",
+    files: "File-based",
+    native: true,
+    size: "≈10 MB",
+    pricing: "Free",
+    openSource: true,
+  },
+  {
+    name: "MarkEdit",
+    url: "https://github.com/MarkEdit-app/MarkEdit",
+    editing: "Styled Raw",
+    files: "File-based",
+    native: true,
+    size: "≈7 MB",
+    pricing: "Free",
+    openSource: true,
+  },
+  {
+    name: "Nodes",
+    url: "https://nodes-web.com",
+    editing: "Inline WYSIWYG",
+    files: "Folder-based",
+    native: true,
+    size: "≈100 MB",
+    pricing: "Free",
+    openSource: false,
+  },
+  {
+    name: "CotEditor",
+    url: "https://coteditor.com",
+    editing: "Raw",
+    files: "File-based",
+    native: true,
+    size: "≈20 MB",
+    pricing: "Free",
+    openSource: true,
+  },
+];
+
+type App = (typeof apps)[number];
+type AppKey = keyof App;
+
+const fields: [string, AppKey][] = [
+  ["Editor", "editing"],
+  ["Files", "files"],
+  ["Native macOS", "native"],
+  ["App Size", "size"],
+  ["Pricing", "pricing"],
+  ["Open Source", "openSource"],
+];
+---
+<div class="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 md:hidden">
+  {apps.map((app) => (
+    <Card
+      title={app.name}
+      href={app.url}
+      class="w-[min(20rem,calc(100vw-3rem))] shrink-0 snap-start"
+    >
+      <dl class="grid gap-2 text-sm">
+        {fields.map(([label, key]) => (
+          <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-tertiary pt-2 first:border-t-0 first:pt-0">
+            <dt class="text-secondary">{label}</dt>
+            <dd class="max-w-[9rem] text-right font-medium text-text">
+              {typeof app[key] === "boolean" ? (
+                <span class="inline-flex items-center gap-1.5">
+                  {app[key] ? (
+                    <>
+                      <span class="i-lucide-check h-4 w-4 text-green-600"></span>
+                    </>
+                  ) : (
+                    <>
+                      <span class="i-lucide-x h-4 w-4 text-red-600"></span>
+                    </>
+                  )}
+                </span>
+              ) : (
+                app[key]
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </Card>
+  ))}
+</div>
+
+<!-- wider screens -->
+<div class="hidden overflow-x-auto md:block">
+  <table class="min-w-max border-collapse text-sm font-sans">
+    <tbody>
+      <tr class="border-b border-border">
+        <th class="sticky left-0 z-20 bg-background px-4 py-3 text-left font-semibold bg-tertiary-soft">
+          Editor
+        </th>
+
+        {apps.map((app) => (
+          <th
+            class:list={[
+              "px-4 py-3 whitespace-nowrap text-center bg-tertiary-soft",
+              app.name === "Edmund" &&
+                "sticky w-29 left-31.5 z-10 bg-tertiary-soft font-semibold",
+            ]}
+          >
+            <a
+              href={app.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class:list={[
+                "font-bold text-text", app.name === "Edmund" && "hover:text-primary",
+              ]}
+            >
+              {app.name}
+            </a>
+          </th>
+        ))}
+      </tr>
+
+      {fields.map(([label, key]) => (
+        <tr class="border-b border-tertiary last:border-0">
+          <th class="sticky left-0 z-20 bg-background px-4 py-3 text-left font-medium whitespace-nowrap">
+            {label}
+          </th>
+
+          {apps.map((app) => (
+            <td
+              class:list={[
+                "px-4 py-3 whitespace-nowrap text-center",
+                app.name === "Edmund" &&
+                  "sticky left-31.5 z-10 bg-background font-semibold",
+              ]}
+            >
+              {typeof app[key] === "boolean" ? (
+                <div class="flex justify-center">
+                  {app[key] ? (
+                    <span class="i-lucide-check h-4 w-4 text-green-600"></span>
+                  ) : (
+                    <span class="i-lucide-x h-4 w-4 text-red-600"></span>
+                  )}
+                </div>
+              ) : (
+                app[key]
+              )}
+            </td>
+          ))}
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>

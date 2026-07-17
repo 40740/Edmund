@@ -1,0 +1,75 @@
+---
+import Card from "./Card.astro";
+    // <!-- Cards view -->
+    // Live Preview WYSIWYG
+    // Native: 100% Swift core. AppKit + TextKit 2
+    // File-based with folder support planned
+    // Markdown in your way: GFM and opt-in Obsidian-flavored Markdown, 
+    // File outline
+    // Find and replace
+    // Make it yours: Custom themes and keyboard shortcuts
+    // Extension: Bundle WASM. Propose a feature request on GitHub if you need me to open something up. 
+const cards = [
+  {
+    title: "Live Preview",
+    text:  "Inline WYSIWYG similar to Typora and Obsidian."
+  },
+  {
+    title: "File-based",
+    text:  "No dedicated folders or vaults required. Folder support planned."
+  },
+  {
+    title: "Native inside out",
+    text:  "Built with AppKit and TextKit 2 with native toolbar, menus, and integrations including QuickLook, Finder action, and more."
+  },
+  {
+    title: "Powerful", 
+    text:  "Full support for GFM and 99% of Obsidian-flavored Markdown. Math with upto 99.5% KaTeX with extension. File outline. Find and replace. Read mode + Export as PDF."
+  },
+  // {
+  //   title: "Customizable",
+  //   text:  "Create your own syntax highlighting and editor-reader themes. Fine-grained control available through official extension."
+  // },
+  // {
+  //   title: "Extensible", 
+  //   text:  ""
+  // },
+  {
+    title: "Local and offline", 
+    text:  "Your data never leaves your device. Zero diagnostics."
+  },
+  {
+    title: "Open Source",
+    text:  "Free forever. Apache 2.0"
+  }
+];
+
+// // Horizontal scroll
+// const columns = Array.from(
+//   { length: Math.ceil(cards.length / 2) },
+//   (_, i) => cards.slice(i * 2, i * 2 + 2)
+// );
+---
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+  {cards.map((card) => (
+    <Card title={card.title}>
+      {card.text}
+    </Card>
+  ))}
+</div>
+
+<!-- Horizontal scroll -->
+<!-- <div class="overflow-x-auto">
+  <div class="flex gap-6 w-max my-2">
+    {columns.map((column) => (
+      <div class="flex flex-col gap-6 w-72">
+        {column.map((card) => (
+          <Card title={card.title}>
+            {card.text}
+          </Card>
+        ))}
+      </div>
+    ))}
+  </div>
+</div> -->
