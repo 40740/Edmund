@@ -1,15 +1,14 @@
 # Edmund — architecture & agent onboarding
 
-A native macOS Markdown editor with live preview (AppKit + TextKit 2, SPM,
-macOS 14+). This doc gets an AI agent productive fast: read it before any
-non-trivial change. **Keep it updated** — when you learn something non-obvious
-or change an invariant, edit this file in the same PR.
+Native macOS Markdown editor with live preview (AppKit + TextKit 2, SPM,
+macOS 14+). Read this before any non-trivial change. **Keep it updated** —
+when you learn something non-obvious or change an invariant, edit this file
+in the same PR.
 
-This is the agent-oriented canonical summary — dense, terse, optimized for
-fast onboarding before a change. Humans wanting the fuller narrative write-up
-(rationale, worked examples, prose) start at
+This is the agent-oriented canonical summary — dense, terse. Humans wanting
+the narrative write-up start at
 [`docs/architecture/README.md`](architecture/README.md); the same-PR update
-rule above still applies to both.
+rule applies to both.
 
 ---
 
@@ -22,18 +21,19 @@ swift test --filter Callout # one suite
 ./scripts/build-app.sh      # builds build/Edmund.app (release + bundles + icon + codesign)
 ```
 
-Run the app for visual checks (see §8 for the gotchas):
+Run the app for visual checks (gotchas in §8):
 ```bash
 pkill -x edmd; build/Edmund.app/Contents/MacOS/edmd /path/to/file.md &
 ```
 
-Two SPM targets (see `Package.swift`):
-- **`EdmundCore`** — the library: all editor logic, parsing, rendering, the
+Two SPM targets (`Package.swift`):
+- **`EdmundCore`** — library: all editor logic, parsing, rendering,
   `EditorTextView`. Has the tests. **Most work happens here.**
-- **`edmd`** — the executable: `NSDocument` app shell, Settings (SwiftUI),
-  menus, window setup. Depends on EdmundCore.
+- **`edmd`** — executable: `NSDocument` app shell, Settings (SwiftUI), menus,
+  window setup.
 
-Dependencies: `swift-markdown` (CommonMark/GFM parsing), `SwiftMath` (LaTeX), and `Sparkle` (auto-update).
+Dependencies: `swift-markdown` (CommonMark/GFM), `SwiftMath` (LaTeX),
+`Sparkle` (auto-update).
 
 ---
 
@@ -41,17 +41,17 @@ Dependencies: `swift-markdown` (CommonMark/GFM parsing), `SwiftMath` (LaTeX), an
 
 Break either and the whole editor misbehaves in subtle ways.
 
-1. **Text storage always equals `rawSource`.** Rendering is *attribute-only* —
-   we never insert/delete display characters. Delimiters (`**`, `` ` ``,
-   `[!note]`, etc.) are *hidden* (near-zero font + clear color), never stripped.
+1. **Text storage always equals `rawSource`.** Rendering is *attribute-only*
+   — never insert/delete display characters. Delimiters (`**`, `` ` ``,
+   `[!note]`, …) are *hidden* (near-zero font + clear color), never stripped.
    Consequences: no `NSTextAttachment` (TextKit 2 only honors them on U+FFFC,
-   which `rawSource` never contains — so images/icons are drawn as overlays
-   instead, see §5); display offset == raw offset (identity mapping).
+   which `rawSource` never contains — images/icons are drawn as overlays
+   instead, §5); display offset == raw offset (identity mapping).
 
-2. **TextKit 2 only.** Never touch `NSTextView.layoutManager` and never store
-   `NSTextBlock`/`NSTextTable` attributes — either silently reverts the view to
-   TextKit 1 for good. A DEBUG tripwire asserts if TK1 is engaged. Layout is
-   viewport-based (only on-screen content is laid out), which is what makes big
+2. **TextKit 2 only.** Never touch `NSTextView.layoutManager`, never store
+   `NSTextBlock`/`NSTextTable` attributes — either silently reverts the view
+   to TextKit 1 for good. A DEBUG tripwire asserts if TK1 engages. Layout is
+   viewport-based (only on-screen content laid out) — that's what makes big
    documents fast.
 
 ---
@@ -59,63 +59,58 @@ Break either and the whole editor misbehaves in subtle ways.
 ## 3. Rendering pipeline (the core loop)
 
 ```
-rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──▶ attributed runs
-                                          │
-                                          ├─ SyntaxHighlighter (swift-markdown
-                                          │   Walker + custom parsers for
-                                          │   callouts, ==highlight==, wikilinks,
-                                          │   %% and <!-- --> comments, footnotes,
-                                          │   math, backslash escapes, inline HTML
-                                          │   tags incl. <img>, GFM autolinks)
-                                          └─ writes attributes into textStorage
+rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─styleBlock─▶ attributes in storage
 ```
 
-- **`BlockParser`** (`Parsing/`) splits `rawSource` into `Block`s (one per
-  logical block: paragraph, heading — ATX or setext, list run, quote/callout
-  run, code fence, indented code run, table…). `Block.kind` is a `BlockKind`
-  enum (e.g. `.quoteRun(isCallout:)`). The indented-code rule is the parser's
-  only backward-looking one (a run starts only after a blank line), so
-  `consumeBlock` carries a `prevLine` context and the incremental parse won't
-  resync onto an indented-code-ish line.
-- **`SyntaxHighlighter`** + `+Walker`/`+WalkerInline`/`+CustomParsers` produce
-  styling spans. The custom parsers handle the non-CommonMark syntax.
+- **`BlockParser`** (`Parsing/`) splits `rawSource` into `Block`s (paragraph,
+  heading — ATX or setext, list run, quote/callout run, code fence, indented
+  code run, table…). `Block.kind` is a `BlockKind` enum (e.g.
+  `.quoteRun(isCallout:)`). Indented code is the parser's only
+  backward-looking rule (a run starts only after a blank line), so
+  `consumeBlock` carries `prevLine` and the incremental parse won't resync
+  onto an indented-code-ish line.
+- **`SyntaxHighlighter`** + `+Walker`/`+WalkerInline`/`+CustomParsers`
+  produce styling spans. Custom parsers handle the non-CommonMark syntax:
+  callouts, `==highlight==`, wikilinks, `%%` and `<!-- -->` comments,
+  footnotes, math, backslash escapes, inline HTML tags incl. `<img>`, GFM
+  autolinks.
 - **`styleBlock(_:cursorPosition:)`** (`Rendering/EditorTextView+Rendering.swift`)
-  renders ONE block to an attributed string. Each feature has a `Rendering/`
-  extension: Callout, Code, Image, List, ListMarker, Math, Table, WikiLinks.
+  renders ONE block. Each feature has a `Rendering/` extension: Callout,
+  Code, Image, List, ListMarker, Math, Table, WikiLinks.
 - **Recompose** (`TextView/EditorTextView+Composition.swift`) drives styling:
-  - `recompose(cursorInRaw:)` — full: replaces storage with rawSource, restyles
+  - `recompose(cursorInRaw:)` — full: replace storage with rawSource, restyle
     all blocks (load, undo, indent).
-  - `recomposeDirty(_:cursorInRaw:)` — restyles a specific set of block indices
-    in place (the workhorse; attribute-only).
-  - `recomposeIncremental(...)` — restyles just the block(s) the cursor moved
+  - `recomposeDirty(_:cursorInRaw:)` — restyle a set of block indices in
+    place (the workhorse; attribute-only).
+  - `recomposeIncremental(...)` — restyle just the block(s) the cursor moved
     between (most cursor moves).
   - **Active block**: the block under the caret renders its *raw* markdown
-    (delimiters visible/editable); all others render styled. This is the "live
-    preview reveals the active line" behavior.
-
-- **Lazy styling** (`TextView/EditorTextView+LazyStyling.swift`): a large dirty
-  set styles only the viewport synchronously; the rest is finished by the
-  **idle drain** (time-budgeted main-thread slices) and **scroll promotion**
-  (style blocks as they enter the viewport). Keeps large docs responsive.
+    (delimiters visible/editable); all others render styled.
+- **Lazy styling** (`TextView/EditorTextView+LazyStyling.swift`): a large
+  dirty set styles only the viewport synchronously; the rest is finished by
+  the **idle drain** (time-budgeted main-thread slices) and **scroll
+  promotion** (style blocks as they enter the viewport). Keeps large docs
+  responsive.
 
 ---
 
 ## 4. Edit flow & undo
 
 - Edits go through NSTextView's normal path: `shouldChangeText` records a
-  coalesced undo snapshot → NSTextView mutates storage → `didChangeText` syncs
-  `rawSource` and restyles the edited block(s) (`+EditFlow`, `+Composition`).
-- **Incremental parsing**: edits capture a pending edit on `EditorTextStorage`
-  and reparse a window, not the whole doc.
+  coalesced undo snapshot → NSTextView mutates storage → `didChangeText`
+  syncs `rawSource` and restyles the edited block(s) (`+EditFlow`,
+  `+Composition`).
+- **Incremental parsing**: edits capture a pending edit on
+  `EditorTextStorage`; reparse a window, not the whole doc.
 - **Undo/redo** is custom: stacks of `rawSource` snapshots (`+Undo.swift`),
-  bypassing NSTextView's built-in undo. Restoring a snapshot *diffs* the
-  snapshot against the current text (`textDiff`, single contiguous span) and
-  applies it with the range-bounded `recomposeReplacing` — never a full
-  `recompose`, which would reset every fragment to a TextKit 2 height
-  estimate and make the follow-up scroll land wrong. The changed text is
-  selected (caret at the deletion point for pure deletions) and drives the
-  viewport: hold if any of it is on-screen, else center it. The snapshot's
-  stored caret is only a fallback for a no-op diff.
+  bypassing NSTextView's undo. Restore *diffs* the snapshot against current
+  text (`textDiff`, single contiguous span) and applies it via the
+  range-bounded `recomposeReplacing` — never a full `recompose`, which would
+  reset every fragment to a TK2 height estimate and make the follow-up
+  scroll land wrong. The changed text is selected (caret at the deletion
+  point for pure deletions) and drives the viewport: hold if any of it is
+  on-screen, else center it. The snapshot's stored caret is only a fallback
+  for a no-op diff.
 - **Cursor tracking** (`+SelectionTracking`): moving between blocks restyles
   both; moving within a block updates which token's delimiters are revealed.
 
@@ -123,28 +118,27 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
 
 ## 5. TextKit 2 specifics (how visuals are drawn)
 
-- **`DecoratedTextLayoutFragment`** (custom `NSTextLayoutFragment`, in
-  `+TextKit2.swift`) draws two kinds of custom attributes behind/over the text:
-  - **`.blockDecoration`** (paragraph-level): callout boxes, quote bars, table
-    borders, thematic-break rules, code-block backgrounds. Fragments tile
-    vertically, so a multi-line run renders as one continuous box/bar. A box's
-    `bottomPad` grows the *last* fragment's frame (TextKit 2 omits trailing
-    paragraph spacing from the fragment, so padding done that way would be dead
-    space).
+- **`DecoratedTextLayoutFragment`** (custom `NSTextLayoutFragment`,
+  `+TextKit2.swift`) draws two custom attributes behind/over the text:
+  - **`.blockDecoration`** (paragraph-level): callout boxes, quote bars,
+    table borders, thematic-break rules, code-block backgrounds. Fragments
+    tile vertically, so a multi-line run renders as one continuous box/bar.
+    A box's `bottomPad` grows the *last* fragment's frame (TK2 omits
+    trailing paragraph spacing from the fragment; draw-time-only padding
+    would be dead space).
   - **`.fragmentOverlay`** (character-level): an image *or stroked vector
     path* drawn at a character's laid-out position — rendered math, list
-    bullets/checkboxes, the callout header icon+name image, the custom-title
-    callout icon (path). The anchor glyph is hidden and `.kern` reserves the
-    drawing's advance width (the same trick the table renderer uses).
-- **Hiding** text = `hiddenFont` (≈0.01pt) + clear `foregroundColor`. This is
-  how delimiters and synthesized-but-in-source markers vanish without changing
-  the string.
-- **Image overlays only work on single-line fragments.** Drawing an *image* on
-  a *multi-line* (wrapping) fragment re-triggers a layout pass that wedges it
-  to one line; drawing a *shape* does not. So the wrapping callout custom
-  title's icon is a stroked `CGPath` (`SVGPath` parses the vendored Lucide
-  geometry), never an image — see `docs/investigations/archives/callout-title-wrap-investigation.md`
-  for the full saga.
+    bullets/checkboxes, callout header icon+name image, custom-title callout
+    icon (path). The anchor glyph is hidden and `.kern` reserves the
+    drawing's advance width (same trick as the table renderer).
+- **Hiding** text = `hiddenFont` (≈0.01pt) + clear `foregroundColor` — how
+  delimiters and in-source markers vanish without changing the string.
+- **Image overlays only work on single-line fragments.** An *image* on a
+  *multi-line* (wrapping) fragment re-triggers a layout pass that wedges it
+  to one line; a *shape* does not. So the wrapping callout custom title's
+  icon is a stroked `CGPath` (`SVGPath` parses the vendored Lucide
+  geometry), never an image — see
+  `docs/investigations/archives/callout-title-wrap-investigation.md`.
 
 ---
 
@@ -157,355 +151,309 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
 | Block model | `Model/Block.swift`, `Callout.swift`, `EditorTheme.swift`, `ListIndentState.swift` |
 | Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
 | Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML; callout/checkbox icons are inline Lucide SVGs from `LucideIcons`), `HTMLTheme` (EditorTheme → CSS), `DocumentHTML` (assembly + asset inlining: math + local images → data URIs), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print). `Document.refreshReadView()` keeps an open Read view in sync with edits and theme changes. |
-| Icons | `Model/LucideIcons.swift` — vendored [Lucide](https://lucide.dev) SVGs (ISC, `LICENSES/lucide.txt`). Callout headers use them in **both** modes: Read inlines the SVG (CSS-tinted via `currentColor`); Edit rasterizes to a tinted `NSImage` overlay. We *can't* ship SF Symbols in exported PDFs (license). App-chrome (toolbar/settings) SF Symbols are fine (in-app UI). Edit-mode task checkboxes still use SF Symbols (on-screen only); Read-mode checkboxes are a composed Lucide SVG. |
+| Icons | `Model/LucideIcons.swift` — vendored [Lucide](https://lucide.dev) SVGs (ISC, `LICENSES/lucide.txt`). Callout headers use them in **both** modes: Read inlines the SVG (CSS-tinted via `currentColor`); Edit rasterizes to a tinted `NSImage` overlay. SF Symbols can't ship in exported PDFs (license); app-chrome SF Symbols are fine (in-app UI). Edit-mode task checkboxes still use SF Symbols (on-screen only); Read-mode checkboxes are a composed Lucide SVG. |
 | Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift` |
-| Formatting commands | `Editing/EditorTextView+Formatting{Core,Commands}.swift` (Format-menu actions: bold/lists/links/callouts/…); menu built from `edmd/App/FormatMenu.swift` |
+| Formatting commands | `Editing/EditorTextView+Formatting{Core,Commands}.swift` (Format-menu actions); menu built from `edmd/App/FormatMenu.swift` |
 | Lazy/compose/undo/scroll | `TextView/EditorTextView+{Composition,LazyStyling,Undo,TypewriterScroll,SelectionTracking,ContentWidth,EditFlow}.swift` |
 | App shell | `edmd/App/{main,Document,DocumentController}.swift`; menu bar in `main.swift` `setupMenuBar()` + `FormatMenu.swift`; Sparkle `SPUStandardUpdaterController` in `AppDelegate` |
 | Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General/Advanced views) |
-| Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (see §7) |
-| Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey` (ed25519 public key). `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure (it mounts the image and installs the `.app` inside). CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline, signing, and the `RELEASE_TOKEN` PAT: §13. |
+| Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (§7) |
+| Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey`. `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure. CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline + signing + `RELEASE_TOKEN`: §13. |
 | Status bar | `edmd/Views/StatusBarView.swift` |
 | Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing), `Package.swift`, `Info.plist`, `Resources/` |
 
-Notable subsystems: **typewriter scroll** (keeps caret vertically centered;
-must lay out the viewport↔caret span before measuring or it reads stale TK2
-height estimates — and re-centers only on *typing*, not on clicks: a mouse-down
-sets `suppressTypewriterCentering` so positioning the caret by clicking doesn't
-yank the viewport), **content width** (`+ContentWidth.swift`: an **absolute
-physical** max-column width — set in cm/in in Settings, stored as cm, converted
-to points via the display's real PPI (`NSScreen.physicalPPI`, from
-`CGDisplayScreenSize`). It's a CSS `max-width` cap applied as a symmetric
-`textContainerInset.width`: windows wider than the cap center the column,
-narrower ones fill. Recomputed on resize and when the window moves to a
-differently-scaled display (`NSWindow.didChangeScreenNotification`)).
+Notable subsystems:
 
-**Format menu & shortcuts** are pure AppKit (the app has no SwiftUI scene, so
-SwiftUI `Commands` isn't an option). `FormatMenu.swift` is a declarative command
-table (`MenuCommand` + `Shortcut`, each with a stable `id` so a later pass can
-read per-command shortcut overrides from UserDefaults) that builds the menu; items
-use a nil target and route through the responder chain to the focused
-`EditorTextView`'s `@objc format…` actions — the same wiring as undo/redo. Those
-actions funnel through two primitives in `+FormattingCore.swift`
-(`applyFormattingEdit` for a single contiguous edit, modeled on the Tab-indent
-path; `applyWholeDocumentEdit` for non-contiguous edits like footnotes). The
-View-menu ⌘E item (and the toolbar button) *toggles* the editing view ↔ Read
-via `Document.toggleViewMode`. **Source is not a third toggle stop** — it's a
-persisted preference (`AppSettings.sourceMode`, a "Source Mode" checkbox in the
-View menu and the toolbar button's right-click menu): when on, the editing half
-of the toggle is Source instead of Edit (so ⌘E flips Source ↔ Read), and a
-freshly opened document honors it. The toolbar's view-mode button left-clicks to
-toggle and right-clicks for the full mode menu (see the §8 gotcha on why that
-right-click is intercepted in `DocumentWindow.sendEvent`). The toolbar enables
-`allowsUserCustomization` (Customize Toolbar… is an AppKit `NSToolbar` feature,
-not a SwiftUI one).
-
-**Read mode is a separate WKWebView**, not an editor styling mode. Entering
-`.reading` swaps the editor's scroll view for a `ReadModeWebView` that renders
-the document as themed HTML (the `Export/` group); Edit and Source stay on the
-`EditorTextView`. The HTML path walks the *same* swift-markdown `Document` the
-editor parses (one parser, two back-ends: `SpanCollector` → editor attributes,
-`HTMLRenderer` → HTML), themed from the *same* `EditorTheme`/`CalloutStyle` via
-`HTMLTheme`, so the two can't drift. The webview disables JavaScript, loads the
-generated HTML against an explicit `about:blank` base URL, and inlines every
-asset (math/icons as data URIs) so it needs no file/network reach; external
-`http`/`https`/`mailto` links open in the default browser, while `file:` and
-unknown schemes are cancelled instead of fetched in-view. Raw HTML passes 
-through per GFM, filtered by tagfilter + hardening, and the page carries a 
-`script-src 'none'` CSP meta (see §10 for the full policy). **File ▸ Export as
-PDF… / Print… (⌘P)** run the same HTML through `WKWebView.printOperation` for
-real vector (selectable) text — `MarkdownPrinter`. Math glyphs are high-DPI PNG
-(SwiftMath has no SVG path yet); callout/checkbox icons are inline Lucide SVG
-(vector); everything else is vector. Code blocks are syntax-colored by
-`CodeHighlighter` (same tokenizer and `CodeSyntaxPalette` as Edit mode). Local
-images are inlined as data URIs via a `baseURL` (document directory) threaded
-through `DocumentHTML`/`ReadModeWebView`/`MarkdownPrinter`; remote images are
-off by default (`ReadRenderOptions.allowRemoteImages`). `[[Wikilinks]]` and
-relative markdown links use private URL schemes (`x-edmund-wiki:`,
-`x-edmund-link:`) in the rendered HTML so the nav coordinator can intercept
-them and route through the app's document graph without JavaScript.
-
-**Mode-switch viewport sync** (Edit ↔ Read, line-accurate both directions):
-every top-level block in the read HTML carries `id="edmund-l<startLine>"`
-(spliced in `HTMLRenderer.visitDocument`; `ReadModeAnchors.topLevelBlockSpans`
-exposes the same 1-indexed line spans to callers). `ReadModeWebView` reads and
-sets its scroll position as (anchor line, fraction-into-block) via
-`evaluateJavaScript` — which runs even with `allowsContentJavaScript = false`
-and the `script-src 'none'` CSP (both gate only *page content* JS; API-injected
-JS is a separate trusted channel), so the sandbox above is unchanged. The JS is
-static templates interpolating only Swift-computed numbers. `Document` maps the
-editor side with `topmostVisibleCharacterOffset()` / `line(forOffset:)` /
-`offset(forLine:)` / `scrollCharacterToTop(_:)`; entry and exit mappings use
-the same `lineCount` denominator so an untouched round trip is a fixed point.
-Both swap directions are deferred so no intermediate frame is visible: Edit→Read
-swaps in `onLoadFinished` (with an HTML cache making unchanged re-entries
-instant and skipping the reload), Read→Edit swaps in `readScrollPosition`'s
-completion after the editor is positioned while still hidden. Re-renders
-(appearance flip, settings) self-capture and restore their scroll. Two gotchas
-this feature learned the hard way (see also §8): the anchor must be captured
-*before* the `viewMode` setter runs, and far scrolls must style-then-lay-out
-everything above the target before measuring.
+- **Typewriter scroll**: keeps caret vertically centered. Must lay out the
+  viewport↔caret span before measuring (else stale TK2 estimates);
+  re-centers only on *typing* — a mouse-down sets
+  `suppressTypewriterCentering` so click-placing the caret doesn't yank the
+  viewport.
+- **Content width** (`+ContentWidth.swift`): an **absolute physical**
+  max-column width — set in cm/in in Settings, stored as cm, converted to
+  points via the display's real PPI (`NSScreen.physicalPPI`, from
+  `CGDisplayScreenSize`). Applied as a symmetric `textContainerInset.width`
+  cap: wider windows center the column, narrower ones fill. Recomputed on
+  resize and on moving to a differently-scaled display
+  (`NSWindow.didChangeScreenNotification`).
+- **Format menu & shortcuts**: pure AppKit (no SwiftUI scene, so SwiftUI
+  `Commands` isn't an option). `FormatMenu.swift` is a declarative command
+  table (`MenuCommand` + `Shortcut`, each with a stable `id` so a later pass
+  can read per-command shortcut overrides from UserDefaults). Items use a
+  nil target and route through the responder chain to the focused
+  `EditorTextView`'s `@objc format…` actions — same wiring as undo/redo.
+  Actions funnel through two primitives in `+FormattingCore.swift`:
+  `applyFormattingEdit` (single contiguous edit, modeled on the Tab-indent
+  path) and `applyWholeDocumentEdit` (non-contiguous, e.g. footnotes).
+- **View modes**: ⌘E (View menu + toolbar button) *toggles* editing ↔ Read
+  via `Document.toggleViewMode`. **Source is not a third toggle stop** —
+  it's a persisted preference (`AppSettings.sourceMode`, a "Source Mode"
+  checkbox in the View menu and the toolbar button's right-click menu):
+  when on, the editing half of the toggle is Source instead of Edit, and a
+  freshly opened document honors it. The toolbar button left-clicks to
+  toggle, right-clicks for the full mode menu (§8: why that right-click is
+  intercepted in `DocumentWindow.sendEvent`). Toolbar has
+  `allowsUserCustomization = true` (an AppKit `NSToolbar` feature).
+- **Read mode is a separate WKWebView**, not an editor styling mode.
+  `.reading` swaps the editor's scroll view for a `ReadModeWebView`
+  rendering themed HTML (`Export/`); Edit and Source stay on the
+  `EditorTextView`. One parser, two back-ends (`SpanCollector` → editor
+  attributes, `HTMLRenderer` → HTML), same `EditorTheme` via `HTMLTheme` —
+  the two can't drift. Sandboxed: JS disabled, `script-src 'none'` CSP,
+  `baseURL: nil`, every asset inlined as data URIs; remote images off by
+  default (`ReadRenderOptions.allowRemoteImages`); external
+  `http`/`https`/`mailto` links open in the browser, `file:`/unknown
+  schemes cancelled; wikilinks/relative links use private
+  `x-edmund-wiki:`/`x-edmund-link:` schemes the nav coordinator intercepts.
+  **Export as PDF… / Print… (⌘P)** run the same HTML through
+  `WKWebView.printOperation` (`MarkdownPrinter`; vector text, math is
+  high-DPI PNG). Full spec: `docs/architecture/reader-and-export.md`.
+- **Mode-switch viewport sync** (Edit ↔ Read, line-accurate both ways):
+  read HTML blocks carry `id="edmund-l<startLine>"` anchors; scroll maps as
+  (anchor line, fraction-into-block) via API-injected `evaluateJavaScript`
+  (a trusted channel — content-JS-off and the CSP don't gate it); both
+  directions share the same `lineCount` denominator so an untouched round
+  trip is a fixed point; both swaps are deferred so no intermediate frame
+  shows. Full spec: `docs/architecture/reader-and-export.md`. Two hard-won
+  gotchas (§8): capture the anchor *before* the `viewMode` setter runs;
+  far scrolls must style-then-lay-out everything above the target before
+  measuring.
 
 ---
 
 ## 7. Settings & persistence
 
-- `AppSettings` (`edmd/Settings`) defines UserDefaults keys + typed accessors.
+- `AppSettings` (`edmd/Settings`) = UserDefaults keys + typed accessors.
   SwiftUI panes use `@AppStorage`. Live changes broadcast to every open
-  `Document.editor` (see the font/line-height/content-width `applyTo…` helpers).
+  `Document.editor` (the font/line-height/content-width `applyTo…` helpers).
 - Theme/appearance/fonts flow into `EditorTheme` → the editor's derived
   `bodyFont`, colors, paragraph styles.
-- **Max content width** persists as **centimetres** (`maxContentWidthCm`); the
-  cm/in shown in Settings is a display unit (`contentWidthUnit`), the column
-  itself is always physical (see §6 content width). The default is locale-aware
-  — 5 in (US) / 12 cm (elsewhere) — and doubles as the slider's magnetic snap
-  point; the slider runs from a 3 in floor to the current screen's physical
-  width (`NSScreen.physicalWidthCm`).
-- **Window size** persists as the last document window's full **frame** size
-  (`lastWindowSize`) — see the §8 gotcha on why it's the frame, not the content
-  size.
-- **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): an always-on
+- **Max content width** persists as **centimetres** (`maxContentWidthCm`);
+  cm/in is a display unit (`contentWidthUnit`), the column is always
+  physical (§6). Default is locale-aware — 5 in (US) / 12 cm (elsewhere) —
+  and is the slider's magnetic snap point; slider range: 3 in floor → the
+  screen's physical width (`NSScreen.physicalWidthCm`).
+- **Window size** persists as the last window's full **frame** size
+  (`lastWindowSize`) — §8 on why frame, not content size.
+- **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): always-on
   (opt-out) file logger. `Log.{debug,info,error}(_:category:)` and
   `Log.measure(_:) { … }` (single-line durations) write to
   `~/.edmund/logs/edmund-YYYY-MM-DD.log` on a private serial queue. One
-  compile-time level threshold ships (DEBUG = `debug`+; release = `info`+) — the
-  user only toggles it on/off and picks a retention window (Settings ▸ General ▸
-  Diagnostics). `AppSettings.applyLogging()` pushes the toggle/retention into
+  compile-time level threshold (DEBUG = `debug`+; release = `info`+); the
+  user only toggles on/off and picks retention (Settings ▸ General ▸
+  Diagnostics). `AppSettings.applyLogging()` pushes toggle/retention into
   `Log.configure` at launch and on change; retention is pruned there.
-- **Crash-log uploading** (`EdmundCore/Diagnostics/CrashReporter.swift`): opt-in
-  (default off), fire-and-forget upload of the `.ips` crash reports macOS writes
-  to `~/Library/Logs/DiagnosticReports/`. On launch, if `AppSettings.sendCrashLogs`
-  is true, we POST any `edmd-*.ips` files not in `AppSettings.sentCrashReports`
-  (dedup) to `CrashReporter.reportingEndpoint`. Note: `edmd` is the Mach-O
-  executable name (not "Edmund") — that's the prefix in crash-report filenames.
-  **The Settings ▸ Advanced toggle is currently commented out** (the `// Crash
-  reports:` GridRow in `AdvancedSettingsView.swift`); uncomment it and replace the
-  placeholder `reportingEndpoint` URL once the receiving server exists. The upload
-  path reads `~/Library/Logs/DiagnosticReports/` directly, which only works
-  because the app is not sandboxed; if App Sandbox is ever adopted, switch to
-  MetricKit's `MXCrashDiagnostic` API instead.
+- **Crash-log uploading** (`EdmundCore/Diagnostics/CrashReporter.swift`):
+  opt-in (default off), fire-and-forget POST of `edmd-*.ips` files from
+  `~/Library/Logs/DiagnosticReports/` not yet in
+  `AppSettings.sentCrashReports` (dedup) to
+  `CrashReporter.reportingEndpoint`. `edmd` is the Mach-O executable name —
+  that's the crash-report filename prefix. **The Settings ▸ Advanced toggle
+  is currently commented out** (the `// Crash reports:` GridRow in
+  `AdvancedSettingsView.swift`); uncomment it and set a real
+  `reportingEndpoint` once the receiving server exists. Reading
+  DiagnosticReports directly only works un-sandboxed; under App Sandbox
+  switch to MetricKit's `MXCrashDiagnostic`.
 
 ---
 
 ## 8. Quirks & gotchas (will bite you)
 
-- **SwiftMath fonts**: `build-app.sh` must copy `*.bundle` into the `.app` root
-  (it does). Without it, the app **crashes the instant it renders any LaTeX**.
-- **Sparkle codesign — must seal the whole bundle**: at install time Sparkle
-  re-validates the downloaded update's Apple code signature
-  (`SUUpdateValidator`). Even with a valid EdDSA signature, a bundle that reports
-  as code-signed but fails `SecStaticCodeCheckValidity` is rejected as *"The
-  update is improperly signed and could not be validated."* The old build script
-  signed only the main binary as a standalone file and never sealed the bundle —
-  so it had no `_CodeSignature/CodeResources` and **every Sparkle update failed**
-  (the v0.1.0→0.1.1 update error). The fix: `build-app.sh` seals the whole `.app`
-  (`codesign --deep`). The obstacle is the SwiftMath resource bundle, which must
-  sit at the `.app` root (its generated `Bundle.module` accessor is hardcoded to
-  `Bundle.main.bundleURL`), and codesign refuses to seal a bundle with any item
-  at the root. So we seal while the root holds only `Contents/`, then copy the
-  SwiftMath bundle in **after** signing. That one unsealed root item makes
-  `codesign --verify` (CLI) and `--strict` complain, but Sparkle's actual check
-  is non-strict (`SecStaticCodeCheckValidityWithErrors` with
-  `kSecCSCheckAllArchitectures`) and tolerates it — verified against that exact
-  API. A Developer ID cert + notarization would be cleaner; ad-hoc is the current
-  limit.
-- **Sparkle keypair**: set up and verified — public key in `Info.plist`
-  `SUPublicEDKey`, private key in the login keychain and the CI secret
-  `SPARKLE_ED_PRIVATE_KEY`. Don't let them diverge. Full release/signing details
-  in §13.
-- **`create-dmg` — npm only, three quirks**:
-  - Install via **npm** (`npm install --global create-dmg`), not Homebrew — they
-    are different tools with incompatible CLIs. Requires Node ≥20 (`node --version`).
-  - Exits **2** (not 0) when it can't Developer-ID-sign the image (we ship
-    ad-hoc). It still produces the `.dmg`; `release.sh` and the CI step both
-    use `|| true` and then verify the file exists.
-  - Names the output `"Edmund <version>.dmg"` (space, not hyphen). Both scripts
-    rename it to `Edmund-<version>.dmg` before signing and uploading.
-- **Stale release builds**: `swift build -c release` / `build-app.sh` sometimes
-  reuses stale object files (you'll run an old binary and be baffled). Debug
-  builds have the same disease: `swift build` can print `Build complete!`
-  after compiling a changed file **without relinking `edmd`** — the app then
-  runs old code. Detect it by grepping
+- **SwiftMath fonts**: `build-app.sh` must copy `*.bundle` into the `.app`
+  root (it does). Without it the app **crashes the instant it renders any
+  LaTeX**.
+- **Sparkle codesign — must seal the whole bundle**: Sparkle re-validates
+  the downloaded update's Apple code signature (`SUUpdateValidator`); a
+  bundle that reports as signed but fails `SecStaticCodeCheckValidity` is
+  rejected as *"The update is improperly signed…"*. The old script signed
+  only the main binary (no `_CodeSignature/CodeResources`) — **every
+  Sparkle update failed** (the v0.1.0→0.1.1 error). Fix: `build-app.sh`
+  seals the whole `.app` (`codesign --deep`) while the root holds only
+  `Contents/`, then copies the SwiftMath bundle in **after** signing (it
+  must sit at the `.app` root — its generated `Bundle.module` accessor is
+  hardcoded to `Bundle.main.bundleURL` — and codesign refuses to seal with
+  any item at the root). That one unsealed root item makes
+  `codesign --verify` (CLI) and `--strict` complain, but Sparkle's actual
+  check (`SecStaticCodeCheckValidityWithErrors` +
+  `kSecCSCheckAllArchitectures`, non-strict) tolerates it — verified
+  against that exact API. Developer ID + notarization would be cleaner;
+  ad-hoc is the current limit.
+- **Sparkle keypair**: public key in `Info.plist` `SUPublicEDKey`, private
+  key in the login keychain **and** the CI secret `SPARKLE_ED_PRIVATE_KEY`.
+  Don't let them diverge. Details: §13.
+- **`create-dmg` — npm only, three quirks**: install via **npm**
+  (`npm install --global create-dmg`), not Homebrew — different tools,
+  incompatible CLIs; needs Node ≥20. Exits **2** (not 0) when it can't
+  Developer-ID-sign (we ship ad-hoc) but still produces the `.dmg` —
+  `release.sh` and CI use `|| true` then verify the file exists. Names the
+  output `"Edmund <version>.dmg"` (space); both scripts rename to
+  `Edmund-<version>.dmg` before signing/uploading.
+- **Stale builds**: `swift build` (debug *and* release) can print `Build
+  complete!` after compiling a changed file **without relinking `edmd`** —
+  you run old code. Detect: grep
   `strings .build/arm64-apple-macosx/debug/edmd` for a long string literal
   unique to the new code (literals ≤15 bytes are stored inline on arm64 and
-  never appear); cure with `swift package clean`. Never delete
-  `.build/…/edmd.build/` by hand — that corrupts the output-file-map and
-  wedges the target until a full clean. If a
-  visual change "doesn't take," `rm -rf .build` and rebuild. `shasum` the binary
-  to confirm it changed.
-- **`open Edmund.app` foregrounds a *running* instance instead of relaunching.**
-  Always `pkill -x edmd` first, or launch the binary directly
+  never appear). Cure: `swift package clean`; if a visual change "doesn't
+  take", `rm -rf .build` and rebuild. `shasum` the binary to confirm it
+  changed. Never hand-delete `.build/…/edmd.build/` — corrupts the
+  output-file-map and wedges the target until a full clean.
+- **`open Edmund.app` foregrounds a running instance** instead of
+  relaunching. `pkill -x edmd` first, or launch the binary directly
   (`build/Edmund.app/Contents/MacOS/edmd file.md &`).
-- **Screencapture for visual verification**: capture a specific window by id
-  (reliable even if not frontmost) via Quartz:
-  `CGWindowListCopyWindowInfo` → find the window by `kCGWindowName` → `screencapture -x -o -l<id> out.png`.
-  The desktop wallpaper defeats brightness-based auto-cropping; crop by the
-  detected window bounds instead. Window-server state can glitch (tiny windows,
-  state restoration) after many rapid launch/kill cycles — `rm -rf ~/Library/"Saved Application State"/com.i7t5.edmund.savedState` and relaunch.
+- **Screencapture for visual verification**: capture by window id (reliable
+  even if not frontmost): `CGWindowListCopyWindowInfo` → find by
+  `kCGWindowName` → `screencapture -x -o -l<id> out.png`. Crop by detected
+  window bounds (the wallpaper defeats brightness-based auto-crop). After
+  many rapid launch/kill cycles window-server state can glitch (tiny
+  windows, state restoration) —
+  `rm -rf ~/Library/"Saved Application State"/com.i7t5.edmund.savedState`
+  and relaunch.
 - **Width not known at first styling**: on load the view may be unsized, so
-  anything that bakes the content width (e.g. callout header images) renders at
-  a fallback width until a width-settled re-render. Prefer real wrapping text
-  over width-baked images where possible.
-- **Attribute-only changes don't re-measure geometry in TK2**: after restyling a
-  block whose height/indent changed, you must `invalidateLayout(for:)` its range
-  or the fragment keeps a stale frame (empty bands / clipped lines). `recompose
-  Dirty` and the idle drain already do this; new paths must too.
-- **TextKit 2 height *estimates* are the root of most viewport glitches.** A
-  fragment has a real frame only once laid out; everything else (and the total
-  document height) is an estimate that gets corrected as layout reaches it —
-  which is what makes the scroller jump and scroll-to-target land wrong (a
-  widely documented TK2 limitation; even TextEdit shows it). Mitigations here:
-  documents ≤ `fullLayoutMaxLength` (100k UTF-16) are kept **fully laid out**
-  by a coalesced next-run-loop settle (`scheduleFullLayoutSettle`, wrapped in
+  anything that bakes the content width (e.g. callout header images)
+  renders at a fallback width until a width-settled re-render. Prefer real
+  wrapping text over width-baked images.
+- **Attribute-only changes don't re-measure geometry in TK2**: after
+  restyling a block whose height/indent changed, `invalidateLayout(for:)`
+  its range or the fragment keeps a stale frame (empty bands / clipped
+  lines). `recomposeDirty` and the idle drain do this; new paths must too.
+- **TK2 height *estimates* are the root of most viewport glitches.** A
+  fragment has a real frame only once laid out; everything else (and total
+  document height) is an estimate corrected as layout reaches it — that's
+  the scroller jumping and scroll-to-target landing wrong (a documented TK2
+  limitation; even TextEdit shows it). Mitigations: docs ≤
+  `fullLayoutMaxLength` (100k UTF-16) are kept **fully laid out** by a
+  coalesced next-run-loop settle (`scheduleFullLayoutSettle`, wrapped in
   `preservingViewportAnchor` so corrections never shift what's on screen);
-  `centerViewportOnCaret` re-measures after its first scroll and corrects the
-  residual error; and undo/redo avoids resetting layout at all (see §4). Don't
-  add code that trusts an off-screen fragment's y-coordinate without laying
-  out the span first.
-- **TK2 can strand content above the document origin.** Edits near the top of
-  a tall document sometimes leave the first fragment at negative y: the first
-  line sits above the visible area and the scroller is already at the top, so
-  the user can't reach it. `repairContentAboveOrigin` (run by the layout
-  settle) detects a negative first-fragment origin and re-lays start→viewport
-  inside `preservingViewportAnchor` to renormalize.
+  `centerViewportOnCaret` re-measures after its first scroll and corrects
+  the residual; undo/redo avoids resetting layout at all (§4). Never trust
+  an off-screen fragment's y-coordinate without laying out the span first.
+- **TK2 can strand content above the document origin.** Edits near the top
+  of a tall document can leave the first fragment at negative y — first
+  line unreachable, scroller already at top. `repairContentAboveOrigin`
+  (run by the layout settle) detects a negative first-fragment origin and
+  re-lays start→viewport inside `preservingViewportAnchor`.
 - **A selection taller than the viewport must be revealed at its *nearest*
-  end** (`scrollRangeToVisible` override): always revealing the top fought the
+  end** (`scrollRangeToVisible` override): always revealing the top fought
   drag-selection autoscroll and oscillated the viewport mid-drag.
-- **Never mutate storage while an IME is composing (`hasMarkedText()`)**: during
-  composition the storage holds the provisional marked text, so `storage ==
-  rawSource` is transiently false and `didChangeText` defers syncing until
-  commit. Any styling that runs `beginEditing`/`setAttributes`/`invalidateLayout`
-  mid-composition can strand the marked text in the input context — after which
-  `didChangeText` keeps bailing on its own guard and the invariant stays broken,
-  so every later edit drifts the caret (the old "delete-drift" bug). Every
-  storage-touching styling path must guard `!hasMarkedText()` — including async
-  ones scheduled *before* composition began (the caret-move restyle in
-  `+SelectionTracking`). `becomeFirstResponder` resyncs from storage as a
-  catch-all if a composition is ever left stranded. Full write-up:
+- **Never mutate storage while an IME is composing (`hasMarkedText()`)**:
+  during composition storage holds the provisional marked text, so
+  `storage == rawSource` is transiently false and `didChangeText` defers
+  syncing until commit. Styling that runs
+  `beginEditing`/`setAttributes`/`invalidateLayout` mid-composition can
+  strand the marked text in the input context — `didChangeText` then keeps
+  bailing on its own guard and every later edit drifts the caret (the old
+  "delete-drift" bug). Every storage-touching styling path must guard
+  `!hasMarkedText()` — including async ones scheduled *before* composition
+  began (`+SelectionTracking`'s caret-move restyle). `becomeFirstResponder`
+  resyncs from storage as a catch-all. Full write-up:
   `docs/investigations/delete-drift-investigation.md`.
 - **AppKit does not pair every storage mutation with `didChangeText`.** A
-  drag-move of the selected text whose drop lands on no valid target (e.g.
-  released past the end of the document) deletes the dragged range via
-  `shouldChangeText` → `replaceCharacters` and **never calls `didChangeText`**
-  — silently freezing `rawSource`/`blocks`, after which every edit drifts the
-  caret and autosave writes the stale `rawSource` (delete-drift round 4).
+  drag-move whose drop lands on no valid target (e.g. released past the end
+  of the document) deletes the dragged range via `shouldChangeText` →
+  `replaceCharacters` and **never calls `didChangeText`** — silently
+  freezing `rawSource`/`blocks`; every edit then drifts the caret and
+  autosave writes the stale `rawSource` (delete-drift round 4).
   `shouldChangeText` therefore schedules a next-run-loop bypass check: a
-  storage `pendingEdit` still unconsumed by then means the closing
-  `didChangeText` never came, and the editor heals by running the same sync
-  (`+EditFlow`, `scheduleBypassedEditSyncCheck`; `healing storage edit that
-  bypassed didChangeText` in `~/.edmund/logs` is its breadcrumb). Never build
-  a sync path on the assumption that `didChangeText` follows every edit.
-- **A bypassed edit also leaves TextKit 2's selection fixup queued** (delete-
-  drift round 6). The skipped
-  `-[NSTextLayoutManager _fixSelectionAfterChangeInCharacterRange:]` fires at
-  the **next** `endEditing` — even an attribute-only restyle — where it maps
-  the stale selection against post-edit coordinates and leaps the caret blocks
-  away. It moves even a freshly set, valid caret, so the heal must set the
-  caret (derived from the pendingEdit hull) *before* the sync **and re-assert
-  it after** (`+EditFlow`). Corollary: any suspicious selection change arrives
+  storage `pendingEdit` still unconsumed means the closing `didChangeText`
+  never came, and the editor heals by running the same sync (`+EditFlow`,
+  `scheduleBypassedEditSyncCheck`; breadcrumb in `~/.edmund/logs`: `healing
+  storage edit that bypassed didChangeText`). Never build a sync path on
+  the assumption that `didChangeText` follows every edit.
+- **A bypassed edit also leaves TK2's selection fixup queued** (delete-drift
+  round 6). The skipped
+  `-[NSTextLayoutManager _fixSelectionAfterChangeInCharacterRange:]` fires
+  at the **next** `endEditing` — even an attribute-only restyle — mapping
+  the stale selection against post-edit coordinates and leaping the caret
+  blocks away. It moves even a freshly set, valid caret, so the heal must
+  set the caret (derived from the pendingEdit hull) *before* the sync **and
+  re-assert it after** (`+EditFlow`). Suspicious selection changes arrive
   mid-recompose (`up=Y` in traces); under verbose diagnostics
-  `traceSelectionOrigin` logs the call stack of whoever moved it — start there.
-  This class of bug does not reproduce headless (the test harness runs the
-  fixup synchronously): use the in-process repro driver — DEBUG builds accept
-  `-debug.reproScript <path>` (`Sources/edmd/App/ReproScript.swift`) and replay
-  keystroke scripts (`caret` / `type` / `backspace` / `bypassdelete` /
-  `assertcaret` / `logsel` / `scroll` / `viewmode` / `readscroll` / `logstate`)
-  through the real `window.sendEvent` key path — no Accessibility/TCC needed,
-  works with the window on an invisible Space. Pass `-debug.disableUpdater YES`
-  alongside it: Sparkle's failed-update alert on dev builds is **modal at
-  launch** and blocks everything (no document window, no script) until
-  dismissed. Full chronicle: `docs/investigations/delete-drift-investigation.md`
-  round 6; step-by-step method for producing such repros:
+  `traceSelectionOrigin` logs the mover's call stack — start there. This
+  class does not reproduce headless (the test harness runs the fixup
+  synchronously): DEBUG builds accept `-debug.reproScript <path>`
+  (`Sources/edmd/App/ReproScript.swift`) — in-process keystroke replay
+  (`caret` / `type` / `backspace` / `bypassdelete` / `assertcaret` /
+  `logsel` / `scroll` / `viewmode` / `readscroll` / `logstate`) through the
+  real `window.sendEvent` key path — no Accessibility/TCC needed, works on
+  an invisible Space. Pass `-debug.disableUpdater YES` alongside —
+  Sparkle's failed-update alert on dev builds is **modal at launch** and
+  blocks everything until dismissed. Chronicle:
+  `docs/investigations/delete-drift-investigation.md` round 6; method:
   `docs/dev-guides/live-repro-guide.md`.
-- **The `viewMode` setter recomposes every block, collapsing far geometry to
-  estimates.** `recomposeDirty` on a large dirty set styles only the viewport
-  synchronously and defers the rest to the idle drain, so right after a mode
-  toggle everything far from the viewport is laid out at base-attribute height
-  (~17pt/line vs ~27pt styled). Two consequences (the read-mode viewport-drift
-  bug): capture any viewport anchor **before** `editor.viewMode = mode` runs
-  (`Document.setViewMode` does), and a far `scrollCharacterToTop` must
-  style-then-lay-out everything above its target before measuring
+- **The `viewMode` setter recomposes every block, collapsing far geometry
+  to estimates** (~17pt/line base vs ~27pt styled) — `recomposeDirty` on a
+  large dirty set defers non-viewport styling to the idle drain. Two
+  consequences (the read-mode viewport-drift bug): capture any viewport
+  anchor **before** `editor.viewMode = mode` runs (`Document.setViewMode`
+  does), and a far `scrollCharacterToTop` must style-then-lay-out
+  everything above its target before measuring
   (`ensureBlocksStyled(upTo:)` + `ensureLayout`) — the drain's later layout
   invalidation is *not* scroll-compensated, so landing first and letting
   styling catch up slides the just-anchored viewport.
-- **A custom toolbar item can't win a right-click from a view-level handler.**
-  With `NSToolbar.allowsUserCustomization = true`, the toolbar turns any
-  secondary (right / control) click over the toolbar — *including* a custom item
-  view — into its own "Customize Toolbar…" context menu. Setting the view's
-  `menu`, overriding `rightMouseDown`, and a secondary-button
-  `NSClickGestureRecognizer` **all lose**, because the toolbar claims the click
-  downstream of them. The fix (view-mode button): intercept in
-  `DocumentWindow.sendEvent(_:)` — the documented funnel every window event
-  passes through *before* the toolbar acts — and when the click falls inside the
-  button's bounds, pop the menu and `return` (swallow it). Other right-clicks
-  fall through to `super`. (Caveat: in true fullscreen the toolbar moves to a
-  separate window, so this main-window hook wouldn't cover that case.)
-- **Window-size persistence must round-trip the frame, not the content size.**
-  Saving `contentView.bounds.size` and re-applying it as the initializer's
-  `contentRect` makes the window grow by the title-bar + (unified) toolbar height
-  on every reopen — and content heights below the frame `minSize` get silently
-  rejected. Save `window.frame.size` and re-apply it with `window.setFrame(_:)`
-  **after the toolbar is installed** (the frame is only final then), so frame-in
-  == frame-out (`windowDidResize` ↔ `makeWindowControllers` in `Document.swift`).
+- **A custom toolbar item can't win a right-click from a view-level
+  handler.** With `allowsUserCustomization = true` the toolbar turns any
+  secondary (right / control) click over the toolbar — *including* a custom
+  item view — into its "Customize Toolbar…" context menu. The view's
+  `menu`, a `rightMouseDown` override, and a secondary-button
+  `NSClickGestureRecognizer` **all lose**. Fix (view-mode button):
+  intercept in `DocumentWindow.sendEvent(_:)` — the documented funnel every
+  window event passes through *before* the toolbar acts — and when the
+  click falls inside the button's bounds, pop the menu and swallow the
+  event. (Caveat: true fullscreen moves the toolbar to a separate window
+  this main-window hook doesn't cover.)
+- **Window-size persistence must round-trip the frame, not the content
+  size.** Saving `contentView.bounds.size` and re-applying it as the
+  initializer's `contentRect` grows the window by title-bar + (unified)
+  toolbar height every reopen — and content heights below the frame
+  `minSize` get silently rejected. Save `window.frame.size`, re-apply with
+  `window.setFrame(_:)` **after the toolbar is installed** (the frame is
+  only final then), so frame-in == frame-out (`windowDidResize` ↔
+  `makeWindowControllers` in `Document.swift`).
 
 ---
 
 ## 9. Known issues / lurking problems
 
-- **Images can't be drawn on multi-line (wrapping) fragments** (TextKit 2
-  image wedge — collapses the fragment's layout to one line). Resolved for the
-  callout custom-title icon by drawing it as a stroked `CGPath` instead
-  (shapes don't trigger the wedge); the constraint still holds for any *new*
-  overlay that could share a line with wrapping text. Full investigation:
+- **Images can't be drawn on multi-line (wrapping) fragments** (TK2 image
+  wedge — collapses the fragment's layout to one line). Resolved for the
+  callout custom-title icon via stroked `CGPath` (shapes don't wedge); the
+  constraint still holds for any *new* overlay that could share a line with
+  wrapping text. Full investigation:
   `docs/investigations/archives/callout-title-wrap-investigation.md`.
-- *(Add new ones here as you find them — with a one-line repro and a pointer to
-  any deeper write-up in `docs/`.)*
+- *(Add new ones here as you find them — with a one-line repro and a
+  pointer to any deeper write-up in `docs/`.)*
 
 ## 10. Still to address
 
-- **Raw HTML (§G): Read renders it per GFM; Edit shows colored source** — the
-  GitHub split (their editor shows source too; rendered HTML in Edit is
-  impossible under the storage==rawSource invariant). Read mode passes raw
-  HTML through (GFM §6.10 inline / §4.6 blocks) filtered by
-  `HTMLRenderer.filterRawHTML` = the spec tagfilter (§6.11: the nine dangerous
-  tag names get `<` → `&lt;`) **plus** Edmund hardening beyond spec: `on*`
-  event-handler attributes stripped, `javascript:`/`vbscript:` URL schemes
-  neutralized. Defense layers behind that filter: the read webview disables
-  JS, the page carries a `script-src 'none'` CSP meta (`DocumentHTML.full` —
-  Read view and Print/PDF both consume it), and it loads with `baseURL: nil`.
-  A raw `<img src=…>` (lone or inside a block) is rewritten to the `md-image`
-  placeholder — the only way images load under `baseURL: nil`, and the
-  remote-image-policy chokepoint (`DocumentHTML.fillImages`). Edit mode:
-  `.htmlBlock` blocks (all seven §4.6 start conditions in `BlockParser`) and
-  inline tags (full §6.10 grammar in `parseHTMLTags`) render as colored
-  source; the `SyntaxHighlighter.htmlFormatTags` whitelist
-  (`u`/`kbd`/`mark`/`sub`/`sup`/`small`) is *presentation* in Edit (rendered
-  formatting), not sanitization. Deliberate divergences from spec: the HTML
-  comment regex is laxer (interior `--` allowed); a `<`-line that forms a
-  valid table header+separator becomes a table (tables win); the type-1 tag
-  set is pinned to CommonMark 0.29 (`script|pre|style`, no `textarea`); a
-  lone self-closing `<script/>` is a type-7 HTML block, not a paragraph; the
-  Edit-mode `htmlPairRegex` attr swallow breaks on `>` inside a quoted
-  attribute of a whitelist open tag (falls back to colored source). Still
-  deferred in Edit mode: reference links/definitions, blockquote lazy
-  continuation, entity-reference styling, the 2-trailing-space hard-break
-  span.
+- **Raw HTML: Read renders it per GFM; Edit shows colored source** — the
+  GitHub split (rendered HTML in Edit is impossible under
+  storage==rawSource). Read filters via `HTMLRenderer.filterRawHTML` = GFM
+  tagfilter **plus** hardening (`on*` attributes stripped,
+  `javascript:`/`vbscript:` neutralized), behind the webview sandbox (JS
+  off, `script-src 'none'` CSP, `baseURL: nil`); a raw `<img>` is rewritten
+  to the `md-image` placeholder (`DocumentHTML.fillImages` — the
+  remote-image-policy chokepoint). Edit renders `.htmlBlock` blocks and
+  inline tags as colored source; the `htmlFormatTags` whitelist is
+  *presentation*, not sanitization. Spec divergences + full policy:
+  `docs/architecture/reader-and-export.md`. Still deferred in Edit mode:
+  reference links/definitions, blockquote lazy continuation,
+  entity-reference styling, the 2-trailing-space hard-break span.
 - **Edit-mode table alignment** distributes each cell's slack via `.kern`,
   putting the right/center "before" pad on the cell's *hidden* leading pipe
-  (0.01pt glyph) — kern still adds advance there. See
+  (kern still adds advance on a 0.01pt glyph) —
   `EditorTextView+TableRendering.swift`. Column widths are clamped to the
-  available line width (`distributeColumnWidths`, `EditorTextView+TableSupport.swift`)
-  so one very wide cell can't stretch the table off screen; a cell whose
-  styled width still exceeds its clamped column hides its real characters and
-  is redrawn wrapped instead, via a `.tableCellWraps` attribute
-  (`EditorTextView+TextKit2.swift`) resolved through a detached scratch
-  `NSTextContentStorage`/`NSTextLayoutManager` sized to the column's content
-  width — the same "hide the real chars, draw the visual yourself" pattern as
-  `.fragmentOverlay`, needed because TextKit 2 only wraps a whole paragraph at
-  the container edge and has no per-cell flow region (that's what
-  NSTextTable/NSTextBlock are for, and they're banned, see §2). Click-to-caret
-  placement inside a wrapped, non-active cell is approximate as a result.
-  Every data row also draws a full-width bottom grid line (`.tableRow`'s
+  available line width (`distributeColumnWidths`,
+  `EditorTextView+TableSupport.swift`) so one very wide cell can't stretch
+  the table off screen; a cell whose styled width still exceeds its clamped
+  column hides its real characters and is redrawn wrapped via a
+  `.tableCellWraps` attribute (`EditorTextView+TextKit2.swift`), resolved
+  through a detached scratch `NSTextContentStorage`/`NSTextLayoutManager`
+  sized to the column's content width — the same "hide the real chars, draw
+  the visual yourself" pattern as `.fragmentOverlay`, needed because TK2
+  only wraps a whole paragraph at the container edge and has no per-cell
+  flow region (that's NSTextTable/NSTextBlock, banned per §2).
+  Click-to-caret inside a wrapped, non-active cell is approximate as a
+  result. Every data row draws a full-width bottom grid line (`.tableRow`'s
   `bottomBorder`) — the header/body boundary already gets its line from
   `separator`, so only rows after the separator set it.
 - *(Track larger roadmap items in README/ROADMAP; track code-debt here.)*
@@ -522,8 +470,9 @@ everything above the target before measuring.
 5. Verify per §12 before committing.
 
 Debugging a live-only bug (caret, IME, drag, viewport timing)? Follow
-`docs/dev-guides/live-repro-guide.md` — trace-reading first, then the in-process
-ReproScript driver; don't burn time on headless attempts for that class.
+`docs/dev-guides/live-repro-guide.md` — trace-reading first, then the
+in-process ReproScript driver; don't burn time on headless attempts for
+that class.
 
 ---
 
@@ -532,20 +481,22 @@ ReproScript driver; don't burn time on headless attempts for that class.
 Do these **before every commit** (this is the workflow that worked; deviate
 only with reason):
 
-1. **`swift test` is green** (all pass). Add tests for new behavior / bug repros.
+1. **`swift test` is green** (all pass). Add tests for new behavior / bug
+   repros.
 2. **Visual changes are eyeballed** — build the app and `screencapture` the
-   result (§8), or render offscreen to a PNG. Don't trust headless layout alone
-   for anything that draws.
-3. **Frequent, small, logical commits** — one feature/fix each. Don't discard uncommited changes. 
-4. **Don't autopush, PR, or merge unless asked.** Branch off `main`
-   (don't commit straight to it); each fix on its own branch.
+   result (§8), or render offscreen to a PNG. Don't trust headless layout
+   alone for anything that draws.
+3. **Frequent, small, logical commits** — one feature/fix each. Don't
+   discard uncommited changes.
+4. **Don't autopush, PR, or merge unless asked.** Branch off `main` (don't
+   commit straight to it); each fix on its own branch.
 5. Touch only what the task needs; match surrounding style; don't refactor
    unrelated code.
 6. **Concurrent local work uses `git worktree`, not multiple clones or
-   branch-switching.** `git worktree add .worktrees/<branch> <branch>` — the
-   directory path mirrors the branch name (e.g. `.worktrees/fix/foo` for
-   `fix/foo`), so branches keep the normal `type/slug` naming and never get
-   renamed to `worktree-*`. `.worktrees/` is gitignored. This is distinct from
+   branch-switching.** `git worktree add .worktrees/<branch> <branch>` —
+   the directory path mirrors the branch name (e.g. `.worktrees/fix/foo`
+   for `fix/foo`), so branches keep the normal `type/slug` naming and never
+   get renamed to `worktree-*`. `.worktrees/` is gitignored. Distinct from
    `.claude/worktrees/`, which Claude Code's own EnterWorktree tool manages
    automatically for agent isolation — don't hand-edit that one.
 
@@ -558,78 +509,74 @@ trick, update this section.
 
 How a release happens, plus the non-obvious things that broke shipping 0.1.0.
 
-**Flow (tag-triggered).** Push a `vX.Y.Z` tag → `.github/workflows/release.yml`
-(`macos-14`): build the `.app` (`build-app.sh`) → DMG (npm `create-dmg`) →
-EdDSA-sign the DMG → `gh release create` (notes are the matching `CHANGELOG.md`
-section, extracted by `awk`) → commit the new `<item>` into `appcast.xml` on
-`main`. `scripts/release.sh` mirrors this locally but leaves the appcast
-commit/push to you. The new `<item>` also gets a `<description>` (HTML release
-notes from the CHANGELOG section, via `scripts/changelog-to-html.py`) so
-Sparkle's update dialog shows the changelog in its scrollable pane.
+**Flow (tag-triggered).** Push a `vX.Y.Z` tag →
+`.github/workflows/release.yml` (`macos-14`): build the `.app`
+(`build-app.sh`) → DMG (npm `create-dmg`) → EdDSA-sign the DMG →
+`gh release create` (notes = the matching `CHANGELOG.md` section, extracted
+by `awk`) → commit the new `<item>` into `appcast.xml` on `main`.
+`scripts/release.sh` mirrors this locally but leaves the appcast
+commit/push to you. The `<item>` also gets a `<description>` (HTML release
+notes from the CHANGELOG section via `scripts/changelog-to-html.py`) so
+Sparkle's update dialog shows the changelog.
 
-**To cut a release:** bump `CFBundleShortVersionString` / `CFBundleVersion` in
-`Info.plist`, add a `## [x.y.z]` section to `CHANGELOG.md`, merge to `main`,
-then `git tag vx.y.z && git push origin vx.y.z`.
+**To cut a release:** bump `CFBundleShortVersionString` / `CFBundleVersion`
+in `Info.plist`, add a `## [x.y.z]` section to `CHANGELOG.md`, merge to
+`main`, then `git tag vx.y.z && git push origin vx.y.z`.
 
-**EdDSA keypair — set up, not a placeholder.** The keypair exists. The public
-key is in `Info.plist` `SUPublicEDKey` (`0XdLbbuO…`); the private key lives in
-two places that must stay the *same* keypair: the maintainer's **login
-keychain** (used by `release.sh` locally, no flag) and the GitHub Actions secret
-**`SPARKLE_ED_PRIVATE_KEY`** (used by CI). Verified end-to-end: a CI-signed DMG
-verifies against the `Info.plist` public key (`sign_update --verify <dmg> <sig>`).
-If the signing key and `SUPublicEDKey` ever diverge, the DMG signs fine but every
-user's update fails signature verification.
+**EdDSA keypair — set up, not a placeholder.** Public key in `Info.plist`
+`SUPublicEDKey` (`0XdLbbuO…`); the private key lives in two places that
+must stay the *same* keypair: the maintainer's **login keychain** (used by
+`release.sh`, no flag) and the Actions secret **`SPARKLE_ED_PRIVATE_KEY`**
+(CI). Verified end-to-end: a CI-signed DMG verifies against the
+`Info.plist` public key (`sign_update --verify <dmg> <sig>`). If they
+diverge, the DMG signs fine but every user's update fails verification.
 
-**Signing flag — `sign_update -s` is fatal for newly generated keys.** Sparkle's
-`sign_update` deprecated `-s <key>`; for keys generated after that change it
-prints only a deprecation warning and **exits 1** ("no longer supported"). This
-killed the first 0.1.0 release. Feed the key on **stdin** instead — both
-`release.yml` and `release.sh` now use:
+**`sign_update -s` is fatal for newly generated keys** — deprecated; for
+keys generated after that change it prints a warning and **exits 1**. This
+killed the first 0.1.0 release. Feed the key on **stdin** instead (both
+`release.yml` and `release.sh` do):
 `echo "$SPARKLE_ED_PRIVATE_KEY" | sign_update --ed-key-file - <dmg>`.
 
-**Appcast push to protected `main` needs an admin PAT.** `main` requires the
-`test` status check. The workflow's last step commits the appcast update and
-pushes to `main`, but the default `GITHUB_TOKEN` / `github-actions[bot]` is not
-an admin, so the required check rejects it (`GH006 … protected branch hook
-declined`). `main` protection has `enforce_admins: false`, so an **admin's**
-push bypasses the check — `release.yml`'s **checkout step** therefore
-authenticates with a fine-grained admin PAT in the **`RELEASE_TOKEN`** secret
-(Contents: read/write). Set it on *checkout*, not by rewriting the push URL:
+**Appcast push to protected `main` needs an admin PAT.** `main` requires
+the `test` status check; the default `GITHUB_TOKEN` /
+`github-actions[bot]` push is rejected (`GH006 … protected branch hook
+declined`). `main` protection has `enforce_admins: false`, so an admin's
+push bypasses the check — `release.yml`'s **checkout step** authenticates
+with a fine-grained admin PAT in the **`RELEASE_TOKEN`** secret (Contents:
+read/write). Set it on *checkout*, not by rewriting the push URL:
 `actions/checkout` persists an `http.<host>.extraheader` credential that
-otherwise overrides inline-URL creds, so the push would keep using the bot
-token. **`RELEASE_TOKEN` expires 2027-06-27** — rotate it before then or
-releases fail at the appcast push.
+otherwise overrides inline-URL creds. **`RELEASE_TOKEN` expires
+2027-06-27** — rotate before then or releases fail at the appcast push.
 
-**Gatekeeper / notarization.** The app is ad-hoc signed, not notarized, so users
-hit Gatekeeper on first launch; the README documents the
-`xattr -dr com.apple.quarantine` / right-click-Open workarounds. A Developer ID
-cert + notarization (see §8) would remove the prompt entirely.
+**Gatekeeper / notarization.** Ad-hoc signed, not notarized: users hit
+Gatekeeper on first launch; the README documents the
+`xattr -dr com.apple.quarantine` / right-click-Open workarounds. Developer
+ID + notarization (§8) would remove the prompt entirely.
 
 **Never release anything through this pipeline except the main app.** The
-tag-triggered flow above builds and ships `Edmund.app` only. Extension
-payloads (e.g. the RaTeX WASM) are a separate concern with their own
-hosting/release path — never bundled into or triggered by an Edmund version
-tag. Case in point: the RaTeX WASM asset was pulled from release pending
-`erweixin/RaTeX` inline-mode support and the Advanced Math extension's own
-repo migration — see `misc/backlog.md`.
+tag flow builds and ships `Edmund.app` only. Extension payloads (e.g. the
+RaTeX WASM) have their own hosting/release path — never bundled into or
+triggered by an Edmund version tag. (The RaTeX WASM asset was pulled from
+release pending `erweixin/RaTeX` inline-mode support and the Advanced Math
+extension's repo migration — see `misc/backlog.md`.)
 
 ---
 
 ## 14. References
 
-Dependencies and prior art worth consulting before designing something new here:
+Dependencies and prior art worth consulting before designing something new:
 
 - [apple/swift-markdown](https://github.com/apple/swift-markdown) — the
-  CommonMark/GFM parser both back-ends walk (§3, §6 Read mode).
+  CommonMark/GFM parser both back-ends walk (§3, §6).
 - [SwiftMath](https://github.com/mgriebling/SwiftMath) — LaTeX rendering
   (raster only; no SVG output yet — why exported math is PNG, §6).
 - [Sparkle](https://sparkle-project.org) — auto-update (§8, §13 for the
   signing/appcast quirks).
-- [Lucide](https://lucide.dev) — vendored icon SVGs (ISC), `Model/LucideIcons.swift`.
+- [Lucide](https://lucide.dev) — vendored icon SVGs (ISC),
+  `Model/LucideIcons.swift`.
 - [nodes-app/swift-markdown-engine](https://github.com/nodes-app/swift-markdown-engine)
-  — an independent AppKit + TextKit 2 live-preview markdown engine (Apache 2.0,
-  macOS 14+). Solves the same problems (viewport virtualization, live styling,
-  wiki links, reading column, LaTeX) with different trade-offs — useful
-  comparison point before inventing a new mechanism for an editing-experience
-  problem, and a candidate source of techniques (e.g. drag-select autoscroll,
-  overscroll) if we hit the same walls.
+  — an independent AppKit + TextKit 2 live-preview markdown engine (Apache
+  2.0, macOS 14+). Solves the same problems with different trade-offs —
+  useful comparison before inventing a new mechanism for an
+  editing-experience problem, and a candidate source of techniques (e.g.
+  drag-select autoscroll, overscroll).
