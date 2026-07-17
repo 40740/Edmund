@@ -203,7 +203,8 @@ struct HTMLRenderer: MarkupVisitor {
         // Text child) is a footnote definition, not visible content — collect it
         // for the bottom-of-page footnotes section instead of rendering in place.
         let children = Array(paragraph.children)
-        if let first = children.first as? Text,
+        if options.features.contains(.footnote),
+           let first = children.first as? Text,
            let (id, markerLength) = Self.footnoteDefinitionMarker(in: first.string) {
             var bodyHTML = Self.renderInline(String(first.string.dropFirst(markerLength)),
                                              features: options.features)

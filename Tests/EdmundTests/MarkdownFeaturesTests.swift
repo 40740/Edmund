@@ -163,6 +163,15 @@ struct MarkdownFeaturesTests {
         #expect(!html("![[pic.png]]", MarkdownFeatures.all.subtracting(.wikilinkEmbed)).contains("data-src=\"pic.png\""))
     }
 
+    @Test("Read: footnote bottom section is dropped when footnotes are off")
+    func readFootnoteBottom() {
+        let src = "text[^1]\n\n[^1]: the body"
+        #expect(html(src, .all).contains("class=\"footnotes\""))
+        let off = html(src, MarkdownFeatures.all.subtracting(.footnote))
+        #expect(!off.contains("class=\"footnotes\""))
+        #expect(!off.contains("fn-1"))   // no reference or definition anchors
+    }
+
     @Test("Read: wikilink anchor only when wikilinks are on")
     func readWikilink() {
         #expect(html("[[Note]]", .all).contains("class=\"wikilink\""))

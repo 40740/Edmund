@@ -4,6 +4,7 @@ import AppKit
 /// Toggles for each individually-switchable Markdown extension. Clearing one
 /// makes that syntax render as plain text everywhere (Edit and Read), live.
 struct MarkdownSettingsView: View {
+    @AppStorage(AppSettings.Key.enableNonGFM)         private var enableNonGFM = true
     @AppStorage(AppSettings.Key.mdCallout)            private var callout = true
     @AppStorage(AppSettings.Key.mdCollapsibleCallout) private var collapsibleCallout = true
     @AppStorage(AppSettings.Key.mdWikilink)           private var wikilink = true
@@ -17,6 +18,21 @@ struct MarkdownSettingsView: View {
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
             GridRow {
+                Text("Extensions:").gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Enable non-GFM syntax", isOn: $enableNonGFM)
+                        .onChange(of: enableNonGFM) { applyFeatures() }
+                    Text("Master switch for Obsidian-flavored and other non-GitHub extensions below. Off renders plain CommonMark/GFM.")
+                        .foregroundStyle(.secondary)
+                        .controlSize(.small)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 380, alignment: .leading)
+                }
+            }
+
+            GridRow { Divider().gridCellColumns(2) }
+
+            GridRow {
                 Text("Callouts:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Callouts", isOn: $callout)
@@ -26,6 +42,7 @@ struct MarkdownSettingsView: View {
                         .disabled(!callout)
                         .padding(.leading, 20)
                 }
+                .disabled(!enableNonGFM)
             }
 
             GridRow { Divider().gridCellColumns(2) }
@@ -41,6 +58,7 @@ struct MarkdownSettingsView: View {
                     Toggle("Image dimensions (![alt|200](url))", isOn: $imageDimensions)
                         .onChange(of: imageDimensions) { applyFeatures() }
                 }
+                .disabled(!enableNonGFM)
             }
 
             GridRow { Divider().gridCellColumns(2) }
@@ -57,6 +75,7 @@ struct MarkdownSettingsView: View {
                     Toggle("Math ($…$, $$…$$)", isOn: $math)
                         .onChange(of: math) { applyFeatures() }
                 }
+                .disabled(!enableNonGFM)
             }
         }
         .settingsPanePadding()

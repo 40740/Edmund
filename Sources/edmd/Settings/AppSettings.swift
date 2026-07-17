@@ -99,6 +99,8 @@ enum AppSettings {
         static let lastWindowWidth  = "settings.window.lastWidth"
         static let lastWindowHeight = "settings.window.lastHeight"
         // Markdown feature toggles (all default on). Read into `markdownFeatures`.
+        // Master switch: off → every non-GFM extension is disabled at once.
+        static let enableNonGFM         = "settings.syntax.enableNonGFM"
         static let mdHighlight          = "settings.markdown.highlight"
         static let mdInlineComment      = "settings.markdown.inlineComment"
         static let mdCallout            = "settings.markdown.callout"
@@ -123,6 +125,8 @@ enum AppSettings {
     /// toggle UI yet (Phase 2: front matter, tags, block refs, multi-block
     /// comments) stay on so nothing regresses before their settings land.
     static var markdownFeatures: MarkdownFeatures {
+        // Master switch: off → plain CommonMark/GFM, no extensions at all.
+        guard boolDefaultTrue(Key.enableNonGFM) else { return [] }
         var f: MarkdownFeatures = [.frontMatter, .tag, .blockRef, .multiBlockComment]
         if boolDefaultTrue(Key.mdHighlight)          { f.insert(.highlight) }
         if boolDefaultTrue(Key.mdInlineComment)      { f.insert(.inlineComment) }
