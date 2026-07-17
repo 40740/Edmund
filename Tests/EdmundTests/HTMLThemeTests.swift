@@ -52,7 +52,7 @@ struct HTMLThemeTests {
         // 'caution' has darkColorHex #F85149.
         #expect(css(dark: true).contains("--c-accent: #F85149;"))
         #expect(css(dark: false).contains("--c-accent: #CF222E;"))
-        #expect(css(dark: true).contains("--bg: #1e1e1e;"))
+        #expect(css(dark: true).contains("--bg: #292929;"))
     }
 
     @Test("Wide tables scroll horizontally instead of wrapping cell text")

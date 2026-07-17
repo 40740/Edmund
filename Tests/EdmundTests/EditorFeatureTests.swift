@@ -302,10 +302,17 @@ struct AppearanceIntegrationTests {
         #expect(editor.typewriterModeEnabled == false)
     }
 
-    @Test("Editor background uses textBackgroundColor")
+    @Test("Editor background uses textBackgroundColor in light, #292929 in dark")
     @MainActor func editorBackground() {
         let editor = makeEditor()
+
+        editor.appearance = NSAppearance(named: .aqua)
+        editor.viewDidChangeEffectiveAppearance()
         #expect(editor.backgroundColor == NSColor.textBackgroundColor)
+
+        editor.appearance = NSAppearance(named: .darkAqua)
+        editor.viewDidChangeEffectiveAppearance()
+        #expect(editor.backgroundColor == NSColor(srgbRed: 0x29 / 255.0, green: 0x29 / 255.0, blue: 0x29 / 255.0, alpha: 1.0))
     }
 
     @Test("Insertion point uses the accent color")
