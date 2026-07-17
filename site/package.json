@@ -13,14 +13,15 @@
     "@astrojs/check": "^0.9.4",
     "astro": "^6.4.6",
     "typescript": "^5.9.3",
-    "unocss": "^0.65.4"
+    "unocss": "^66.7.5"
   },
   "devDependencies": {
     "@iconify-json/lucide": "^1.2.82",
-    "@unocss/preset-icons": "^0.65.4",
-    "@unocss/preset-uno": "^0.65.4",
-    "@unocss/preset-web-fonts": "^0.65.4",
-    "@unocss/reset": "^0.65.4"
+    "@unocss/astro": "^66.7.5",
+    "@unocss/preset-icons": "^66.7.5",
+    "@unocss/preset-uno": "^66.7.5",
+    "@unocss/preset-web-fonts": "^66.7.5",
+    "@unocss/reset": "^66.7.5"
   },
   "packageManager": "pnpm@9.15.1"
 }
