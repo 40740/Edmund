@@ -39,9 +39,25 @@ struct HTMLRendererCoreTests {
     @Test("Fenced code block keeps language class and escapes content")
     func codeBlock() {
         let out = html("```swift\nlet x = a < b && c > d\n```")
-        #expect(out.contains("<pre id=\"edmund-l1\"><code class=\"language-swift\">"))
+        // The anchor id now lands on the wrapping div (first opening tag).
+        #expect(out.contains("<div id=\"edmund-l1\" class=\"code-block-wrap\">"))
+        #expect(out.contains("<pre><code class=\"language-swift\">"))
         #expect(out.contains("a &lt; b &amp;&amp; c &gt; d"))
         #expect(!out.contains("a < b"))
+    }
+
+    @Test("Code block carries a hover-revealed icon copy button with a base64 payload")
+    func codeBlockCopyButton() {
+        let out = html("```swift\nlet x = 1\n```")
+        #expect(out.contains("class=\"code-copy-btn code-copy-icon\""))
+        #expect(out.contains("<svg"))                      // icon-only, no text label
+        // href = x-edmund-copy:<percent-encoded base64 of the code>.
+        let b64 = Data("let x = 1".utf8).base64EncodedString()
+        let encoded = b64.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? b64
+        #expect(out.contains("href=\"x-edmund-copy:\(encoded)\""))
+        // Indented blocks get the same wrapper + button.
+        let indented = html("    let y = 2")
+        #expect(indented.contains("code-copy-btn"))
     }
 
     @Test("Unordered, ordered, and task lists")

@@ -160,6 +160,21 @@ enum HTMLTheme {
           /* tab-size: browsers default to 8; match the common editor convention of 4. */
           tab-size: 4; -moz-tab-size: 4; }
     pre code { color: var(--fg); background: none; padding: 0; font-size: var(--mono-size); }
+    /* Copy button: a bare hover-revealed icon, matching Obsidian's read-mode
+       treatment. `.code-block-wrap` takes over `pre`'s outer margin so the
+       button can be positioned absolutely inside it without moving `pre`. */
+    .code-block-wrap { position: relative; margin: 1em 0; }
+    .code-block-wrap pre { margin: 0; }
+    .code-copy-btn { position: absolute; top: 8px; right: 10px; display: flex; align-items: center;
+                      gap: 4px; font-family: var(--mono-font); font-size: 11px; font-weight: 500;
+                      color: var(--faint); background: transparent; padding: 3px 6px;
+                      border-radius: 5px; text-decoration: none; cursor: pointer; }
+    .code-copy-btn:hover { background: rgba(128, 128, 128, 0.16); }
+    .code-copy-btn svg { width: 13px; height: 13px; stroke: var(--faint); }
+    /* Hidden until the block is hovered, so it never reserves visible space
+       at rest. */
+    .code-copy-icon { opacity: 0; transition: opacity .15s; }
+    .code-block-wrap:hover .code-copy-icon { opacity: 1; }
     blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--rule); color: var(--faint); }
     /* Without this, the 1em bottom margin on the last <p> inside a blockquote
        creates asymmetric vertical padding — the blockquote looks heavier at the
