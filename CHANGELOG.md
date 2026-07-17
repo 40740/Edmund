@@ -3,6 +3,25 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [0.2.1] - 2026-07-17
+
+### Added
+- Window menu
+- Code block copy button in read mode
+
+### Changed
+- Code blocks are now styled by default, similar to blockquotes / callouts
+- Math blocks inline are now rendered as a block, instead of inline in `\displaystyle`
+- Switching between edit and read mode now preserves viewport
+- Lighter background color in dark mode to reduce contrast
+
+### Fixed
+- `$$...$$` was not rendering verbatim
+- External images glitching and freezing the app
+- Switching from read to edit mode waits for edit mode to fully load
+
+
 ## [0.2.0] - 2026-07-13
 
 Full GFM support per the [specs](https://github.github.com/gfm/). Existing implementations better respect GFM specs where applicable. Automatic renumbering of numbered lists. Various editor UX improvements. 
