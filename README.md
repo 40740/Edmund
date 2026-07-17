@@ -61,17 +61,6 @@ Get `Edmund.dmg` from the [latest release](https://github.com/I7T5/Edmund/releas
 
 Edmund checks for updates automatically; you can also browse version history [here](https://github.com/I7T5/Edmund/releases).
 
-## Website
-
-The barebones Astro site lives in [`site/`](site/). It is deployed to GitHub Pages by the `Deploy Site` workflow when changes land on `main`.
-
-Local development:
-
-```sh
-cd site
-pnpm install
-pnpm dev
-```
 
 ## Dependencies
 
