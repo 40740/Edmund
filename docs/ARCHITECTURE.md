@@ -76,7 +76,9 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
   enum (e.g. `.quoteRun(isCallout:)`). The indented-code rule is the parser's
   only backward-looking one (a run starts only after a blank line), so
   `consumeBlock` carries a `prevLine` context and the incremental parse won't
-  resync onto an indented-code-ish line.
+  resync onto an indented-code-ish line. Lists are one block per line, except a
+  list item whose content opens an unclosed `$$` merges its `$$…$$` display-math
+  run (forward, like the fence rules) so the span can form across lines.
 - **`SyntaxHighlighter`** + `+Walker`/`+WalkerInline`/`+CustomParsers` produce
   styling spans. The custom parsers handle the non-CommonMark syntax.
 - **`styleBlock(_:cursorPosition:)`** (`Rendering/EditorTextView+Rendering.swift`)
@@ -214,7 +216,11 @@ unknown schemes are cancelled instead of fetched in-view. Raw HTML passes
 through per GFM, filtered by tagfilter + hardening, and the page carries a 
 `script-src 'none'` CSP meta (see §10 for the full policy). **File ▸ Export as
 PDF… / Print… (⌘P)** run the same HTML through `WKWebView.printOperation` for
-real vector (selectable) text — `MarkdownPrinter`. Math glyphs are high-DPI PNG
+real vector (selectable) text — `MarkdownPrinter`. A `$$…$$` that is a whole
+paragraph renders as a block (`math-display`); one embedded in a prose line
+renders as display-mode math flowed inline (`math-display-inline`), matching the
+editor — both agree on what's math via the shared `parseDisplayMath`, and a `$$`
+inside code stays literal. Math glyphs are high-DPI PNG
 (SwiftMath has no SVG path yet); callout/checkbox icons are inline Lucide SVG
 (vector); everything else is vector. Code blocks are syntax-colored by
 `CodeHighlighter` (same tokenizer and `CodeSyntaxPalette` as Edit mode). Local
