@@ -212,7 +212,7 @@ extension EditorTextView {
                 result.addAttribute(.font, value: codeBlockFont, range: span.fullRange)
                 highlightCodeBlock(result, contentRange: span.contentRange, language: language)
                 if !cursorInToken {
-                    styleCodeBlockBox(result, span: span)
+                    styleCodeBlockBox(result, span: span, language: language)
                 }
 
             case .strikethrough:

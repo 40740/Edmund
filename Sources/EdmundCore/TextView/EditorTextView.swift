@@ -115,12 +115,21 @@ public class EditorTextView: NSTextView {
     public var themeDefaults: UserDefaults = .standard
 
     public var theme: EditorTheme = .load() {
-        didSet { textAntialias = theme.antialias }
+        didSet {
+            textAntialias = theme.antialias
+            codeBlockLabelFont = theme.monospaceFont(ofSize: max(9, theme.monospaceFontSize - 3))
+        }
     }
 
     /// Mirror of `theme.antialias`, readable from the `nonisolated`
     /// layout-fragment vendor.
     nonisolated(unsafe) var textAntialias = true
+
+    /// The code-block language label's font — a smaller cut of the theme's
+    /// monospace font. Mirrored like `textAntialias` so the `nonisolated`
+    /// layout-fragment vendor can hand it to the fragment.
+    nonisolated(unsafe) var codeBlockLabelFont: NSFont =
+        .monospacedSystemFont(ofSize: 10, weight: .regular)
 
     /// How the document is presented:
     ///   - `edit`    — live preview; the block under the caret reveals its raw
@@ -276,6 +285,7 @@ public class EditorTextView: NSTextView {
         allowsUndo = false
 
         textAntialias = theme.antialias
+        codeBlockLabelFont = theme.monospaceFont(ofSize: max(9, theme.monospaceFontSize - 3))
         backgroundColor = editorBackgroundColor
         insertionPointColor = accentColor
         selectedTextAttributes = [

@@ -712,6 +712,34 @@ struct EditorStylingTests {
         #expect(blockDecoration(at: 0, in: styled) == nil)
     }
 
+    @Test("Code block label attr: capitalized language on the fence line only (\"\" when the fence names none)")
+    @MainActor func codeBlockLabelAttribute() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("```swift\nlet x = 1\n```")
+        let ns = styled.string as NSString
+        let contentLoc = ns.range(of: "let x").location
+        #expect(styled.attribute(.codeBlockLabel, at: 0, effectiveRange: nil) as? String == "Swift")
+        #expect(styled.attribute(.codeBlockLabel, at: contentLoc, effectiveRange: nil) == nil)
+        // The second row (first content line) anchors the drawn label.
+        #expect(styled.attribute(.codeBlockLabelAnchor, at: contentLoc, effectiveRange: nil) as? String == "Swift")
+        #expect(styled.attribute(.codeBlockLabelAnchor, at: 0, effectiveRange: nil) == nil)
+
+        // No fence language → "" (marks the fence line for the top-padding
+        // shave; no label drawn).
+        let plain = editor.styleBlock("```\ncode\n```")
+        #expect(plain.attribute(.codeBlockLabel, at: 0, effectiveRange: nil) as? String == "")
+        let plainContent = (plain.string as NSString).range(of: "code").location
+        #expect(plain.attribute(.codeBlockLabelAnchor, at: plainContent, effectiveRange: nil) == nil)
+
+        // Indented block: no label plumbing at all.
+        let indented = editor.styleBlock("    let y = 2")
+        #expect(indented.attribute(.codeBlockLabel, at: 0, effectiveRange: nil) == nil)
+
+        // Active block: raw fences shown, no label.
+        let active = editor.styleBlock("```swift\nlet x = 1\n```", cursorPosition: 12)
+        #expect(active.attribute(.codeBlockLabel, at: 0, effectiveRange: nil) == nil)
+    }
+
     @Test("A fenced code block inside a callout still boxes, nested under the callout's own box")
     @MainActor func codeBlockInsideCalloutStacks() {
         let editor = makeEditor()

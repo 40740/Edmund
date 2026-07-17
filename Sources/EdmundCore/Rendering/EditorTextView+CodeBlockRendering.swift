@@ -27,13 +27,29 @@ extension EditorTextView {
     /// called from styleBlock's `.codeBlock` case when `!cursorInToken`;
     /// the fence ink itself is cleared by the delimiter loop.
     func styleCodeBlockBox(_ result: NSMutableAttributedString,
-                           span: SyntaxHighlighter.Span) {
+                           span: SyntaxHighlighter.Span,
+                           language: String?) {
         guard span.fullRange.upperBound <= result.length,
               !span.delimiterRanges.isEmpty else { return }
         let box = BlockDecoration(.box(background: codeBlockBackground, borderColor: nil,
                                        borderEdges: [], borderWidth: 0, bottomPad: 0))
         result.addAttribute(.blockDecoration, value: box, range: span.fullRange)
         result.addAttribute(.paragraphStyle, value: codeBlockParagraphStyle, range: span.fullRange)
+
+        // Label plumbing: the opening fence line carries the display language
+        // ("" when the fence names none) and shaves the box's top padding;
+        // the second row paints the actual label, reaching up over the fence
+        // row (see `.codeBlockLabelAnchor` for why the fence fragment can't).
+        let ns = result.string as NSString
+        let trimmed = language?.trimmingCharacters(in: .whitespaces) ?? ""
+        let firstLine = ns.lineRange(for: NSRange(location: span.fullRange.location, length: 0))
+        result.addAttribute(.codeBlockLabel, value: trimmed.capitalized,
+                            range: NSIntersectionRange(firstLine, span.fullRange))
+        if !trimmed.isEmpty, firstLine.upperBound < span.fullRange.upperBound {
+            let secondLine = ns.lineRange(for: NSRange(location: firstLine.upperBound, length: 0))
+            result.addAttribute(.codeBlockLabelAnchor, value: trimmed.capitalized,
+                                range: NSIntersectionRange(secondLine, span.fullRange))
+        }
     }
 
     /// Text inset for a code block's box (matches Read mode's `padding: 12px
