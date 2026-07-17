@@ -304,6 +304,13 @@ enum HTMLTheme {
     .callout-failure .callout-icon, .callout-fail .callout-icon,
     .callout-missing .callout-icon { padding-top: 0.15em; }
     .callout-title-text { flex: 1 1 auto; }
+    /* Collapsible callout (`[!type]-`/`+`): a real <details>/<summary>. Hide the
+       native disclosure marker and draw our own chevron that rotates on open. */
+    .callout-collapsible > summary { cursor: pointer; list-style: none; }
+    .callout-collapsible > summary::-webkit-details-marker { display: none; }
+    .callout-collapsible > summary::after { content: "›"; flex: 0 0 auto;
+        margin-left: 0.3em; transition: transform 0.15s ease; }
+    .callout-collapsible[open] > summary::after { transform: rotate(90deg); }
     .callout-body { margin-top: 0.4em; }
     /* A title-only callout still emits an empty body div; collapse its top margin
        so the box doesn't carry the 0.4em title gap as dead space at the bottom. */

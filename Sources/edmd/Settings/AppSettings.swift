@@ -98,6 +98,42 @@ enum AppSettings {
         static let sentCrashReports = "settings.advanced.sentCrashReports"
         static let lastWindowWidth  = "settings.window.lastWidth"
         static let lastWindowHeight = "settings.window.lastHeight"
+        // Markdown feature toggles (all default on). Read into `markdownFeatures`.
+        static let mdHighlight          = "settings.markdown.highlight"
+        static let mdInlineComment      = "settings.markdown.inlineComment"
+        static let mdCallout            = "settings.markdown.callout"
+        static let mdWikilink           = "settings.markdown.wikilink"
+        static let mdFootnote           = "settings.markdown.footnote"
+        static let mdMath               = "settings.markdown.math"
+        static let mdImageDimensions    = "settings.markdown.imageDimensions"
+        static let mdWikilinkEmbed      = "settings.markdown.wikilinkEmbed"
+        static let mdCollapsibleCallout = "settings.markdown.collapsibleCallout"
+    }
+
+    /// A bool defaulting to `true` until the user explicitly clears it (the
+    /// "opt-out" idiom used by the markdown toggles and several others).
+    static func boolDefaultTrue(_ key: String) -> Bool {
+        guard UserDefaults.standard.object(forKey: key) != nil else { return true }
+        return UserDefaults.standard.bool(forKey: key)
+    }
+
+    /// The enabled Markdown extensions, assembled from the per-feature Settings
+    /// toggles. Pushed into every open `EditorTextView.markdownFeatures` and used
+    /// to build `ReadRenderOptions`, so Edit and Read agree. Features with no
+    /// toggle UI yet (Phase 2: front matter, tags, block refs, multi-block
+    /// comments) stay on so nothing regresses before their settings land.
+    static var markdownFeatures: MarkdownFeatures {
+        var f: MarkdownFeatures = [.frontMatter, .tag, .blockRef, .multiBlockComment]
+        if boolDefaultTrue(Key.mdHighlight)          { f.insert(.highlight) }
+        if boolDefaultTrue(Key.mdInlineComment)      { f.insert(.inlineComment) }
+        if boolDefaultTrue(Key.mdCallout)            { f.insert(.callout) }
+        if boolDefaultTrue(Key.mdWikilink)           { f.insert(.wikilink) }
+        if boolDefaultTrue(Key.mdFootnote)           { f.insert(.footnote) }
+        if boolDefaultTrue(Key.mdMath)               { f.insert(.math) }
+        if boolDefaultTrue(Key.mdImageDimensions)    { f.insert(.imageDimensions) }
+        if boolDefaultTrue(Key.mdWikilinkEmbed)      { f.insert(.wikilinkEmbed) }
+        if boolDefaultTrue(Key.mdCollapsibleCallout) { f.insert(.collapsibleCallout) }
+        return f
     }
 
     /// Maximum text-column width in centimetres. Wider windows center the

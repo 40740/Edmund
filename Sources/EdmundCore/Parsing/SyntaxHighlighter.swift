@@ -92,7 +92,8 @@ public enum SyntaxHighlighter {
     /// swift-markdown can resolve GFM reference links whose definition lives in
     /// another block; spans landing in the appended region are dropped. Empty
     /// (the common case) means no append and no cost.
-    public static func parse(_ text: String, linkDefinitions: String = "") -> [Span] {
+    public static func parse(_ text: String, linkDefinitions: String = "",
+                             features: MarkdownFeatures = .all) -> [Span] {
         guard !text.isEmpty else { return [] }
 
         // Walk the AST over the block plus any appended reference definitions,
@@ -101,34 +102,41 @@ public enum SyntaxHighlighter {
         let textLen = (text as NSString).length
         let parseText = linkDefinitions.isEmpty ? text : text + "\n\n" + linkDefinitions
         let doc = Document(parsing: parseText, options: [.disableSmartOpts])
-        var walker = SpanCollector(source: parseText)
+        var walker = SpanCollector(source: parseText, features: features)
         walker.visit(doc)
         if !linkDefinitions.isEmpty {
             walker.spans.removeAll { $0.fullRange.upperBound > textLen }
         }
 
+        // Each custom pass below is gated by its feature flag: a cleared flag
+        // emits no span, so the syntax falls back to plain text everywhere.
+
         // ==highlight== is not supported by swift-markdown; parse with regex.
-        parseHighlight(text, into: &walker.spans)
+        if features.contains(.highlight) { parseHighlight(text, into: &walker.spans) }
 
         // $$…$$ display math (the block is pre-merged by BlockParser), then
         // $…$ inline math.
-        parseDisplayMath(text, into: &walker.spans)
-        parseMath(text, into: &walker.spans)
+        if features.contains(.math) {
+            parseDisplayMath(text, into: &walker.spans)
+            parseMath(text, into: &walker.spans)
+        }
 
         // Trailing backslash line break (single-line blocks only).
         parseLineBreak(text, into: &walker.spans)
 
         // Deeply indented list items (4+ spaces) that swift-markdown treats as code.
-        parseIndentedListItem(text, into: &walker.spans)
+        parseIndentedListItem(text, into: &walker.spans, features: features)
 
         // [^id] footnote references and [^id]: definition markers.
-        parseFootnotes(text, into: &walker.spans)
+        if features.contains(.footnote) { parseFootnotes(text, into: &walker.spans) }
 
         // %%comments%% and [[wikilinks]]. Both are opaque: their inner text is
         // a raw note / link target, not markdown — drop any span fully inside
         // one so the content isn't re-styled.
-        parseComments(text, into: &walker.spans)
-        parseWikiLinks(text, into: &walker.spans)
+        if features.contains(.inlineComment) { parseComments(text, into: &walker.spans) }
+        if features.contains(.wikilink) || features.contains(.wikilinkEmbed) {
+            parseWikiLinks(text, into: &walker.spans, features: features)
+        }
 
         // CommonMark backslash escapes (`\*`, `\$`, …). Runs after math/line-break
         // so it can defer to them; before HTML tags so `\<` defers to the escape.

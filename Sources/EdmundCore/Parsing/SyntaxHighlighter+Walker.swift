@@ -13,6 +13,7 @@ extension SyntaxHighlighter {
 
     struct SpanCollector: MarkupWalker {
         let source: String
+        let features: MarkdownFeatures
         private let lines: [String]
         var spans: [Span] = []
 
@@ -30,8 +31,9 @@ extension SyntaxHighlighter {
         /// recursively by the styling layer), so this never counts them.
         private var plainQuoteDepth = 0
 
-        init(source: String) {
+        init(source: String, features: MarkdownFeatures = .all) {
             self.source = source
+            self.features = features
             self.lines = source.components(separatedBy: "\n")
         }
 

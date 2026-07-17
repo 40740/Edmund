@@ -191,8 +191,17 @@ extension SyntaxHighlighter.SpanCollector {
         let delims = delimiterRanges(parent: full, children: image.children)
         let content = contentRange(full: full, delims: delims)
 
+        // Obsidian image dimensions: `![alt|200](url)` / `![alt|200x100](url)`
+        // carry the size in the alt text. Rendered images hide the whole source
+        // after the leading `!`, so no range adjustment is needed — just read the
+        // size off the alt. Off → dimensions ignored (the `|200` stays alt text).
+        var width: Int? = nil, height: Int? = nil
+        if features.contains(.imageDimensions) {
+            (width, height, _) = SyntaxHighlighter.parseImageDimensions(from: image.plainText)
+        }
+
         spans.append(SyntaxHighlighter.Span(
-            kind: .image(destination: image.source ?? "", width: nil, height: nil),
+            kind: .image(destination: image.source ?? "", width: width, height: height),
             fullRange: full,
             contentRange: content,
             delimiterRanges: delims

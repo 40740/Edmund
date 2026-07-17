@@ -136,6 +136,14 @@ public enum Callout {
         return trimmed.isEmpty ? type.capitalized : trimmed
     }
 
+    /// An Obsidian fold marker after `]`: `-` starts collapsed, `+` starts
+    /// expanded. Absence (`nil` fold on the Marker) means the callout isn't
+    /// collapsible.
+    public enum FoldState: Equatable, Sendable {
+        case folded    // `[!note]-`
+        case expanded  // `[!note]+`
+    }
+
     /// A matched `[!type]` marker, with UTF-16 ranges relative to the scanned
     /// first-line string.
     public struct Marker: Equatable {
@@ -143,6 +151,21 @@ public enum Callout {
         public let openBracket: NSRange  // "[!"
         public let typeRange: NSRange    // the type word
         public let closeBracket: NSRange // "]"
+        /// The fold state if a `-`/`+` follows `]`, else nil (not collapsible).
+        public let fold: FoldState?
+        /// The `-`/`+` character's range, when `fold != nil` (hidden in Edit,
+        /// consumed before the custom title so it isn't read as title text).
+        public let foldRange: NSRange?
+
+        public init(type: String, openBracket: NSRange, typeRange: NSRange,
+                    closeBracket: NSRange, fold: FoldState? = nil, foldRange: NSRange? = nil) {
+            self.type = type
+            self.openBracket = openBracket
+            self.typeRange = typeRange
+            self.closeBracket = closeBracket
+            self.fold = fold
+            self.foldRange = foldRange
+        }
     }
 
     /// Matches a callout marker `[!type]` at the start of `firstLine` (a block
@@ -155,16 +178,26 @@ public enum Callout {
             range: NSRange(location: 0, length: ns.length)) else { return nil }
         let typeRange = m.range(at: 1)
         let type = ns.substring(with: typeRange).lowercased()
+        var fold: FoldState? = nil
+        var foldRange: NSRange? = nil
+        let foldChar = m.range(at: 2)
+        if foldChar.location != NSNotFound {
+            fold = ns.substring(with: foldChar) == "-" ? .folded : .expanded
+            foldRange = foldChar
+        }
         return Marker(
             type: type,
             openBracket: NSRange(location: typeRange.location - 2, length: 2),
             typeRange: typeRange,
-            closeBracket: NSRange(location: typeRange.upperBound, length: 1)
+            closeBracket: NSRange(location: typeRange.upperBound, length: 1),
+            fold: fold,
+            foldRange: foldRange
         )
     }
 
-    /// `[!type]` at the very start of the line (optional leading spaces). The
-    /// type is one or more letters/digits/`-`/`_` beginning with a letter.
+    /// `[!type]` at the very start of the line (optional leading spaces), with an
+    /// optional Obsidian fold marker `-`/`+` after `]`. The type is one or more
+    /// letters/digits/`-`/`_` beginning with a letter.
     private static let markerRegex = try! NSRegularExpression(
-        pattern: #"^[ \t]*\[!([A-Za-z][A-Za-z0-9_-]*)\]"#)
+        pattern: #"^[ \t]*\[!([A-Za-z][A-Za-z0-9_-]*)\]([-+])?"#)
 }

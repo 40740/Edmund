@@ -23,11 +23,19 @@ public struct ReadRenderOptions: Sendable, Equatable {
     /// `.greatestFiniteMagnitude` → uncapped (fills the page).
     public var maxContentWidthPoints: Double
 
+    /// Which Markdown extensions to recognize (highlight, callouts, wikilinks,
+    /// math, …). Mirrors the editor's `EditorTextView.markdownFeatures` so Read
+    /// mode and Edit mode agree on what's a feature vs. plain text. A cleared
+    /// flag drops that syntax from the rendered HTML.
+    public var features: MarkdownFeatures
+
     public init(preserveBlankLines: Bool = true, allowRemoteImages: Bool = false,
-                maxContentWidthPoints: Double = .greatestFiniteMagnitude) {
+                maxContentWidthPoints: Double = .greatestFiniteMagnitude,
+                features: MarkdownFeatures = .all) {
         self.preserveBlankLines = preserveBlankLines
         self.allowRemoteImages = allowRemoteImages
         self.maxContentWidthPoints = maxContentWidthPoints
+        self.features = features
     }
 
     public static let `default` = ReadRenderOptions()

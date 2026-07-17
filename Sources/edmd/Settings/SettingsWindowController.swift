@@ -37,6 +37,7 @@ final class SettingsTabViewController: NSTabViewController {
 
         addPane(GeneralSettingsView(), label: "General", symbol: "gearshape")
         addPane(AppearanceSettingsView(fonts: fonts), label: "Appearance", symbol: "eyeglasses")
+        addPane(MarkdownSettingsView(), label: "Markdown", symbol: "text.badge.checkmark")
         addPane(AdvancedSettingsView(), label: "Advanced", symbol: "gearshape.2")
     }
 

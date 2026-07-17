@@ -205,7 +205,8 @@ struct HTMLRenderer: MarkupVisitor {
         let children = Array(paragraph.children)
         if let first = children.first as? Text,
            let (id, markerLength) = Self.footnoteDefinitionMarker(in: first.string) {
-            var bodyHTML = Self.renderInline(String(first.string.dropFirst(markerLength)))
+            var bodyHTML = Self.renderInline(String(first.string.dropFirst(markerLength)),
+                                             features: options.features)
             for child in children.dropFirst() { bodyHTML += visit(child) }
             footnotes.append((id: id, bodyHTML: bodyHTML))
             return ""
@@ -294,7 +295,7 @@ struct HTMLRenderer: MarkupVisitor {
     mutating func visitBlockQuote(_ blockQuote: BlockQuote) -> String {
         // Detect a GFM callout (`> [!type] …`) on the first line, the same way
         // the editor does (Callout.parseMarker over the de-quoted first line).
-        if let inner = deQuoted(blockQuote) {
+        if options.features.contains(.callout), let inner = deQuoted(blockQuote) {
             let firstLine = String(inner.prefix(while: { $0 != "\n" }))
             if let marker = Callout.parseMarker(firstLine),
                let style = Callout.style(for: marker.type) {
@@ -397,7 +398,7 @@ struct HTMLRenderer: MarkupVisitor {
     // MARK: Inline
 
     mutating func visitText(_ text: Text) -> String {
-        Self.renderInline(text.string, rawSource: sourceText(text))
+        Self.renderInline(text.string, rawSource: sourceText(text), features: options.features)
     }
     mutating func visitEmphasis(_ emphasis: Emphasis) -> String { "<em>\(renderChildren(of: emphasis))</em>" }
     mutating func visitStrong(_ strong: Strong) -> String { "<strong>\(renderChildren(of: strong))</strong>" }
@@ -440,9 +441,18 @@ struct HTMLRenderer: MarkupVisitor {
         // inlines it in a second pass (it needs the document directory + the
         // remote-image policy, which the pure renderer doesn't have). No `src`
         // here ⇒ if the asset pass can't resolve it, the alt text shows.
-        let alt = Self.attr(Self.plainText(of: image))
+        var altText = Self.plainText(of: image)
+        var dims = ""
+        // Obsidian image dimensions: `![alt|200](url)` / `![alt|200x100](url)`.
+        if options.features.contains(.imageDimensions) {
+            let (w, h, stripped) = SyntaxHighlighter.parseImageDimensions(from: altText)
+            if w != nil || h != nil { altText = stripped }
+            if let w { dims += " width=\"\(w)\"" }
+            if let h { dims += " height=\"\(h)\"" }
+        }
+        let alt = Self.attr(altText)
         let src = Self.attr(image.source ?? "")
-        return "<img class=\"md-image\" data-src=\"\(src)\" alt=\"\(alt)\">"
+        return "<img class=\"md-image\" data-src=\"\(src)\" alt=\"\(alt)\"\(dims)>"
     }
 
     // Inline HTML (§6.10): full GFM raw-HTML passthrough, filtered through
@@ -576,11 +586,12 @@ struct HTMLRenderer: MarkupVisitor {
 
     private mutating func renderCallout(marker: Callout.Marker, style: CalloutStyle,
                                         firstLine: String, blockQuote: BlockQuote) -> String {
-        // Custom title = whatever follows `]` on the first line.
+        // Custom title = whatever follows `]` (and the fold `-`/`+`) on line 1.
         let ns = firstLine as NSString
-        let afterMarker = marker.closeBracket.upperBound <= ns.length
-            ? ns.substring(from: marker.closeBracket.upperBound)
-            : ""
+        let collapsible = options.features.contains(.collapsibleCallout)
+        let fold = collapsible ? marker.fold : nil
+        let titleStart = (collapsible ? marker.foldRange?.upperBound : nil) ?? marker.closeBracket.upperBound
+        let afterMarker = titleStart <= ns.length ? ns.substring(from: titleStart) : ""
         let title = Callout.title(type: marker.type, customTitle: afterMarker)
 
         // Callouts are strict: only the leading run of `>`-prefixed lines is the
@@ -604,9 +615,21 @@ struct HTMLRenderer: MarkupVisitor {
         // `currentColor`, so the `.callout-title` accent color tints it — no
         // per-appearance asset pass, and no SF Symbol shipped in the export.
         let icon = "<span class=\"callout-icon\">\(LucideIcons.inlineSVG(style.iconName) ?? "")</span>"
-        let calloutHTML = "<div class=\"callout callout-\(Self.attr(marker.type))\">"
-            + "<div class=\"callout-title\">\(icon)<span class=\"callout-title-text\">\(Self.escape(title))</span></div>"
-            + "<div class=\"callout-body\">\(bodyHTML)</div></div>"
+        let titleInner = "\(icon)<span class=\"callout-title-text\">\(Self.escape(title))</span>"
+        // Collapsible (`[!type]-`/`+`) → a native <details>/<summary> so Read mode
+        // actually folds; `-` starts collapsed, `+` starts open. Otherwise a
+        // plain <div> as before.
+        let calloutHTML: String
+        if let fold {
+            let openAttr = fold == .expanded ? " open" : ""
+            calloutHTML = "<details class=\"callout callout-\(Self.attr(marker.type)) callout-collapsible\"\(openAttr)>"
+                + "<summary class=\"callout-title\">\(titleInner)</summary>"
+                + "<div class=\"callout-body\">\(bodyHTML)</div></details>"
+        } else {
+            calloutHTML = "<div class=\"callout callout-\(Self.attr(marker.type))\">"
+                + "<div class=\"callout-title\">\(titleInner)</div>"
+                + "<div class=\"callout-body\">\(bodyHTML)</div></div>"
+        }
 
         // Lazy tail (bare lines swift-markdown folded in) → sibling markdown.
         let tail = rawLines[quotedCount...].joined(separator: "\n")
@@ -652,15 +675,22 @@ struct HTMLRenderer: MarkupVisitor {
     /// (`\\`→`\`, `\$`→`$`), which mangles LaTeX (a `\begin{cases} … \\ … \end`
     /// loses its row separators). The tex is therefore recovered from the raw
     /// source instead. Everything else stays on the (correctly unescaped) `s`.
-    private static func renderInline(_ s: String, rawSource: String? = nil) -> String {
+    private static func renderInline(_ s: String, rawSource: String? = nil,
+                                     features: MarkdownFeatures = .all) -> String {
         guard !s.isEmpty else { return "" }
         var spans: [SyntaxHighlighter.Span] = []
-        SyntaxHighlighter.parseHighlight(s, into: &spans)
-        SyntaxHighlighter.parseDisplayMath(s, into: &spans) // $$…$$ embedded in a prose line
-        SyntaxHighlighter.parseMath(s, into: &spans)        // inline $…$ only
-        SyntaxHighlighter.parseWikiLinks(s, into: &spans)
-        SyntaxHighlighter.parseComments(s, into: &spans)
-        SyntaxHighlighter.parseFootnotes(s, into: &spans)   // references only; a
+        // Each custom pass is gated by its feature flag, matching the editor's
+        // `SyntaxHighlighter.parse`: a cleared flag drops the syntax to plain text.
+        if features.contains(.highlight) { SyntaxHighlighter.parseHighlight(s, into: &spans) }
+        if features.contains(.math) {
+            SyntaxHighlighter.parseDisplayMath(s, into: &spans) // $$…$$ embedded in a prose line
+            SyntaxHighlighter.parseMath(s, into: &spans)        // inline $…$ only
+        }
+        if features.contains(.wikilink) || features.contains(.wikilinkEmbed) {
+            SyntaxHighlighter.parseWikiLinks(s, into: &spans, features: features)
+        }
+        if features.contains(.inlineComment) { SyntaxHighlighter.parseComments(s, into: &spans) }
+        if features.contains(.footnote) { SyntaxHighlighter.parseFootnotes(s, into: &spans) }  // references only; a
         // `.footnoteDefinition` match here is a false positive (mid-run text that
         // happens to start with `[^id]:`) since real definitions are handled at
         // the paragraph level in `visitParagraph` — ignored by the switch below.
@@ -673,7 +703,7 @@ struct HTMLRenderer: MarkupVisitor {
         let relevant = spans.filter {
             switch $0.kind {
             case .highlight, .math, .wikilink, .comment, .footnoteReference,
-                 .link: return true
+                 .link, .image: return true
             default: return false
             }
         }.sorted { $0.fullRange.location < $1.fullRange.location }
@@ -737,6 +767,14 @@ struct HTMLRenderer: MarkupVisitor {
                 let safeID = attr(id)
                 out += "<sup id=\"fnref-\(safeID)\" class=\"footnote-ref\">" +
                        "<a href=\"#fn-\(safeID)\">\(escape(id))</a></sup>"
+            case .image(let destination, let width, let height):
+                // A `![[file]]` wikilink embed: emit the same md-image
+                // placeholder as a markdown image (DocumentHTML's asset pass
+                // resolves `data-src` relative to the document directory).
+                var dims = ""
+                if let width { dims += " width=\"\(width)\"" }
+                if let height { dims += " height=\"\(height)\"" }
+                out += "<img class=\"md-image\" data-src=\"\(attr(destination))\" alt=\"\"\(dims)>"
             case .comment:
                 break   // hidden in reading, like the editor
             case .link(let destination):
