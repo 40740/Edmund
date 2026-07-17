@@ -155,5 +155,36 @@
                        length="7654776"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 0.2.1</title>
+            <pubDate>Fri, 17 Jul 2026 20:52:49 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<h3>Added</h3>
+<ul>
+<li>Window menu</li>
+<li>Code block copy button in read mode</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Code blocks are now styled by default, similar to blockquotes / callouts</li>
+<li>Math blocks inline are now rendered as a block, instead of inline in <code>\displaystyle</code></li>
+<li>Switching between edit and read mode now preserves viewport</li>
+<li>Lighter background color in dark mode to reduce contrast</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><code>$$...$$</code> was not rendering verbatim</li>
+<li>External images glitching and freezing the app</li>
+<li>Switching from read to edit mode waits for edit mode to fully load</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.2.1/Edmund-0.2.1.dmg"
+                       sparkle:version="7"
+                       sparkle:shortVersionString="0.2.1"
+                       sparkle:edSignature="J8mGIyFltvADXzDJ8xHkzhl4nIkx6ME5gT4fSLc43JH9psIu/Y7CmYkJZXOSeBjsVJoGzAFygaF1Hrjv4/ibBQ=="
+                       length="7793566"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
