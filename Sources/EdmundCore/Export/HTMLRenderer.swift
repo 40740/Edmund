@@ -30,6 +30,12 @@ struct HTMLRenderer: MarkupVisitor {
     /// mailto) and in-page `#fragment` anchors keep their real hrefs.
     static let linkScheme = "x-edmund-link"
 
+    /// Private URL scheme for a code block's copy button — the base64-encoded
+    /// code is the whole payload (survives URL encoding untouched; the code
+    /// can contain `#`, `%`, embedded newlines, anything). Intercepted the
+    /// same way as the schemes above, and never actually navigated to.
+    static let copyScheme = "x-edmund-copy"
+
     /// The markdown this instance is rendering. Held so block-level constructs
     /// (callouts) can recover their *raw* source text by range, the way the
     /// editor's styling layer does.
@@ -214,7 +220,23 @@ struct HTMLRenderer: MarkupVisitor {
             .replacingOccurrences(of: "\u{2029}", with: "\n")
         // swift-markdown includes a trailing newline on the block's code.
         let code = raw.hasSuffix("\n") ? String(raw.dropLast()) : raw
-        return "<pre><code\(lang)>\(Self.highlightCode(code, language: codeBlock.language))</code></pre>"
+        let pre = "<pre><code\(lang)>\(Self.highlightCode(code, language: codeBlock.language))</code></pre>"
+        return "<div class=\"code-block-wrap\">\(Self.copyButtonHTML(code: code))\(pre)</div>"
+    }
+
+    /// A code block's copy button: a bare icon, hidden until the block is
+    /// hovered (see `.code-copy-icon` in HTMLTheme.swift) — matches
+    /// Obsidian's read-mode/preview treatment (misc/frontend-refs/obsidian-
+    /// code-block-read-mode-onhover.png), which shows no language name, only
+    /// a hover-revealed icon. The click is intercepted natively (never
+    /// actually navigates); the base64 payload is decoded and written to the
+    /// pasteboard by `ReadModeNavigationPolicy`/`ReadModeWebView`.
+    private static func copyButtonHTML(code: String) -> String {
+        let b64 = Data(code.utf8).base64EncodedString()
+        let encoded = b64.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? b64
+        let href = "\(copyScheme):\(encoded)"
+        let icon = LucideIcons.inlineSVG("copy") ?? ""
+        return "<a class=\"code-copy-btn code-copy-icon\" href=\"\(attr(href))\">\(icon)</a>"
     }
 
     /// CSS class for a code token kind (consumed by `HTMLTheme`'s `.tok-*` rules).

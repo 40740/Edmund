@@ -40,6 +40,20 @@ public extension NSAttributedString.Key {
     /// A table row's overflowing cells, wrapped and drawn by
     /// `DecoratedTextLayoutFragment`. Value: `TableCellWrapList`.
     static let tableCellWraps = NSAttributedString.Key("MarkdownEditor.tableCellWraps")
+    /// Marks a fenced code block's opening fence line — the fragment that
+    /// shaves the box's top padding. Value: the display language `String`
+    /// ("" for a fence naming no language; a plain `String` so the oracle
+    /// tests' structural comparison of independent `styleBlock` runs
+    /// compares by value for free).
+    static let codeBlockLabel = NSAttributedString.Key("MarkdownEditor.codeBlockLabel")
+    /// Marks the block's *second* line (the row under the opening fence) as
+    /// the one whose fragment paints the language label, reaching *up* into
+    /// the fence row's area. Drawing from the fence fragment itself would
+    /// clip: with a 10pt top gap the label's ink extends past the short
+    /// fence fragment's bottom, and the next row's box fill paints over it.
+    /// The second row draws after that fill, so nothing overpaints the
+    /// label. Value: the non-empty display language `String`.
+    static let codeBlockLabelAnchor = NSAttributedString.Key("MarkdownEditor.codeBlockLabelAnchor")
 }
 
 /// Value object describing what to draw behind a decorated paragraph.
@@ -238,14 +252,32 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     private let resolvedCellWraps: [(x: CGFloat, lines: [NSTextLineFragment])]
     private let scratchStacks: [(NSTextContentStorage, NSTextLayoutManager, NSTextContainer)]
 
+    /// A fenced code block's display language, present only on the block's
+    /// opening fence line ("" for a fence naming no language). Non-nil marks
+    /// this as a code box's top fragment — drives the top-padding shave.
+    let codeBlockLabel: String?
+    /// The non-empty display language on the block's second row — the
+    /// fragment that paints the label, reaching up over the fence row
+    /// (see `.codeBlockLabelAnchor`).
+    let codeBlockLabelAnchor: String?
+    /// The label's font — a smaller cut of the editor's monospace font,
+    /// handed over at vend time (the fragment has no theme access).
+    let codeBlockLabelFont: NSFont
+
     init(textElement: NSTextElement, range: NSTextRange?,
          decorations: [BlockDecoration],
          overlays: [(offset: Int, overlay: FragmentOverlay)],
          cellWraps: [TableCellWrap],
-         antialias: Bool) {
+         antialias: Bool,
+         codeBlockLabel: String? = nil,
+         codeBlockLabelAnchor: String? = nil,
+         codeBlockLabelFont: NSFont = .monospacedSystemFont(ofSize: 10, weight: .regular)) {
         self.decorations = decorations
         self.overlays = overlays
         self.antialias = antialias
+        self.codeBlockLabel = codeBlockLabel
+        self.codeBlockLabelAnchor = codeBlockLabelAnchor
+        self.codeBlockLabelFont = codeBlockLabelFont
         var resolved: [(x: CGFloat, lines: [NSTextLineFragment])] = []
         var stacks: [(NSTextContentStorage, NSTextLayoutManager, NSTextContainer)] = []
         for wrap in cellWraps {
@@ -356,6 +388,11 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 bounds = bounds.union(rect.insetBy(dx: -2, dy: -2))
             }
         }
+        // The language label sits at the container's right edge, far outside
+        // this (short, invisible) fence line's own text frame.
+        if let rect = codeBlockLabelRect() {
+            bounds = bounds.union(rect.insetBy(dx: -2, dy: -2))
+        }
         return bounds
     }
 
@@ -367,8 +404,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         // (e.g. the parent callout's padding under a nested callout) instead of
         // being covered by it.
         var precedingBottomPad: CGFloat = 0
-        for decoration in decorations {
-            drawDecoration(decoration, at: point, in: context, bottomInset: precedingBottomPad)
+        for (index, decoration) in decorations.enumerated() {
+            let topInset = index == decorations.count - 1 ? codeBoxTopShave : 0
+            drawDecoration(decoration, at: point, in: context,
+                           bottomInset: precedingBottomPad, topInset: topInset)
             if case .box(_, _, _, _, let bottomPad) = decoration.kind {
                 precedingBottomPad += bottomPad
             }
@@ -423,6 +462,75 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 y += line.typographicBounds.height
             }
         }
+        drawCodeBlockLabel(at: point, in: context)
+    }
+
+    /// The excess of this row's glyph cap-top gap (baseline minus capHeight)
+    /// over its descender-bottom remainder — the ink asymmetry within one
+    /// monospace row. All the block's rows (fences included) share the mono
+    /// font, so any row's own first line yields the block-wide value.
+    private var codeRowInkGapExcess: CGFloat {
+        guard let line = textLineFragments.first,
+              line.characterRange.length > 0,
+              let font = line.attributedString.attribute(
+                  .font, at: line.characterRange.location, effectiveRange: nil) as? NSFont
+        else { return 0 }
+        let capTopGap = line.glyphOrigin.y - font.capHeight
+        // font.descender is negative; glyph ink ends at baseline - descender.
+        let bottomGap = line.typographicBounds.height - (line.glyphOrigin.y - font.descender)
+        return max(0, capTopGap - bottomGap)
+    }
+
+    /// How far below this fragment's top the code box's top edge sits — only
+    /// nonzero on a code block's opening fence line (the box's top fragment).
+    /// Evens out the box's visible top vs bottom padding, which is otherwise
+    /// top-heavy by two asymmetries the closing fence row doesn't mirror:
+    /// the lineSpacing TextKit stacks *above* each row's glyphs
+    /// (typographicBounds.minY), and the glyph ink gap
+    /// (`codeRowInkGapExcess`). Both are shaved so the ink-to-box distances
+    /// match.
+    private var codeBoxTopShave: CGFloat {
+        guard codeBlockLabel != nil, let line = textLineFragments.first else { return 0 }
+        return max(0, line.typographicBounds.minY) + codeRowInkGapExcess
+    }
+
+    /// Fragment-local rect (y-down, origin at this fragment's top-left) for
+    /// the language label: pinned to the code box's top-right corner with the
+    /// same 10pt gap on top as on the right — mirroring Read mode's
+    /// absolutely-positioned label. Computed on the block's *second* row
+    /// (negative y, reaching up over the fence row; see
+    /// `.codeBlockLabelAnchor` for why the fence fragment can't draw it).
+    /// Nil when this fragment isn't the label row.
+    func codeBlockLabelRect() -> CGRect? {
+        guard let label = codeBlockLabelAnchor, !label.isEmpty,
+              let line = textLineFragments.first else { return nil }
+        let size = (label as NSString).size(withAttributes: [.font: codeBlockLabelFont])
+        let inset: CGFloat = 10
+        // Box top, in this fragment's coords: one fence row above, i.e. the
+        // fence row's glyph-row height less the shave's ink-gap part. The
+        // fence row shares this row's mono metrics, so its own line stands in.
+        let boxTop = -(line.typographicBounds.height - codeRowInkGapExcess)
+        // Align the label's ink top (not its line-box top) to the 10pt gap.
+        let inkTopBearing = max(0, codeBlockLabelFont.ascender - codeBlockLabelFont.capHeight)
+        return CGRect(x: containerLeft + containerWidth - ceil(size.width) - inset,
+                      y: boxTop + inset - inkTopBearing,
+                      width: ceil(size.width), height: ceil(size.height))
+    }
+
+    /// Paints the language label at `codeBlockLabelRect()` — direct
+    /// `NSAttributedString` drawing, not an `NSImage`, so this stays outside
+    /// the proven image-wedge mechanism (an image on a wrapping fragment
+    /// wedges its layout to one line; see FragmentOverlay).
+    private func drawCodeBlockLabel(at point: CGPoint, in context: CGContext) {
+        guard let label = codeBlockLabelAnchor, let rect = codeBlockLabelRect() else { return }
+        let drawRect = rect.offsetBy(dx: point.x, dy: point.y)
+        let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = nsContext
+        NSAttributedString(string: label, attributes: [
+            .font: codeBlockLabelFont, .foregroundColor: NSColor.secondaryLabelColor,
+        ]).draw(at: drawRect.origin)
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     /// Fragment-local rect for an overlay image, anchored to the character at
@@ -455,7 +563,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     }
 
     private func drawDecoration(_ decoration: BlockDecoration, at point: CGPoint,
-                                in context: CGContext, bottomInset: CGFloat = 0) {
+                                in context: CGContext, bottomInset: CGFloat = 0,
+                                topInset: CGFloat = 0) {
         let frame = layoutFragmentFrame
         // Filled decorations (box, bar) stop above an absorbed trailing empty
         // line; center-line decorations (rule, table) still use the full frame.
@@ -474,7 +583,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             var columnRect = decoration.inset > 0
                 ? columnRect.insetBy(dx: decoration.inset, dy: 0)
                 : columnRect
-            columnRect.size.height -= bottomInset
+            columnRect.size.height -= bottomInset + topInset
+            columnRect.origin.y += topInset
             context.setFillColor(background.cgColor)
             context.fill(columnRect)
             if let borderColor, !edges.isEmpty {
@@ -576,9 +686,13 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
         }
         let cellWrapsValue = str.attribute(.tableCellWraps, at: 0, effectiveRange: nil)
         let cellWraps = (cellWrapsValue as? TableCellWrapList)?.wraps ?? []
+        let codeBlockLabelValue = str.attribute(.codeBlockLabel, at: 0, effectiveRange: nil) as? String
+        let codeBlockLabelAnchorValue = str.attribute(.codeBlockLabelAnchor, at: 0, effectiveRange: nil) as? String
         // A plain fragment suffices only when there's nothing to draw over the
         // text and antialiasing is on (the default); otherwise vend the custom
-        // fragment so its draw can disable antialiasing.
+        // fragment so its draw can disable antialiasing. (A `.codeBlockLabel`
+        // line always also carries the box decoration, so it needs no extra
+        // clause here.)
         guard !decorations.isEmpty || !overlays.isEmpty || !cellWraps.isEmpty || !textAntialias
         else {
             return NSTextLayoutFragment(textElement: textElement,
@@ -589,7 +703,10 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                            decorations: decorations,
                                            overlays: overlays,
                                            cellWraps: cellWraps,
-                                           antialias: textAntialias)
+                                           antialias: textAntialias,
+                                           codeBlockLabel: codeBlockLabelValue,
+                                           codeBlockLabelAnchor: codeBlockLabelAnchorValue,
+                                           codeBlockLabelFont: codeBlockLabelFont)
     }
 }
 

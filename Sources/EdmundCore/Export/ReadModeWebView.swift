@@ -50,6 +50,46 @@ public final class ReadModeWebView: WKWebView {
     /// restore, applied first — see `pendingScrollRestore`).
     public var onLoadFinished: (() -> Void)?
 
+    /// A code block's copy button was clicked. Handled entirely here (unlike
+    /// `onOpenWikiLink`/`onOpenInternalLink`, which need the app's document
+    /// graph to resolve a target) — writing to the pasteboard needs no
+    /// document context, so there's nothing for an owner to do.
+    fileprivate func handleCopyCode(_ base64: String) {
+        guard let data = Data(base64Encoded: base64), let code = String(data: data, encoding: .utf8)
+        else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code, forType: .string)
+        flashCopyButtonCopied(base64: base64)
+    }
+
+    /// Swaps the clicked button's content to "Copied" for ~1s, then restores
+    /// it. Uses `evaluateJavaScript` from the host side, which — per the
+    /// QUIRK note on the scroll bridge below — still runs with
+    /// `allowsContentJavaScript = false`; that setting only gates script *in
+    /// the page*. `base64` (the already-decoded target from
+    /// `ReadModeNavigationPolicy`) is re-encoded the same way `HTMLRenderer`
+    /// encoded it, to reconstruct the exact href suffix the DOM carries; the
+    /// encoding is deterministic and its output alphabet is
+    /// alphanumeric-plus-`%`, so it's safe to interpolate as-is.
+    private func flashCopyButtonCopied(base64: String) {
+        let hrefSuffix = base64.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? base64
+        let js = """
+        (function() {
+          var el = document.querySelector('a[href$="\(hrefSuffix)"]');
+          if (!el) return;
+          if (el._copyTimer) clearTimeout(el._copyTimer);
+          if (el._copyOriginal === undefined) el._copyOriginal = el.innerHTML;
+          el.textContent = 'Copied';
+          el.classList.add('copied');
+          el._copyTimer = setTimeout(function() {
+            el.innerHTML = el._copyOriginal;
+            el.classList.remove('copied');
+          }, 1000);
+        })()
+        """
+        evaluateJavaScript(js, completionHandler: nil)
+    }
+
     /// The most recent render inputs, so the view can re-render itself when the
     /// system appearance flips (light ↔ dark) without the document re-driving it.
     private var pending: (markdown: String, theme: EditorTheme,
@@ -286,6 +326,9 @@ private final class ReadModeNavigationCoordinator: NSObject, WKNavigationDelegat
         case .openInternal(let target):
             owner?.onOpenInternalLink?(target)
             return .cancel
+        case .copyCode(let base64):
+            owner?.handleCopyCode(base64)
+            return .cancel
         case .openExternal(let url):
             NSWorkspace.shared.open(url)
             return .cancel
@@ -315,6 +358,7 @@ enum ReadModeNavigationPolicy {
         case reload
         case openWiki(String)
         case openInternal(String)
+        case copyCode(String)
         case openExternal(URL)
         case cancel
     }
@@ -336,6 +380,9 @@ enum ReadModeNavigationPolicy {
         }
         if scheme == HTMLRenderer.linkScheme {
             return .openInternal(decodeTarget(url, scheme: HTMLRenderer.linkScheme))
+        }
+        if scheme == HTMLRenderer.copyScheme {
+            return .copyCode(decodeTarget(url, scheme: HTMLRenderer.copyScheme))
         }
         // Decide by URL scheme, not navigation type: WebKit does not reliably
         // report `.linkActivated` for every click. Real web schemes are handed to
