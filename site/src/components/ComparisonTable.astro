@@ -98,9 +98,9 @@ type App = (typeof apps)[number];
 type AppKey = keyof App;
 
 const fields: [string, AppKey][] = [
-  ["Editing Experience", "editing"],
+  ["Editor", "editing"],
   ["Files", "files"],
-  ["Native macOS UI", "native"],
+  ["Native macOS", "native"],
   ["App Size", "size"],
   ["Pricing", "pricing"],
   ["Open Source", "openSource"],
@@ -111,10 +111,7 @@ const fields: [string, AppKey][] = [
     <Card
       title={app.name}
       href={app.url}
-      class:list={[
-        "w-[min(20rem,calc(100vw-3rem))] shrink-0 snap-start",
-        app.name === "Edmund" && "border-primary bg-link-soft/30",
-      ]}
+      class="w-[min(20rem,calc(100vw-3rem))] shrink-0 snap-start"
     >
       <dl class="grid gap-2 text-sm">
         {fields.map(([label, key]) => (
@@ -126,12 +123,10 @@ const fields: [string, AppKey][] = [
                   {app[key] ? (
                     <>
                       <span class="i-lucide-check h-4 w-4 text-green-600"></span>
-                      <span>Yes</span>
                     </>
                   ) : (
                     <>
                       <span class="i-lucide-x h-4 w-4 text-red-600"></span>
-                      <span>No</span>
                     </>
                   )}
                 </span>
@@ -146,6 +141,7 @@ const fields: [string, AppKey][] = [
   ))}
 </div>
 
+<!-- wider screens -->
 <div class="hidden overflow-x-auto md:block">
   <table class="min-w-max border-collapse text-sm font-sans">
     <tbody>
@@ -159,7 +155,7 @@ const fields: [string, AppKey][] = [
             class:list={[
               "px-4 py-3 whitespace-nowrap text-center bg-tertiary-soft",
               app.name === "Edmund" &&
-                "sticky w-36 left-38.5 z-10 bg-tertiary-soft font-semibold",
+                "sticky w-29 left-31.5 z-10 bg-tertiary-soft font-semibold",
             ]}
           >
             <a
@@ -187,7 +183,7 @@ const fields: [string, AppKey][] = [
               class:list={[
                 "px-4 py-3 whitespace-nowrap text-center",
                 app.name === "Edmund" &&
-                  "sticky left-38.5 z-10 bg-background font-semibold",
+                  "sticky left-31.5 z-10 bg-background font-semibold",
               ]}
             >
               {typeof app[key] === "boolean" ? (
