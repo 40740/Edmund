@@ -182,8 +182,21 @@ struct HTMLRenderer: MarkupVisitor {
         var dm: [SyntaxHighlighter.Span] = []
         SyntaxHighlighter.parseDisplayMath(raw, into: &dm)
         if let span = dm.first(where: { if case .math(true) = $0.kind { return true }; return false }) {
-            let tex = (raw as NSString).substring(with: span.contentRange)
-            return "<div class=\"math-display\" data-tex=\"\(Self.attr(tex))\"></div>"
+            // Only when the `$$…$$` run is the *whole* paragraph (ignoring
+            // surrounding whitespace). Otherwise a `$$` sitting inside inline code
+            // (`` `$$a+b$$` ``) or amid prose would wrongly replace the entire
+            // paragraph with a math block, blanking its text. Mirrors edit mode's
+            // `displayOwnsBlock` so the two views agree.
+            let ns = raw as NSString
+            let nonWS = CharacterSet.whitespacesAndNewlines.inverted
+            let firstNonWS = ns.rangeOfCharacter(from: nonWS).location
+            let lastNonWS = ns.rangeOfCharacter(from: nonWS, options: .backwards).location
+            if firstNonWS != NSNotFound,
+               span.fullRange.location == firstNonWS,
+               span.fullRange.upperBound == lastNonWS + 1 {
+                let tex = ns.substring(with: span.contentRange)
+                return "<div class=\"math-display\" data-tex=\"\(Self.attr(tex))\"></div>"
+            }
         }
 
         // A `[^id]: body` paragraph (the marker starts the paragraph's first
@@ -643,6 +656,7 @@ struct HTMLRenderer: MarkupVisitor {
         guard !s.isEmpty else { return "" }
         var spans: [SyntaxHighlighter.Span] = []
         SyntaxHighlighter.parseHighlight(s, into: &spans)
+        SyntaxHighlighter.parseDisplayMath(s, into: &spans) // $$…$$ embedded in a prose line
         SyntaxHighlighter.parseMath(s, into: &spans)        // inline $…$ only
         SyntaxHighlighter.parseWikiLinks(s, into: &spans)
         SyntaxHighlighter.parseComments(s, into: &spans)
@@ -658,7 +672,7 @@ struct HTMLRenderer: MarkupVisitor {
         // Keep only the kinds we emit, ordered, non-overlapping (earliest wins).
         let relevant = spans.filter {
             switch $0.kind {
-            case .highlight, .math(false), .wikilink, .comment, .footnoteReference,
+            case .highlight, .math, .wikilink, .comment, .footnoteReference,
                  .link: return true
             default: return false
             }
@@ -671,17 +685,25 @@ struct HTMLRenderer: MarkupVisitor {
         // else fall back to the unescaped tex — no worse than before.
         var rawTexByLoc: [Int: String] = [:]
         if let rawSource {
-            var rawSpans: [SyntaxHighlighter.Span] = []
-            SyntaxHighlighter.parseMath(rawSource, into: &rawSpans)
             let rns = rawSource as NSString
-            let rawTex = rawSpans
-                .filter { if case .math(false) = $0.kind { return true }; return false }
-                .sorted { $0.fullRange.location < $1.fullRange.location }
-                .map { rns.substring(with: $0.contentRange) }
-            let mathSpans = relevant.filter { if case .math(false) = $0.kind { return true }; return false }
-            if mathSpans.count == rawTex.count {
-                for (i, sp) in mathSpans.enumerated() { rawTexByLoc[sp.fullRange.location] = rawTex[i] }
+            // Recover both inline `$…$` and display `$$…$$` tex, each paired k-th
+            // to k-th with the emitted spans of the same kind.
+            func recover(display: Bool) {
+                var rawSpans: [SyntaxHighlighter.Span] = []
+                if display { SyntaxHighlighter.parseDisplayMath(rawSource, into: &rawSpans) }
+                else { SyntaxHighlighter.parseMath(rawSource, into: &rawSpans) }
+                let rawTex = rawSpans
+                    .filter { if case .math(display) = $0.kind { return true }; return false }
+                    .sorted { $0.fullRange.location < $1.fullRange.location }
+                    .map { rns.substring(with: $0.contentRange) }
+                let emitted = relevant
+                    .filter { if case .math(display) = $0.kind { return true }; return false }
+                if emitted.count == rawTex.count {
+                    for (i, sp) in emitted.enumerated() { rawTexByLoc[sp.fullRange.location] = rawTex[i] }
+                }
             }
+            recover(display: false)
+            recover(display: true)
         }
 
         let ns = s as NSString
@@ -696,9 +718,13 @@ struct HTMLRenderer: MarkupVisitor {
             switch span.kind {
             case .highlight:
                 out += "<mark>\(escape(ns.substring(with: span.contentRange)))</mark>"
-            case .math(false):
+            case .math(let display):
                 let tex = rawTexByLoc[r.location] ?? ns.substring(with: span.contentRange)
-                out += "<span class=\"math-inline\" data-tex=\"\(attr(tex))\"></span>"
+                // A `$$…$$` embedded in a prose line renders as display-mode math
+                // but flows inline, matching the editor (a wholly-`$$` paragraph is
+                // the block case, handled in visitParagraph).
+                let cls = display ? "math-display-inline" : "math-inline"
+                out += "<span class=\"\(cls)\" data-tex=\"\(attr(tex))\"></span>"
             case .wikilink(let target):
                 // Emit a link in a private scheme so the read view's nav policy
                 // can intercept it and route through the app's document graph

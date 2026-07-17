@@ -48,6 +48,9 @@ enum DocumentHTML {
     // block — carried through into the replacement so the anchor survives the
     // asset-fill pass.
     private static let displayMathPattern = "<div( id=\"[^\"]*\")? class=\"math-display\" data-tex=\"([^\"]*)\"></div>"
+    // A `$$…$$` embedded in a prose line: display-mode rendering, but flowed
+    // inline like `$…$` (matches the editor). Distinct class from the block div.
+    private static let displayInlineMathPattern = "<span class=\"math-display-inline\" data-tex=\"([^\"]*)\"></span>"
 
     private static func fillMath(_ html: String, theme: EditorTheme, dark: Bool) -> String {
         let color = NSColor(hex: dark ? "#e6e6e6" : "#1a1a1a") ?? .textColor
@@ -74,6 +77,16 @@ enum DocumentHTML {
             // the text baseline — same alignment the editor computes.
             return "<img class=\"math math-inline\" style=\"height:\(fmt(r.image.size.height))px; vertical-align:\(fmt(-r.descent))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\">"
         }
+        out = replaceMatches(out, pattern: displayInlineMathPattern) { groups in
+            let tex = unescapeAttr(groups[1])
+            guard let r = mathImage(latex: tex, display: true,
+                                    fontSize: theme.fontSize, color: color),
+                  let data = pngData(r.image, scale: 2) else {
+                return "<code>\(HTMLRenderer.escape(tex))</code>"
+            }
+            let uri = "data:image/png;base64,\(data.base64EncodedString())"
+            return "<img class=\"math math-inline\" style=\"height:\(fmt(r.image.size.height))px; vertical-align:\(fmt(-r.descent))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\">"
+        }
         return out
     }
 
@@ -84,8 +97,11 @@ enum DocumentHTML {
         -> (image: NSImage, descent: CGFloat)? {
         let mode: MTMathUILabelMode = display ? .display : .text
         let math = MTMathImage(latex: latex, fontSize: fontSize, textColor: color, labelMode: mode)
+        // Inset gives the rasterizer room so a glyph's ink overshoot isn't
+        // cropped — top/bottom for descenders, right for an italic glyph's
+        // top hook (e.g. a lone `F`). Mirrors EditorTextView.mathOverlay.
         let insetPad: CGFloat = 2
-        math.contentInsets = MTEdgeInsets(top: insetPad, left: 0, bottom: insetPad, right: 0)
+        math.contentInsets = MTEdgeInsets(top: insetPad, left: 0, bottom: insetPad, right: insetPad)
         let (error, image) = math.asImage()
         guard error == nil, let image else { return nil }
 
