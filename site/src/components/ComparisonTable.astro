@@ -1,4 +1,6 @@
 ---
+import Card from "./Card.astro";
+
 const apps = [
   {
     name: "Edmund",
@@ -104,7 +106,47 @@ const fields: [string, AppKey][] = [
   ["Open Source", "openSource"],
 ];
 ---
-<div class="overflow-x-auto">
+<div class="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 md:hidden">
+  {apps.map((app) => (
+    <Card
+      title={app.name}
+      href={app.url}
+      class:list={[
+        "w-[min(20rem,calc(100vw-3rem))] shrink-0 snap-start",
+        app.name === "Edmund" && "border-primary bg-link-soft/30",
+      ]}
+    >
+      <dl class="grid gap-2 text-sm">
+        {fields.map(([label, key]) => (
+          <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-tertiary pt-2 first:border-t-0 first:pt-0">
+            <dt class="text-secondary">{label}</dt>
+            <dd class="max-w-[9rem] text-right font-medium text-text">
+              {typeof app[key] === "boolean" ? (
+                <span class="inline-flex items-center gap-1.5">
+                  {app[key] ? (
+                    <>
+                      <span class="i-lucide-check h-4 w-4 text-green-600"></span>
+                      <span>Yes</span>
+                    </>
+                  ) : (
+                    <>
+                      <span class="i-lucide-x h-4 w-4 text-red-600"></span>
+                      <span>No</span>
+                    </>
+                  )}
+                </span>
+              ) : (
+                app[key]
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </Card>
+  ))}
+</div>
+
+<div class="hidden overflow-x-auto md:block">
   <table class="min-w-max border-collapse text-sm font-sans">
     <tbody>
       <tr class="border-b border-border">
@@ -120,7 +162,6 @@ const fields: [string, AppKey][] = [
                 "sticky w-36 left-38.5 z-10 bg-tertiary-soft font-semibold",
             ]}
           >
-            <!-- Make Edmund hover orange -->
             <a
               href={app.url}
               target="_blank"
