@@ -53,10 +53,9 @@ const cards = [
 
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
   {cards.map((card) => (
-    <Card
-      title={card.title}
-      text={card.text}
-    />
+    <Card title={card.title}>
+      {card.text}
+    </Card>
   ))}
 </div>
 
@@ -66,10 +65,9 @@ const cards = [
     {columns.map((column) => (
       <div class="flex flex-col gap-6 w-72">
         {column.map((card) => (
-          <Card
-            title={card.title}
-            text={card.text}
-          />
+          <Card title={card.title}>
+            {card.text}
+          </Card>
         ))}
       </div>
     ))}
