@@ -753,7 +753,7 @@ extension EditorTextView {
     /// Dim monospaced styling for a YAML front-matter block: like `sourceStyled`
     /// but faint, and — crucially — the YAML text is never parsed as markdown.
     func styleFrontMatter(_ markdown: String) -> NSAttributedString {
-        let mono = theme.monospaceFont(ofSize: bodyFont.pointSize)
+        let mono = theme.monospaceFont()   // the mono font + size recorded in settings
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = theme.lineSpacing
         return NSAttributedString(string: markdown, attributes: [
