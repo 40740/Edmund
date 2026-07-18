@@ -170,7 +170,9 @@ struct HeadingTests {
     @Test("# without space is not a heading")
     func noSpace() {
         let spans = SyntaxHighlighter.parse("#notaheading")
-        #expect(spans.isEmpty)
+        // No space after `#` ⇒ not an ATX heading. (It is an Obsidian `#tag`,
+        // so the span list is not empty — just assert no heading.)
+        #expect(!spans.contains { if case .heading = $0.kind { return true }; return false })
     }
 
     @Test("Setext === underline: content is the first line, delimiter the underline")

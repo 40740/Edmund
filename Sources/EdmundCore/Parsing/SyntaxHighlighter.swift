@@ -76,6 +76,14 @@ public enum SyntaxHighlighter {
             /// tags show colored. `tag` is the lowercased element name; the two
             /// delimiterRanges are the open and close tags.
             case htmlFormat(tag: String)
+            /// An Obsidian `#tag`. `name` is the text after the leading `#`.
+            /// Styled as a pill in Edit and `<span class="tag">` in Read; no
+            /// navigation (style only).
+            case tag(name: String)
+            /// An Obsidian `^blockid` block reference at the end of a block.
+            /// `id` is the text after the `^`. Hidden in reading like a comment,
+            /// dimmed in Edit; no link resolution (style only).
+            case blockRef(id: String)
 
             public enum CheckboxState: Equatable, Sendable {
                 case checked, unchecked
@@ -129,6 +137,11 @@ public enum SyntaxHighlighter {
 
         // [^id] footnote references and [^id]: definition markers.
         if features.contains(.footnote) { parseFootnotes(text, into: &walker.spans) }
+
+        // Obsidian #tag pills and a trailing ^blockid reference. Both skip spans
+        // inside code / math (checked in the parsers).
+        if features.contains(.tag) { parseTag(text, into: &walker.spans) }
+        if features.contains(.blockRef) { parseBlockRef(text, into: &walker.spans) }
 
         // %%comments%% and [[wikilinks]]. Both are opaque: their inner text is
         // a raw note / link target, not markdown — drop any span fully inside

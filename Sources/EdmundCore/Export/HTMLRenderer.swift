@@ -694,6 +694,8 @@ struct HTMLRenderer: MarkupVisitor {
             SyntaxHighlighter.parseWikiLinks(s, into: &spans, features: features)
         }
         if features.contains(.inlineComment) { SyntaxHighlighter.parseComments(s, into: &spans) }
+        if features.contains(.tag) { SyntaxHighlighter.parseTag(s, into: &spans) }
+        if features.contains(.blockRef) { SyntaxHighlighter.parseBlockRef(s, into: &spans) }
         if features.contains(.footnote) { SyntaxHighlighter.parseFootnotes(s, into: &spans) }  // references only; a
         // `.footnoteDefinition` match here is a false positive (mid-run text that
         // happens to start with `[^id]:`) since real definitions are handled at
@@ -707,7 +709,7 @@ struct HTMLRenderer: MarkupVisitor {
         let relevant = spans.filter {
             switch $0.kind {
             case .highlight, .math, .wikilink, .comment, .footnoteReference,
-                 .link, .image: return true
+                 .link, .image, .tag, .blockRef: return true
             default: return false
             }
         }.sorted { $0.fullRange.location < $1.fullRange.location }
@@ -779,6 +781,10 @@ struct HTMLRenderer: MarkupVisitor {
                 if let width { dims += " width=\"\(width)\"" }
                 if let height { dims += " height=\"\(height)\"" }
                 out += "<img class=\"md-image\" data-src=\"\(attr(destination))\" alt=\"\"\(dims)>"
+            case .tag(let name):
+                out += "<span class=\"tag\">#\(escape(name))</span>"
+            case .blockRef:
+                break   // hidden in reading, like a comment
             case .comment:
                 break   // hidden in reading, like the editor
             case .link(let destination):
