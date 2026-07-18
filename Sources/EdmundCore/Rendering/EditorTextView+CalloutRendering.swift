@@ -50,6 +50,11 @@ extension EditorTextView {
 
         guard let rel = Callout.parseMarker(firstLine),
               let style = Callout.style(for: rel.type, overrides: calloutStyleOverrides) else { return nil }
+        // Obsidian-only callout types are non-GFM: with the master switch off
+        // (calloutExtendedTypes cleared) only the 5 GFM alert types render;
+        // the rest fall back to a plain block quote.
+        guard Callout.isGFMAlert(rel.type)
+              || markdownFeatures.contains(.calloutExtendedTypes) else { return nil }
 
         func abs(_ r: NSRange) -> NSRange { NSRange(location: r.location + contentStart, length: r.length) }
         // The fold marker (`-`/`+`) counts only when the feature is on; otherwise

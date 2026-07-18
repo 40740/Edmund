@@ -136,6 +136,14 @@ public enum Callout {
         return trimmed.isEmpty ? type.capitalized : trimmed
     }
 
+    /// The 5 callout types that are part of GitHub-Flavored Markdown (rendered
+    /// on github.com). Lowercased to match `Marker.type`. Every other type is an
+    /// Obsidian extension (gated by `MarkdownFeatures.calloutExtendedTypes`).
+    public static let gfmAlertTypes: Set<String> = ["note", "tip", "important", "warning", "caution"]
+
+    /// Whether `type` (lowercased) is one of the GFM alert types.
+    public static func isGFMAlert(_ type: String) -> Bool { gfmAlertTypes.contains(type) }
+
     /// An Obsidian fold marker after `]`: `-` starts collapsed, `+` starts
     /// expanded. Absence (`nil` fold on the Marker) means the callout isn't
     /// collapsible.

@@ -16,6 +16,9 @@ public struct MarkdownFeatures: OptionSet, Sendable, Equatable {
     // Extensions that already shipped (always-on before this became toggleable).
     public static let highlight          = MarkdownFeatures(rawValue: 1 << 0)  // ==text==
     public static let inlineComment      = MarkdownFeatures(rawValue: 1 << 1)  // %%comment%%
+    /// Callouts render at all. The base 5 GitHub alert types (NOTE/TIP/
+    /// IMPORTANT/WARNING/CAUTION) are GFM, so this flag is governed only by the
+    /// Callouts toggle — the non-GFM master switch doesn't clear it.
     public static let callout            = MarkdownFeatures(rawValue: 1 << 2)  // > [!note]
     public static let wikilink           = MarkdownFeatures(rawValue: 1 << 3)  // [[target]]
     public static let footnote           = MarkdownFeatures(rawValue: 1 << 4)  // [^id]
@@ -29,11 +32,15 @@ public struct MarkdownFeatures: OptionSet, Sendable, Equatable {
     public static let wikilinkEmbed      = MarkdownFeatures(rawValue: 1 << 10) // ![[file]]
     public static let collapsibleCallout = MarkdownFeatures(rawValue: 1 << 11) // [!note]- / [!note]+
     public static let multiBlockComment  = MarkdownFeatures(rawValue: 1 << 12) // %%…%% spanning blocks (Phase 2)
+    /// Obsidian-only callout types (info, bug, quote, …) beyond the 5 GFM
+    /// alerts. Non-GFM: cleared by the master switch, so with it off only the
+    /// GFM alert types render as callouts and the rest fall back to plain quotes.
+    public static let calloutExtendedTypes = MarkdownFeatures(rawValue: 1 << 13)
 
     /// Every feature enabled — the default.
     public static let all: MarkdownFeatures = [
         .highlight, .inlineComment, .callout, .wikilink, .footnote, .math,
         .frontMatter, .tag, .blockRef, .imageDimensions, .wikilinkEmbed,
-        .collapsibleCallout, .multiBlockComment,
+        .collapsibleCallout, .multiBlockComment, .calloutExtendedTypes,
     ]
 }

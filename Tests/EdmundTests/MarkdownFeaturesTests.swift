@@ -123,6 +123,62 @@ struct MarkdownFeaturesTests {
         #expect(isHidden(at: 3, in: styled))
     }
 
+    // MARK: - Callout split by type (GFM alerts vs Obsidian)
+
+    @MainActor
+    @Test("GFM alert renders with only .callout; Obsidian type needs .calloutExtendedTypes")
+    func calloutTypeSplit() {
+        let editor = makeEditor()
+        // Master off (GFM only): note is a GFM alert → renders; info is Obsidian → plain quote.
+        editor.markdownFeatures = [.callout]
+        #expect(editor.styleBlock("> [!note]\n> b").attribute(.fragmentOverlay, at: 2, effectiveRange: nil) != nil)
+        #expect(editor.styleBlock("> [!info]\n> b").attribute(.fragmentOverlay, at: 2, effectiveRange: nil) == nil)
+        // With extended types, the Obsidian type renders too.
+        editor.markdownFeatures = [.callout, .calloutExtendedTypes]
+        #expect(editor.styleBlock("> [!info]\n> b").attribute(.fragmentOverlay, at: 2, effectiveRange: nil) != nil)
+    }
+
+    @Test("Read: Obsidian callout type falls back to a plain quote without extended types")
+    func readCalloutTypeSplit() {
+        let gfmOnly = HTMLRenderer.render(markdown: "> [!info]\n> b",
+                                          options: ReadRenderOptions(features: [.callout]))
+        #expect(!gfmOnly.contains("callout") && gfmOnly.contains("<blockquote"))
+        let note = HTMLRenderer.render(markdown: "> [!note]\n> b",
+                                       options: ReadRenderOptions(features: [.callout]))
+        #expect(note.contains("callout"))   // GFM alert survives GFM-only
+        let ext = HTMLRenderer.render(markdown: "> [!info]\n> b",
+                                      options: ReadRenderOptions(features: [.callout, .calloutExtendedTypes]))
+        #expect(ext.contains("callout"))
+    }
+
+    // MARK: - Format-menu gating
+
+    @MainActor
+    @Test("requiredFeature maps format commands to their syntax flag")
+    func requiredFeatureMapping() {
+        #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatHighlight(_:)), representedObject: nil) == .highlight)
+        #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatWikilink(_:)), representedObject: nil) == .wikilink)
+        #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatFootnote(_:)), representedObject: nil) == .footnote)
+        #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatComment(_:)), representedObject: nil) == .inlineComment)
+        // Callout split by type.
+        #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatCallout(_:)), representedObject: "NOTE") == .callout)
+        #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatCallout(_:)), representedObject: "info") == .calloutExtendedTypes)
+        // A core/GFM command isn't gated.
+        #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatBold(_:)), representedObject: nil) == nil)
+    }
+
+    @MainActor
+    @Test("validateMenuItem grays out a command whose syntax is off")
+    func validateGraysOut() {
+        let editor = makeEditor()
+        let item = NSMenuItem(title: "Highlight",
+                              action: #selector(EditorTextView.formatHighlight(_:)), keyEquivalent: "")
+        editor.markdownFeatures = MarkdownFeatures.all.subtracting(.highlight)
+        #expect(editor.validateMenuItem(item) == false)
+        editor.markdownFeatures = .all
+        #expect(editor.validateMenuItem(item) == true)
+    }
+
     // MARK: - Read-mode HTML gating
 
     private func html(_ src: String, _ features: MarkdownFeatures) -> String {

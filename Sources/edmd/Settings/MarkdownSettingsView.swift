@@ -18,16 +18,9 @@ struct MarkdownSettingsView: View {
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
             GridRow {
-                Text("Extensions:").gridColumnAlignment(.trailing)
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Enable non-GFM syntax", isOn: $enableNonGFM)
-                        .onChange(of: enableNonGFM) { applyFeatures() }
-                    Text("Master switch for Obsidian-flavored and other non-GitHub extensions below. Off renders plain CommonMark/GFM.")
-                        .foregroundStyle(.secondary)
-                        .controlSize(.small)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(width: 380, alignment: .leading)
-                }
+                Text("Master switch:").gridColumnAlignment(.trailing)
+                Toggle("Enable non-GFM syntax", isOn: $enableNonGFM)
+                    .onChange(of: enableNonGFM) { applyFeatures() }
             }
 
             GridRow { Divider().gridCellColumns(2) }
@@ -35,14 +28,15 @@ struct MarkdownSettingsView: View {
             GridRow {
                 Text("Callouts:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Callouts", isOn: $callout)
+                    // GFM alert types (NOTE/TIP/…) are GFM, so this stays live
+                    // even with the non-GFM master off. Collapsible is non-GFM.
+                    Toggle("Callouts (GFM alerts + Obsidian types)", isOn: $callout)
                         .onChange(of: callout) { applyFeatures() }
                     Toggle("Collapsible callouts ([!note]-/+)", isOn: $collapsibleCallout)
                         .onChange(of: collapsibleCallout) { applyFeatures() }
-                        .disabled(!callout)
+                        .disabled(!callout || !enableNonGFM)
                         .padding(.leading, 20)
                 }
-                .disabled(!enableNonGFM)
             }
 
             GridRow { Divider().gridCellColumns(2) }

@@ -109,9 +109,38 @@ extension EditorTextView {
 
     public override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if let action = menuItem.action, Self.formattingActions.contains(action) {
-            return viewMode != .reading
+            if viewMode == .reading { return false }
+            // Gray out a command whose Markdown syntax is turned off in Settings
+            // (e.g. Highlight when highlights are disabled) so it can't insert
+            // markup the editor would render as plain text.
+            if let feature = Self.requiredFeature(forAction: action,
+                                                  representedObject: menuItem.representedObject),
+               !markdownFeatures.contains(feature) {
+                return false
+            }
+            return true
         }
         return super.validateMenuItem(menuItem)
+    }
+
+    /// The Markdown feature a formatting command needs, or nil if it inserts
+    /// plain CommonMark/GFM (always available). Callout items split by type:
+    /// the 5 GFM alerts need `.callout`; Obsidian types need `.calloutExtendedTypes`.
+    static func requiredFeature(forAction action: Selector,
+                                representedObject: Any?) -> MarkdownFeatures? {
+        switch action {
+        case #selector(formatHighlight(_:)): return .highlight
+        case #selector(formatComment(_:)):   return .inlineComment
+        case #selector(formatWikilink(_:)):  return .wikilink
+        case #selector(formatFootnote(_:)):  return .footnote
+        case #selector(formatInlineMath(_:)), #selector(formatMathBlock(_:)): return .math
+        case #selector(formatCallout(_:)):
+            if let type = representedObject as? String, !Callout.isGFMAlert(type.lowercased()) {
+                return .calloutExtendedTypes
+            }
+            return .callout
+        default: return nil
+        }
     }
 
     static let formattingActions: Set<Selector> = [

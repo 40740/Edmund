@@ -125,18 +125,26 @@ enum AppSettings {
     /// toggle UI yet (Phase 2: front matter, tags, block refs, multi-block
     /// comments) stay on so nothing regresses before their settings land.
     static var markdownFeatures: MarkdownFeatures {
-        // Master switch: off → plain CommonMark/GFM, no extensions at all.
-        guard boolDefaultTrue(Key.enableNonGFM) else { return [] }
-        var f: MarkdownFeatures = [.frontMatter, .tag, .blockRef, .multiBlockComment]
+        var f: MarkdownFeatures = []
+        // Callouts' base 5 GFM alert types are GFM, so the Callouts toggle is
+        // governed only by itself — not by the non-GFM master switch.
+        let calloutsOn = boolDefaultTrue(Key.mdCallout)
+        if calloutsOn { f.insert(.callout) }
+
+        // Master switch off → plain CommonMark/GFM (GFM callout alerts survive).
+        guard boolDefaultTrue(Key.enableNonGFM) else { return f }
+
+        // Non-GFM extensions (Phase-2 flags have no toggle yet → always on here).
+        f.formUnion([.frontMatter, .tag, .blockRef, .multiBlockComment])
+        if calloutsOn                                { f.insert(.calloutExtendedTypes) }
+        if boolDefaultTrue(Key.mdCollapsibleCallout) { f.insert(.collapsibleCallout) }
+        if boolDefaultTrue(Key.mdWikilink)           { f.insert(.wikilink) }
+        if boolDefaultTrue(Key.mdWikilinkEmbed)      { f.insert(.wikilinkEmbed) }
+        if boolDefaultTrue(Key.mdImageDimensions)    { f.insert(.imageDimensions) }
         if boolDefaultTrue(Key.mdHighlight)          { f.insert(.highlight) }
         if boolDefaultTrue(Key.mdInlineComment)      { f.insert(.inlineComment) }
-        if boolDefaultTrue(Key.mdCallout)            { f.insert(.callout) }
-        if boolDefaultTrue(Key.mdWikilink)           { f.insert(.wikilink) }
         if boolDefaultTrue(Key.mdFootnote)           { f.insert(.footnote) }
         if boolDefaultTrue(Key.mdMath)               { f.insert(.math) }
-        if boolDefaultTrue(Key.mdImageDimensions)    { f.insert(.imageDimensions) }
-        if boolDefaultTrue(Key.mdWikilinkEmbed)      { f.insert(.wikilinkEmbed) }
-        if boolDefaultTrue(Key.mdCollapsibleCallout) { f.insert(.collapsibleCallout) }
         return f
     }
 

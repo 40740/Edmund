@@ -299,7 +299,10 @@ struct HTMLRenderer: MarkupVisitor {
         if options.features.contains(.callout), let inner = deQuoted(blockQuote) {
             let firstLine = String(inner.prefix(while: { $0 != "\n" }))
             if let marker = Callout.parseMarker(firstLine),
-               let style = Callout.style(for: marker.type) {
+               let style = Callout.style(for: marker.type),
+               // Obsidian-only types are non-GFM (see calloutInfo): with the
+               // master switch off only the 5 GFM alert types stay callouts.
+               Callout.isGFMAlert(marker.type) || options.features.contains(.calloutExtendedTypes) {
                 return renderCallout(marker: marker, style: style,
                                      firstLine: firstLine, blockQuote: blockQuote)
             }
