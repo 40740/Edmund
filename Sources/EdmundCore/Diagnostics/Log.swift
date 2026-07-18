@@ -129,6 +129,8 @@ public enum Log {
             case .thematicBreak:          return "hr·\(c)c"
             case .htmlBlock:              return "htmlBlock·\(c)c"
             case .blank:                  return "blank·\(c)c"
+            case .frontMatter:            return "frontMatter·\(c)c"
+            case .multiBlockComment:      return "comment·\(c)c"
             }
         }
         LogStore.shared.write(level: .debug, category: category,

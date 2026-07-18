@@ -15,17 +15,18 @@ import Markdown
 ///      the recompose engine restyles.
 public enum BlockParser {
 
-    public static func parse(_ text: String, previous: [Block] = []) -> [Block] {
-        parseWithDiff(text, previous: previous).blocks
+    public static func parse(_ text: String, previous: [Block] = [],
+                             features: MarkdownFeatures = .all) -> [Block] {
+        parseWithDiff(text, previous: previous, features: features).blocks
     }
 
     /// Parses `text` and returns the blocks plus the changed window: the range
     /// of indices (in the new list) outside the unchanged prefix/suffix.
     public static func parseWithDiff(
-        _ text: String, previous: [Block] = []
+        _ text: String, previous: [Block] = [], features: MarkdownFeatures = .all
     ) -> (blocks: [Block], changed: Range<Int>) {
         let nsText = text as NSString
-        let paragraphs = splitParagraphs(text)
+        let paragraphs = splitParagraphs(text, features: features)
 
         var blocks: [Block] = []
         blocks.reserveCapacity(paragraphs.count)
@@ -68,13 +69,27 @@ public enum BlockParser {
         text: String,
         old: [Block],
         editedOldRange: NSRange,
-        delta: Int
+        delta: Int,
+        features: MarkdownFeatures = .all
     ) -> (blocks: [Block], changed: Range<Int>)? {
         guard !old.isEmpty else { return nil }
         let newLength = (text as NSString).length
         let oldLength = newLength - delta
         guard editedOldRange.location >= 0,
               editedOldRange.upperBound <= oldLength else { return nil }
+
+        // Front matter is anchored at the document start (`i == 0`) yet its
+        // extent depends on a closing `---` that can sit anywhere below — so an
+        // edit far from the top can form, dissolve, or resize it, which the
+        // incremental splice can't track without stranding a stale block-0 kind.
+        // Whenever front matter is in play (the doc now starts with a `---`
+        // opener, or block 0 was front matter) fall back to the full parse. It's
+        // cheap and rare — only documents that begin with `---`.
+        if features.contains(.frontMatter),
+           firstLine(of: text).trimmingCharacters(in: .whitespaces) == "---"
+            || old.first?.kind == .frontMatter {
+            return nil
+        }
 
         guard let firstAffected = blockIndex(in: old, forOffset: editedOldRange.location)
         else { return nil }
@@ -127,7 +142,8 @@ public enum BlockParser {
             }
 
             guard let (content, kind, next) = consumeBlock(&buf, at: lineIndex,
-                                                           prevLine: prevLine) else {
+                                                           prevLine: prevLine,
+                                                           features: features) else {
                 break   // end of document: the window runs to the end
             }
             let length = (content as NSString).length
@@ -267,9 +283,33 @@ public enum BlockParser {
     /// start) — the only backward context any rule uses: an indented code
     /// block may start only after a blank line. Returns the block's
     /// content/kind and the index of the line after it.
-    static func consumeBlock(_ buf: inout LineBuffer, at i: Int, prevLine: String?)
+    static func consumeBlock(_ buf: inout LineBuffer, at i: Int, prevLine: String?,
+                             features: MarkdownFeatures = .all)
         -> (content: String, kind: BlockKind, next: Int)? {
         guard let first = buf.line(at: i) else { return nil }
+
+        // YAML front matter: a `---`…`---` fence pair at the very start of the
+        // document (`i == 0 && prevLine == nil` is the doc start in both the
+        // full and incremental parse paths). Checked before the setext and
+        // thematic-break classification below so a leading `---` opens front
+        // matter instead of becoming a rule. Requires a *closing* `---`, so a
+        // lone `---` (or `---` followed by non-front-matter) falls through to a
+        // thematic break.
+        if features.contains(.frontMatter), i == 0, prevLine == nil,
+           first.trimmingCharacters(in: .whitespaces) == "---" {
+            var merged = [first]
+            var j = i + 1
+            var closed = false
+            while let line = buf.line(at: j) {
+                merged.append(line)
+                j += 1
+                if line.trimmingCharacters(in: .whitespaces) == "---" { closed = true; break }
+            }
+            if closed {
+                return (merged.joined(separator: "\n"), .frontMatter, j)
+            }
+            // No closing fence: not front matter — fall through to normal handling.
+        }
 
         // Detect opening code fence
         if let fence = codeFenceInfo(first) {
@@ -318,6 +358,24 @@ public enum BlockParser {
                 if line.contains("$$") { break }
             }
             return (merged.joined(separator: "\n"), .listItem, j)
+        }
+
+        // Obsidian multi-line `%%…%%` comment: a line that starts with `%%` and
+        // is not closed by a second `%%` on the same line opens a comment that
+        // spans following blocks. Merge forward to the line that closes it.
+        // A single-line `%%x%%` closes on its own line and is left to the inline
+        // `.comment` pass. Placed after the fence/math branches (which may hold
+        // a literal `%%`) and before the quote/paragraph handling.
+        if features.contains(.multiBlockComment),
+           let closedOnSameLine = multiBlockCommentOpener(first), !closedOnSameLine {
+            var merged = [first]
+            var j = i + 1
+            while let line = buf.line(at: j) {
+                merged.append(line)
+                j += 1
+                if line.contains("%%") { break }
+            }
+            return (merged.joined(separator: "\n"), .multiBlockComment, j)
         }
 
         // Merge block-quote lines into one block (the editor's styling /
@@ -477,14 +535,17 @@ public enum BlockParser {
     /// Splits text into paragraphs on single newlines, merging fenced code blocks
     /// and table rows into single multi-line blocks. Each paragraph is tagged
     /// with its `BlockKind`.
-    private static func splitParagraphs(_ text: String) -> [(content: String, kind: BlockKind)] {
+    private static func splitParagraphs(_ text: String,
+                                        features: MarkdownFeatures = .all)
+        -> [(content: String, kind: BlockKind)] {
         if text.isEmpty { return [("", .blank)] }
 
         var buf = LineBuffer(text)
         var result: [(content: String, kind: BlockKind)] = []
         var i = 0
         var prevLine: String? = nil
-        while let (content, kind, next) = consumeBlock(&buf, at: i, prevLine: prevLine) {
+        while let (content, kind, next) = consumeBlock(&buf, at: i, prevLine: prevLine,
+                                                       features: features) {
             result.append((content, kind))
             i = next
             prevLine = lastLine(of: content)
@@ -675,6 +736,16 @@ public enum BlockParser {
         let trimmed = line.drop(while: { $0 == " " })
         guard trimmed.hasPrefix("$$") else { return nil }
         return trimmed.dropFirst(2).contains("$$")
+    }
+
+    /// If the line (after optional leading whitespace) starts with `%%`, returns
+    /// whether a second `%%` also appears on the same line (a one-line `%%…%%`
+    /// comment, left to the inline pass). Returns nil when the line is not a
+    /// `%%` opener.
+    private static func multiBlockCommentOpener(_ line: String) -> Bool? {
+        let trimmed = line.drop(while: { $0 == " " })
+        guard trimmed.hasPrefix("%%") else { return nil }
+        return trimmed.dropFirst(2).contains("%%")
     }
 
     /// Returns true if the line is a block-quote line (optional leading spaces

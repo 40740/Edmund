@@ -316,7 +316,7 @@ public class EditorTextView: NSTextView {
         rawSource = ""
         rebuildListIndentState()
         rebuildLinkDefState()
-        blocks = BlockParser.parse(rawSource)
+        blocks = BlockParser.parse(rawSource, features: markdownFeatures)
         recompose(cursorInRaw: 0)
 
         // Vend decoration-drawing layout fragments (TextKit 2).
@@ -522,7 +522,7 @@ public class EditorTextView: NSTextView {
         rawSource = ts.string
         rebuildListIndentState()
         rebuildLinkDefState()
-        blocks = BlockParser.parse(rawSource, previous: blocks)
+        blocks = BlockParser.parse(rawSource, previous: blocks, features: markdownFeatures)
         recompose(cursorInRaw: min(selectedRange().location, (rawSource as NSString).length))
     }
 
@@ -580,7 +580,7 @@ public class EditorTextView: NSTextView {
             rawSource = LineEnding.normalize(content)
             rebuildListIndentState()
             rebuildLinkDefState()
-            blocks = BlockParser.parse(rawSource)
+            blocks = BlockParser.parse(rawSource, features: markdownFeatures)
             Log.blockStructure(blocks)
             undoStack.removeAll()
             redoStack.removeAll()
