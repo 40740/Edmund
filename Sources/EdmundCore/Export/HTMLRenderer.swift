@@ -61,10 +61,57 @@ struct HTMLRenderer: MarkupVisitor {
     /// Parses `markdown` and returns the rendered HTML body (no `<html>`/`<head>`
     /// wrapper — `DocumentHTML` adds that).
     static func render(markdown: String, options: ReadRenderOptions = .default) -> String {
-        var r = HTMLRenderer(source: markdown, options: options)
-        let doc = Document(parsing: markdown, options: [.disableSmartOpts])
+        // Strip block constructs swift-markdown can't hide for us before it
+        // parses (front matter, block-spanning `%%…%%`). `source` and `doc`
+        // must see the same text so range-based raw-text recovery stays aligned.
+        let prepared = preprocess(markdown, options: options)
+        var r = HTMLRenderer(source: prepared, options: options)
+        let doc = Document(parsing: prepared, options: [.disableSmartOpts])
         let body = r.visit(doc)
         return body + r.renderFootnotesSection()
+    }
+
+    /// Removes constructs that must be gone before swift-markdown parses:
+    /// leading YAML front matter (hidden in Read) and block-spanning `%%…%%`
+    /// comments (swift-markdown splits them at blank lines, so the per-node
+    /// inline `.comment` pass can't catch them). Each gated by its flag.
+    private static func preprocess(_ markdown: String, options: ReadRenderOptions) -> String {
+        var s = markdown
+        if options.features.contains(.frontMatter) { s = stripFrontMatter(s) }
+        if options.features.contains(.multiBlockComment) { s = stripMultiBlockComments(s) }
+        return s
+    }
+
+    /// Drops a leading `---`…`---` YAML block (and one following blank line).
+    /// No leading `---`, or no closing `---`, ⇒ unchanged.
+    private static func stripFrontMatter(_ md: String) -> String {
+        let lines = md.components(separatedBy: "\n")
+        guard let first = lines.first,
+              first.trimmingCharacters(in: .whitespaces) == "---" else { return md }
+        for k in 1..<lines.count where lines[k].trimmingCharacters(in: .whitespaces) == "---" {
+            var rest = Array(lines[(k + 1)...])
+            if rest.first == "" { rest.removeFirst() }   // one blank separator
+            return rest.joined(separator: "\n")
+        }
+        return md   // unclosed: not front matter
+    }
+
+    private static let multiBlockCommentRegex =
+        try! NSRegularExpression(pattern: "%%[\\s\\S]*?%%")
+
+    /// Removes `%%…%%` comments that span lines (the block-level case). A
+    /// single-line `%%x%%` is left to the inline `.comment` pass.
+    private static func stripMultiBlockComments(_ md: String) -> String {
+        let ns = md as NSString
+        let matches = multiBlockCommentRegex.matches(
+            in: md, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else { return md }
+        let result = NSMutableString(string: md)
+        // Replace from the end so earlier match ranges stay valid.
+        for m in matches.reversed() where ns.substring(with: m.range).contains("\n") {
+            result.replaceCharacters(in: m.range, with: "")
+        }
+        return result as String
     }
 
     /// `[^id]: body` definitions render at the bottom of the page as a `<hr>` +

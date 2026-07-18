@@ -17,6 +17,12 @@ public enum BlockKind: Equatable, Sendable {
     case thematicBreak
     case htmlBlock
     case blank
+    /// A YAML `---`…`---` fence at the very start of the document (Obsidian
+    /// front matter). Dim monospace in Edit, hidden in Read.
+    case frontMatter
+    /// An Obsidian `%%…%%` comment whose fences sit on different lines, merged
+    /// into one block so the inline `.comment` styling can span it.
+    case multiBlockComment
 }
 
 /// A Block is one paragraph of markdown — the unit of rendering.

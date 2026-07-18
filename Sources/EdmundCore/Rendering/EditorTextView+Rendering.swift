@@ -750,6 +750,19 @@ extension EditorTextView {
         }
     }
 
+    /// Dim monospaced styling for a YAML front-matter block: like `sourceStyled`
+    /// but faint, and — crucially — the YAML text is never parsed as markdown.
+    func styleFrontMatter(_ markdown: String) -> NSAttributedString {
+        let mono = theme.monospaceFont()   // the mono font + size recorded in settings
+        let ps = NSMutableParagraphStyle()
+        ps.lineSpacing = theme.lineSpacing
+        return NSAttributedString(string: markdown, attributes: [
+            .font: mono,
+            .foregroundColor: syntaxDimColor,
+            .paragraphStyle: ps,
+        ])
+    }
+
     /// Plain monospaced styling for source mode: the raw markdown with no
     /// markup interpretation (no hidden delimiters, overlays, or decorations).
     func sourceStyled(_ markdown: String) -> NSAttributedString {
@@ -776,10 +789,17 @@ extension EditorTextView {
         guard block.range.upperBound <= ts.length else { return }
 
         let styled: NSAttributedString
-        switch viewMode {
-        case .edit:    styled = styleBlock(block.content, cursorPosition: cursorInBlock)
-        case .reading: styled = styleBlock(block.content, cursorPosition: nil, hideComments: true)
-        case .source:  styled = sourceStyled(block.content)
+        if case .frontMatter = block.kind, viewMode != .source {
+            // YAML front matter: flat dim monospace. Never run YAML through the
+            // markdown span parser — a `- x` line would list-style and `#x`
+            // would tag-style. (Source mode still shows plain raw mono below.)
+            styled = styleFrontMatter(block.content)
+        } else {
+            switch viewMode {
+            case .edit:    styled = styleBlock(block.content, cursorPosition: cursorInBlock)
+            case .reading: styled = styleBlock(block.content, cursorPosition: nil, hideComments: true)
+            case .source:  styled = sourceStyled(block.content)
+            }
         }
         let offset = block.range.location
 
