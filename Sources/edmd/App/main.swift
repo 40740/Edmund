@@ -39,6 +39,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         AppSettings.applyLogging()
         Log.info("Edmund launched", category: .app)
         AppSettings.applyAppearance()
+        AppSettings.applyCodeSyntax()
         setupMenuBar()
 
         // Opt-in (default off): upload any crash reports macOS wrote for us since

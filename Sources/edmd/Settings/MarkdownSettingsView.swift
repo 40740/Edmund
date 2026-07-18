@@ -1,5 +1,7 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
+import EdmundCore
 
 /// The "Syntax" pane: a master switch for non-GFM syntax with the individual
 /// extension toggles in a 2-column grid beneath it. The master is centered over
@@ -17,6 +19,12 @@ struct MarkdownSettingsView: View {
     @AppStorage(AppSettings.Key.synBlockRef)        private var blockRef = true
     @AppStorage(AppSettings.Key.synFootnote)        private var footnote = true
     @AppStorage(AppSettings.Key.synObsidianCallout) private var obsidianCallout = true
+    @AppStorage(AppSettings.Key.defaultCodeSyntax)  private var defaultCodeSyntax = "plain"
+
+    /// The selected row in the "Available syntax" list (a language id).
+    @State private var selectedSyntax: String?
+    /// Bumped after an import/removal so the popup + list re-read the store.
+    @State private var defsVersion = 0
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
@@ -33,8 +41,75 @@ struct MarkdownSettingsView: View {
                     .padding(.leading, 20)
                     .disabled(!enableNonGFM)
             }
+
+            GridRow { Divider().gridCellColumns(2) }
+
+            // Code-block highlighting: the default language for untagged fences,
+            // and the list of installed language definitions (bundled + user).
+            GridRow {
+                Text("Default code syntax:").gridColumnAlignment(.trailing)
+                Picker("", selection: $defaultCodeSyntax) {
+                    ForEach(languages, id: \.id) { Text($0.label).tag($0.id) }
+                }
+                .labelsHidden()
+                .fixedSize()
+                .onChange(of: defaultCodeSyntax) {
+                    AppSettings.applyCodeSyntax()
+                    refreshCodeBlocks()
+                }
+            }
+            GridRow {
+                Text("Available syntax:")
+                    .gridColumnAlignment(.trailing)
+                    .gridCellAnchor(.top)
+                availableSyntaxList
+            }
         }
         .settingsPanePadding()
+    }
+
+    /// The installed languages, "Plain Text" first. `defsVersion` is read so an
+    /// import/removal re-evaluates this list.
+    private var languages: [(id: String, label: String)] {
+        _ = defsVersion
+        return SyntaxDefinitionStore.shared.availableLanguages()
+    }
+
+    /// The CotEditor-style bordered list of definitions with a `+ − ✎` toolbar.
+    /// SwiftUI `List` covers the "menu"; only the file actions touch AppKit.
+    private var availableSyntaxList: some View {
+        let defs = languages.filter { $0.id != "plain" }
+        let selectionIsUser = selectedSyntax.map {
+            SyntaxDefinitionStore.shared.isUserDefinition($0)
+        } ?? false
+        return VStack(spacing: 0) {
+            List(selection: $selectedSyntax) {
+                ForEach(defs, id: \.id) { lang in
+                    Text(lang.label).tag(lang.id)
+                }
+            }
+            .listStyle(.plain)
+            .frame(height: 150)
+
+            Divider()
+            HStack(spacing: 2) {
+                Button(action: importDefinition) { Image(systemName: "plus") }
+                    .help("Import a language definition (.json)")
+                Button(action: removeDefinition) { Image(systemName: "minus") }
+                    .help("Remove the selected user definition")
+                    .disabled(!selectionIsUser)
+                Button(action: revealDefinition) { Image(systemName: "pencil") }
+                    .help("Edit a user definition, or reveal a built-in one in Finder")
+                    .disabled(selectedSyntax == nil)
+                Spacer()
+            }
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 5)
+        }
+        .frame(width: 340)
+        .overlay(RoundedRectangle(cornerRadius: 6)
+            .stroke(Color(nsColor: .separatorColor)))
     }
 
     private var featureGrid: some View {
@@ -78,6 +153,68 @@ struct MarkdownSettingsView: View {
         for case let document as Document in NSDocumentController.shared.documents {
             document.editor?.markdownFeatures = features
             document.refreshReadView()
+        }
+    }
+
+    /// Re-styles every open document's code blocks (Edit + Read) after the
+    /// default language or the installed definitions changed.
+    private func refreshCodeBlocks() {
+        for case let document as Document in NSDocumentController.shared.documents {
+            document.editor?.rerenderStyles()
+            document.refreshReadView()
+        }
+    }
+
+    /// Reload the store from disk, refresh the UI, and re-highlight open docs.
+    private func reloadDefinitions() {
+        AppSettings.applyCodeSyntax()
+        defsVersion += 1
+        refreshCodeBlocks()
+    }
+
+    /// `+` — copy a chosen `.json` into ~/.edmund/syntaxes (overwriting a
+    /// same-named file), then reload.
+    private func importDefinition() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Import"
+        guard panel.runModal() == .OK, let src = panel.url else { return }
+
+        let dir = SyntaxDefinitionStore.userDirectory
+        let dest = dir.appendingPathComponent(src.lastPathComponent.lowercased())
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: dest.path) {
+                try FileManager.default.removeItem(at: dest)
+            }
+            try FileManager.default.copyItem(at: src, to: dest)
+        } catch {
+            NSSound.beep()
+            return
+        }
+        reloadDefinitions()
+    }
+
+    /// `−` — delete the selected user definition (built-ins have no file to remove).
+    private func removeDefinition() {
+        guard let id = selectedSyntax,
+              SyntaxDefinitionStore.shared.isUserDefinition(id),
+              let url = SyntaxDefinitionStore.shared.fileURL(forName: id) else { return }
+        try? FileManager.default.removeItem(at: url)
+        selectedSyntax = nil
+        reloadDefinitions()
+    }
+
+    /// `✎` — open a user definition for editing, or reveal a built-in (read-only,
+    /// inside the app bundle) in Finder so it can be copied and customized.
+    private func revealDefinition() {
+        guard let id = selectedSyntax,
+              let url = SyntaxDefinitionStore.shared.fileURL(forName: id) else { return }
+        if SyntaxDefinitionStore.shared.isUserDefinition(id) {
+            NSWorkspace.shared.open(url)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
         }
     }
 }
