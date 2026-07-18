@@ -29,7 +29,7 @@ struct MarkdownSettingsView: View {
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
             GridRow {
-                Text("Master switch:").gridColumnAlignment(.trailing)
+                Text("Markdown syntax:").gridColumnAlignment(.trailing)
                 Toggle("Enable non-GFM syntax", isOn: $enableNonGFM)
                     .onChange(of: enableNonGFM) { applyFeatures() }
             }
@@ -52,16 +52,14 @@ struct MarkdownSettingsView: View {
                     ForEach(languages, id: \.id) { Text($0.label).tag($0.id) }
                 }
                 .labelsHidden()
-                .fixedSize()
+                .frame(width: boxWidth)   // match the list box below
                 .onChange(of: defaultCodeSyntax) {
                     AppSettings.applyCodeSyntax()
                     refreshCodeBlocks()
                 }
             }
-            GridRow {
-                Text("Available syntax:")
-                    .gridColumnAlignment(.trailing)
-                    .gridCellAnchor(.top)
+            GridRow(alignment: .top) {
+                Text("Available syntax:").gridColumnAlignment(.trailing)
                 availableSyntaxList
             }
         }
@@ -75,8 +73,14 @@ struct MarkdownSettingsView: View {
         return SyntaxDefinitionStore.shared.availableLanguages()
     }
 
-    /// The CotEditor-style bordered list of definitions with a `+ − ✎` toolbar.
-    /// SwiftUI `List` covers the "menu"; only the file actions touch AppKit.
+    /// Fixed width shared by the list box and the "Default code syntax" popup,
+    /// matching CotEditor's 260-pt syntax box.
+    private let boxWidth: CGFloat = 260
+
+    /// The CotEditor-style list of definitions with a `+ − ✎` toolbar. A single
+    /// square `.border` wraps the (separator-less) list and the white toolbar bar
+    /// — replicating FormatSettingsView's box. SwiftUI `List` covers the "menu";
+    /// only the file actions touch AppKit.
     private var availableSyntaxList: some View {
         let defs = languages.filter { $0.id != "plain" }
         let selectionIsUser = selectedSyntax.map {
@@ -86,30 +90,30 @@ struct MarkdownSettingsView: View {
             List(selection: $selectedSyntax) {
                 ForEach(defs, id: \.id) { lang in
                     Text(lang.label).tag(lang.id)
+                        .listRowSeparator(.hidden)
                 }
             }
             .listStyle(.plain)
-            .frame(height: 150)
+            .frame(height: 140)
 
             Divider()
-            HStack(spacing: 2) {
+            HStack(spacing: 10) {
                 Button(action: importDefinition) { Image(systemName: "plus") }
                     .help("Import a language definition (.json)")
                 Button(action: removeDefinition) { Image(systemName: "minus") }
                     .help("Remove the selected user definition")
                     .disabled(!selectionIsUser)
                 Button(action: revealDefinition) { Image(systemName: "pencil") }
-                    .help("Edit a user definition, or reveal a built-in one in Finder")
+                    .help("Show the definition's JSON file in the Finder")
                     .disabled(selectedSyntax == nil)
                 Spacer()
             }
             .buttonStyle(.borderless)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 5)
+            .padding(6)
+            .background(Color(nsColor: .textBackgroundColor))
         }
-        .frame(width: 340)
-        .overlay(RoundedRectangle(cornerRadius: 6)
-            .stroke(Color(nsColor: .separatorColor)))
+        .frame(width: boxWidth)
+        .border(Color(nsColor: .separatorColor))
     }
 
     private var featureGrid: some View {
@@ -206,15 +210,11 @@ struct MarkdownSettingsView: View {
         reloadDefinitions()
     }
 
-    /// `✎` — open a user definition for editing, or reveal a built-in (read-only,
-    /// inside the app bundle) in Finder so it can be copied and customized.
+    /// `✎` — reveal the selected definition's JSON file in the Finder (a user
+    /// copy in ~/.edmund/syntaxes, or the built-in one inside the app bundle).
     private func revealDefinition() {
         guard let id = selectedSyntax,
               let url = SyntaxDefinitionStore.shared.fileURL(forName: id) else { return }
-        if SyntaxDefinitionStore.shared.isUserDefinition(id) {
-            NSWorkspace.shared.open(url)
-        } else {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-        }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 }
