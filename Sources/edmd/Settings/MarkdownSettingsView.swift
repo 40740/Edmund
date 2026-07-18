@@ -117,7 +117,7 @@ struct MarkdownSettingsView: View {
     }
 
     private var featureGrid: some View {
-        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 28, verticalSpacing: 10) {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 24, verticalSpacing: 6) {
             GridRow {
                 cell("Front matter (YAML)", $frontMatter)
                 cell("Math ($ & $$)", $math)
