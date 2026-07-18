@@ -1,19 +1,22 @@
 import SwiftUI
 import AppKit
 
-/// Toggles for each individually-switchable Markdown extension. Clearing one
-/// makes that syntax render as plain text everywhere (Edit and Read), live.
+/// The "Syntax" pane: a master switch for non-GFM syntax with the individual
+/// extension toggles in a 2-column grid beneath it. The master is centered over
+/// the grid; clearing it disables (and grays) every toggle at once. GFM callout
+/// alerts (NOTE/TIP/…) and ordinary image dimensions have no toggle — the former
+/// is always on (core GFM), the latter rides the master switch directly.
 struct MarkdownSettingsView: View {
-    @AppStorage(AppSettings.Key.enableNonGFM)         private var enableNonGFM = true
-    @AppStorage(AppSettings.Key.mdCallout)            private var callout = true
-    @AppStorage(AppSettings.Key.mdCollapsibleCallout) private var collapsibleCallout = true
-    @AppStorage(AppSettings.Key.mdWikilink)           private var wikilink = true
-    @AppStorage(AppSettings.Key.mdWikilinkEmbed)      private var wikilinkEmbed = true
-    @AppStorage(AppSettings.Key.mdHighlight)          private var highlight = true
-    @AppStorage(AppSettings.Key.mdInlineComment)      private var inlineComment = true
-    @AppStorage(AppSettings.Key.mdFootnote)           private var footnote = true
-    @AppStorage(AppSettings.Key.mdMath)               private var math = true
-    @AppStorage(AppSettings.Key.mdImageDimensions)    private var imageDimensions = true
+    @AppStorage(AppSettings.Key.enableNonGFM)       private var enableNonGFM = true
+    @AppStorage(AppSettings.Key.synFrontMatter)     private var frontMatter = true
+    @AppStorage(AppSettings.Key.synMath)            private var math = true
+    @AppStorage(AppSettings.Key.synHighlight)       private var highlight = true
+    @AppStorage(AppSettings.Key.synComment)         private var comment = true
+    @AppStorage(AppSettings.Key.synWikilink)        private var wikilink = true
+    @AppStorage(AppSettings.Key.synTag)             private var tag = true
+    @AppStorage(AppSettings.Key.synBlockRef)        private var blockRef = true
+    @AppStorage(AppSettings.Key.synFootnote)        private var footnote = true
+    @AppStorage(AppSettings.Key.synObsidianCallout) private var obsidianCallout = true
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
@@ -22,57 +25,50 @@ struct MarkdownSettingsView: View {
                 Toggle("Enable non-GFM syntax", isOn: $enableNonGFM)
                     .onChange(of: enableNonGFM) { applyFeatures() }
             }
-
-            GridRow { Divider().gridCellColumns(2) }
-
             GridRow {
-                Text("Callouts:").gridColumnAlignment(.trailing)
-                VStack(alignment: .leading, spacing: 6) {
-                    // GFM alert types (NOTE/TIP/…) are GFM, so this stays live
-                    // even with the non-GFM master off. Collapsible is non-GFM.
-                    Toggle("Callouts (GFM alerts + Obsidian types)", isOn: $callout)
-                        .onChange(of: callout) { applyFeatures() }
-                    Toggle("Collapsible callouts ([!note]-/+)", isOn: $collapsibleCallout)
-                        .onChange(of: collapsibleCallout) { applyFeatures() }
-                        .disabled(!callout || !enableNonGFM)
-                        .padding(.leading, 20)
-                }
-            }
-
-            GridRow { Divider().gridCellColumns(2) }
-
-            GridRow {
-                Text("Links & images:").gridColumnAlignment(.trailing)
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Wikilinks ([[note]])", isOn: $wikilink)
-                        .onChange(of: wikilink) { applyFeatures() }
-                    Toggle("Wikilink image embeds (![[image.png]])", isOn: $wikilinkEmbed)
-                        .onChange(of: wikilinkEmbed) { applyFeatures() }
-                        .padding(.leading, 20)
-                    Toggle("Image dimensions (![alt|200](url))", isOn: $imageDimensions)
-                        .onChange(of: imageDimensions) { applyFeatures() }
-                }
-                .disabled(!enableNonGFM)
-            }
-
-            GridRow { Divider().gridCellColumns(2) }
-
-            GridRow {
-                Text("Text:").gridColumnAlignment(.trailing)
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Highlights (==text==)", isOn: $highlight)
-                        .onChange(of: highlight) { applyFeatures() }
-                    Toggle("Inline comments (%%comment%%)", isOn: $inlineComment)
-                        .onChange(of: inlineComment) { applyFeatures() }
-                    Toggle("Footnotes ([^1])", isOn: $footnote)
-                        .onChange(of: footnote) { applyFeatures() }
-                    Toggle("Math ($…$, $$…$$)", isOn: $math)
-                        .onChange(of: math) { applyFeatures() }
-                }
-                .disabled(!enableNonGFM)
+                Color.clear.frame(width: 0, height: 0)   // empty leading cell
+                // The feature grid sits below the master switch and indented
+                // further in, so the toggles read as its children.
+                featureGrid
+                    .padding(.leading, 20)
+                    .disabled(!enableNonGFM)
             }
         }
         .settingsPanePadding()
+    }
+
+    private var featureGrid: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 28, verticalSpacing: 10) {
+            GridRow {
+                cell("Front matter (YAML)", $frontMatter)
+                cell("Math ($ & $$)", $math)
+            }
+            GridRow {
+                cell("==Highlight==", $highlight)
+                cell("%%Comment%%", $comment)
+            }
+            GridRow {
+                cell("[[Wikilink]]", $wikilink)
+                cell("#tag", $tag)
+            }
+            GridRow {
+                cell("Block ^1", $blockRef)
+                cell("Footnote [^1]", $footnote)
+            }
+            GridRow {
+                cell("Obsidian-flavored callout > [!note]", $obsidianCallout)
+                    .gridCellColumns(2)
+            }
+        }
+    }
+
+    /// One grid toggle. Left-aligned within its column (Grid aligns the columns);
+    /// intrinsic width so the whole grid stays compact and centers under the
+    /// master switch. Broadcasts on change.
+    private func cell(_ label: String, _ binding: Binding<Bool>) -> some View {
+        Toggle(label, isOn: binding)
+            .onChange(of: binding.wrappedValue) { applyFeatures() }
+            .gridColumnAlignment(.leading)
     }
 
     /// Pushes the assembled feature set into every open document's editor and

@@ -98,18 +98,19 @@ enum AppSettings {
         static let sentCrashReports = "settings.advanced.sentCrashReports"
         static let lastWindowWidth  = "settings.window.lastWidth"
         static let lastWindowHeight = "settings.window.lastHeight"
-        // Markdown feature toggles (all default on). Read into `markdownFeatures`.
+        // Syntax feature toggles (all default on). Read into `markdownFeatures`.
         // Master switch: off → every non-GFM extension is disabled at once.
-        static let enableNonGFM         = "settings.syntax.enableNonGFM"
-        static let mdHighlight          = "settings.markdown.highlight"
-        static let mdInlineComment      = "settings.markdown.inlineComment"
-        static let mdCallout            = "settings.markdown.callout"
-        static let mdWikilink           = "settings.markdown.wikilink"
-        static let mdFootnote           = "settings.markdown.footnote"
-        static let mdMath               = "settings.markdown.math"
-        static let mdImageDimensions    = "settings.markdown.imageDimensions"
-        static let mdWikilinkEmbed      = "settings.markdown.wikilinkEmbed"
-        static let mdCollapsibleCallout = "settings.markdown.collapsibleCallout"
+        // The GFM callout alerts (NOTE/TIP/…) have no toggle — always on.
+        static let enableNonGFM      = "settings.syntax.enableNonGFM"
+        static let synFrontMatter    = "settings.syntax.frontMatter"
+        static let synMath           = "settings.syntax.math"
+        static let synHighlight      = "settings.syntax.highlight"
+        static let synComment        = "settings.syntax.comment"
+        static let synWikilink       = "settings.syntax.wikilink"
+        static let synTag            = "settings.syntax.tag"
+        static let synBlockRef       = "settings.syntax.blockRef"
+        static let synFootnote       = "settings.syntax.footnote"
+        static let synObsidianCallout = "settings.syntax.obsidianCallout"
     }
 
     /// A bool defaulting to `true` until the user explicitly clears it (the
@@ -125,26 +126,28 @@ enum AppSettings {
     /// toggle UI yet (Phase 2: front matter, tags, block refs, multi-block
     /// comments) stay on so nothing regresses before their settings land.
     static var markdownFeatures: MarkdownFeatures {
-        var f: MarkdownFeatures = []
-        // Callouts' base 5 GFM alert types are GFM, so the Callouts toggle is
-        // governed only by itself — not by the non-GFM master switch.
-        let calloutsOn = boolDefaultTrue(Key.mdCallout)
-        if calloutsOn { f.insert(.callout) }
+        // The 5 GFM callout alerts are core GFM — always on, no toggle.
+        var f: MarkdownFeatures = [.callout]
 
         // Master switch off → plain CommonMark/GFM (GFM callout alerts survive).
         guard boolDefaultTrue(Key.enableNonGFM) else { return f }
 
-        // Non-GFM extensions (Phase-2 flags have no toggle yet → always on here).
-        f.formUnion([.frontMatter, .tag, .blockRef, .multiBlockComment])
-        if calloutsOn                                { f.insert(.calloutExtendedTypes) }
-        if boolDefaultTrue(Key.mdCollapsibleCallout) { f.insert(.collapsibleCallout) }
-        if boolDefaultTrue(Key.mdWikilink)           { f.insert(.wikilink) }
-        if boolDefaultTrue(Key.mdWikilinkEmbed)      { f.insert(.wikilinkEmbed) }
-        if boolDefaultTrue(Key.mdImageDimensions)    { f.insert(.imageDimensions) }
-        if boolDefaultTrue(Key.mdHighlight)          { f.insert(.highlight) }
-        if boolDefaultTrue(Key.mdInlineComment)      { f.insert(.inlineComment) }
-        if boolDefaultTrue(Key.mdFootnote)           { f.insert(.footnote) }
-        if boolDefaultTrue(Key.mdMath)               { f.insert(.math) }
+        // Non-GFM syntax with no grid toggle of its own is master-direct:
+        // ordinary image dimensions `![alt|200](url)` aren't tied to any grid item.
+        f.insert(.imageDimensions)
+
+        // The 5x2 grid. Related sub-syntaxes fold into their grid toggle:
+        // wikilink image embeds under Wikilink, collapsible under the Obsidian
+        // callout, multi-block comments under Comment.
+        if boolDefaultTrue(Key.synFrontMatter)    { f.insert(.frontMatter) }
+        if boolDefaultTrue(Key.synMath)           { f.insert(.math) }
+        if boolDefaultTrue(Key.synHighlight)      { f.insert(.highlight) }
+        if boolDefaultTrue(Key.synComment)        { f.formUnion([.inlineComment, .multiBlockComment]) }
+        if boolDefaultTrue(Key.synWikilink)       { f.formUnion([.wikilink, .wikilinkEmbed]) }
+        if boolDefaultTrue(Key.synTag)            { f.insert(.tag) }
+        if boolDefaultTrue(Key.synBlockRef)       { f.insert(.blockRef) }
+        if boolDefaultTrue(Key.synFootnote)       { f.insert(.footnote) }
+        if boolDefaultTrue(Key.synObsidianCallout) { f.formUnion([.calloutExtendedTypes, .collapsibleCallout]) }
         return f
     }
 
