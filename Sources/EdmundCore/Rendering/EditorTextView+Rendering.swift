@@ -124,9 +124,11 @@ extension EditorTextView {
              .heading, .blockquote(_), .footnoteReference, .escape:
             return true
         case .listItem, .table, .codeBlock, .thematicBreak, .footnoteDefinition, .comment,
-             .htmlTag, .htmlFormat:
+             .htmlTag, .htmlFormat, .tag, .blockRef:
             // htmlTag: always colored source (brackets dimmed by the generic
             // pass). htmlFormat: handled explicitly in the delimiter loop.
+            // tag: a pill, nothing hides. blockRef: hidden/dimmed like a comment
+            // via its own branch in the delimiter loop.
             return false
         case .wikilink:
             // The `[[`, optional `target|`, and `]]` are hidden when rendered,
@@ -551,6 +553,25 @@ extension EditorTextView {
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
                 }
 
+            case .tag:
+                guard span.contentRange.upperBound <= result.length else { continue }
+                // Pill: accent text on a faint accent wash over the whole `#tag`.
+                // No delimiter range, so nothing hides — the `#` stays visible.
+                result.addAttribute(.backgroundColor, value: linkColor.withAlphaComponent(0.15),
+                                    range: span.contentRange)
+                result.addAttribute(.foregroundColor, value: linkColor, range: span.contentRange)
+
+            case .blockRef:
+                guard span.fullRange.upperBound <= result.length else { continue }
+                // Like a comment: hidden in reading view, dimmed otherwise. The
+                // delimiter pass repeats this over the token so it wins.
+                if hideComments {
+                    result.addAttribute(.font, value: hiddenFont, range: span.fullRange)
+                    result.addAttribute(.foregroundColor, value: NSColor.clear, range: span.fullRange)
+                } else {
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
+                }
+
             case .lineBreak:
                 break  // Delimiter handling done below
 
@@ -639,6 +660,15 @@ extension EditorTextView {
                 } else if case .comment = span.kind {
                     // Comment `%%`: hidden in reading view, dimmed otherwise —
                     // matching the content styling above.
+                    if hideComments {
+                        result.addAttribute(.font, value: hiddenFont, range: dr)
+                        result.addAttribute(.foregroundColor, value: NSColor.clear, range: dr)
+                    } else {
+                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                    }
+                } else if case .blockRef = span.kind {
+                    // `^id`: hidden in reading view, dimmed otherwise (matches
+                    // the content styling and the comment treatment).
                     if hideComments {
                         result.addAttribute(.font, value: hiddenFont, range: dr)
                         result.addAttribute(.foregroundColor, value: NSColor.clear, range: dr)

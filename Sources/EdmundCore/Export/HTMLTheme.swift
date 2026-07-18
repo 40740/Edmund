@@ -187,6 +187,10 @@ enum HTMLTheme {
     .callout-body > blockquote:last-child { margin-bottom: 0; }
     hr { border: none; border-top: 1px solid var(--rule); margin: 1.6em 0; }
     mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
+    /* Obsidian #tag: an accent-colored pill. Style only, no navigation. */
+    .tag { color: var(--accent);
+           background: color-mix(in srgb, var(--accent) 14%, transparent);
+           padding: 0.05em 0.5em; border-radius: 0.8em; font-size: 0.88em; white-space: nowrap; }
     /* Whitelisted inline HTML rendered in Read mode (see HTMLRenderer
        sanitizeInlineHTML). <u>/<mark> use the UA underline / the rule above;
        <kbd> matches the editor's inline-key chrome, <sub>/<sup> get the standard

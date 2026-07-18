@@ -87,6 +87,65 @@ extension SyntaxHighlighter {
         }
     }
 
+    // A tag is `#` (at line start or after whitespace) followed by tag chars
+    // (letters, digits, `_`, `-`, `/`) with at least one non-digit — so `#123`
+    // is not a tag. A space after `#` is an ATX heading and won't match.
+    private static let tagRegex = try! NSRegularExpression(
+        pattern: #"(?:^|(?<=\s))#([A-Za-z0-9_/-]*[A-Za-z_/-][A-Za-z0-9_/-]*)"#)
+
+    /// Parses Obsidian `#tag` tokens (not supported by swift-markdown). The pill
+    /// covers the whole `#tag` (the `#` stays visible). Skips a tag inside a code
+    /// or math span.
+    static func parseTag(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+        for m in tagRegex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            let full = m.range(at: 0)   // includes the leading `#`
+            let overlaps = spans.contains { existing in
+                switch existing.kind {
+                case .code, .codeBlock, .math: break
+                default: return false
+                }
+                return existing.fullRange.location <= full.location
+                    && existing.fullRange.upperBound >= full.upperBound
+            }
+            guard !overlaps else { continue }
+            spans.append(Span(
+                kind: .tag(name: ns.substring(with: m.range(at: 1))),
+                fullRange: full,
+                contentRange: full,        // pill spans `#tag`; no hidden delimiter
+                delimiterRanges: []))
+        }
+    }
+
+    private static let blockRefRegex = try! NSRegularExpression(
+        pattern: #"(?:^|\s)(\^[A-Za-z0-9-]+)\s*$"#)
+
+    /// Parses a trailing Obsidian `^blockid` at the end of a block (not supported
+    /// by swift-markdown). Zero-length content + full-range delimiter ⇒ the whole
+    /// `^id` hides when rendered / dims at the caret, like a comment. No linking.
+    /// Skips a `^id` inside a code or math span.
+    static func parseBlockRef(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+        guard let m = blockRefRegex.firstMatch(
+            in: text, range: NSRange(location: 0, length: ns.length)) else { return }
+        let token = m.range(at: 1)   // the `^id`, without the leading whitespace
+        let overlaps = spans.contains { existing in
+            switch existing.kind {
+            case .code, .codeBlock, .math: break
+            default: return false
+            }
+            return existing.fullRange.location <= token.location
+                && existing.fullRange.upperBound >= token.upperBound
+        }
+        guard !overlaps else { return }
+        spans.append(Span(
+            kind: .blockRef(id: ns.substring(with: NSRange(
+                location: token.location + 1, length: token.length - 1))),  // after `^`
+            fullRange: token,
+            contentRange: NSRange(location: token.location, length: 0),
+            delimiterRanges: [token]))
+    }
+
     private static let htmlCommentRegex =
         try! NSRegularExpression(pattern: "<!--[\\s\\S]*?-->")
 
