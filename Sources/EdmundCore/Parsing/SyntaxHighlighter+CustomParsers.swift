@@ -115,6 +115,23 @@ extension SyntaxHighlighter {
         }
     }
 
+    /// Extracts Obsidian image dimensions from the trailing `|W` / `|WxH`
+    /// segment of an alt/label string (`![alt|200](url)`, `![[img.png|200x100]]`).
+    /// Returns `(nil, nil)` when the last `|`-segment isn't a size. Also returns
+    /// the label with the size segment removed (for callers that display it).
+    static func parseImageDimensions(from label: String) -> (width: Int?, height: Int?, stripped: String) {
+        guard let pipe = label.range(of: "|", options: .backwards) else { return (nil, nil, label) }
+        let size = label[pipe.upperBound...].trimmingCharacters(in: .whitespaces)
+        let parts = size.split(separator: "x", maxSplits: 1, omittingEmptySubsequences: false)
+        // "200" → width only; "200x100" → both. Any non-numeric part → not a size.
+        guard let w = Int(parts[0]), w > 0 else { return (nil, nil, label) }
+        if parts.count == 2 {
+            guard let h = Int(parts[1]), h > 0 else { return (nil, nil, label) }
+            return (w, h, String(label[..<pipe.lowerBound]))
+        }
+        return (w, nil, String(label[..<pipe.lowerBound]))
+    }
+
     private static let wikiLinkRegex =
         try! NSRegularExpression(pattern: #"\[\[([^\[\]\n]+?)\]\]"#)
 
@@ -123,7 +140,8 @@ extension SyntaxHighlighter {
     /// visible display text (the alias when present, else the target); the
     /// `[[`, an optional `target|`, and the `]]` are delimiter ranges hidden
     /// when rendered. Skips `[[` inside code spans / code blocks.
-    static func parseWikiLinks(_ text: String, into spans: inout [Span]) {
+    static func parseWikiLinks(_ text: String, into spans: inout [Span],
+                               features: MarkdownFeatures = .all) {
         let ns = text as NSString
         for m in wikiLinkRegex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
             let full = m.range(at: 0)
@@ -139,6 +157,33 @@ extension SyntaxHighlighter {
                     && existing.fullRange.upperBound >= full.upperBound
             }
             guard !overlaps else { continue }
+
+            // A `!` immediately before `[[…]]` makes it an image embed
+            // (`![[file]]` / `![[file|200]]`). The `|`-suffix is a size, not an
+            // alias. Route it to an `.image` span so the overlay/`<img>` path
+            // renders the picture; the target resolves relative to the document
+            // directory like a normal `![](file)`.
+            let isEmbed = full.location > 0 && ns.character(at: full.location - 1) == 0x21  // '!'
+            if isEmbed {
+                guard features.contains(.wikilinkEmbed) else { continue }
+                let pipe = innerNS.range(of: "|")
+                let targetPart = pipe.location == NSNotFound
+                    ? innerNS as String
+                    : innerNS.substring(to: pipe.location)
+                let target = targetPart.trimmingCharacters(in: .whitespaces)
+                guard !target.isEmpty else { continue }
+                let (w, h, _) = parseImageDimensions(from: innerNS as String)
+                // fullRange starts at the `!` so image rendering anchors the
+                // overlay there and hides `[[…]]` (matches `![alt](url)`).
+                let embedFull = NSRange(location: full.location - 1, length: full.length + 1)
+                spans.append(Span(
+                    kind: .image(destination: target, width: w, height: h),
+                    fullRange: embedFull,
+                    contentRange: NSRange(location: inner.location, length: inner.length),
+                    delimiterRanges: []))
+                continue
+            }
+            guard features.contains(.wikilink) else { continue }
 
             // Split target | alias on the first "|".
             let pipe = innerNS.range(of: "|")
@@ -661,7 +706,8 @@ extension SyntaxHighlighter {
         pattern: #"^\[([ xX])\]\s"#
     )
 
-    static func parseIndentedListItem(_ text: String, into spans: inout [Span]) {
+    static func parseIndentedListItem(_ text: String, into spans: inout [Span],
+                                      features: MarkdownFeatures = .all) {
         // Only single-line blocks (no \n)
         guard !text.contains("\n") else { return }
         let nsText = text as NSString
@@ -721,7 +767,7 @@ extension SyntaxHighlighter {
         // Re-parse the content for inline formatting (bold, italic, code, etc.)
         // since swift-markdown treated the whole line as code and skipped them.
         let contentStr = nsText.substring(with: content)
-        let inlineSpans = parse(contentStr)
+        let inlineSpans = parse(contentStr, features: features)
         for s in inlineSpans {
             // Skip any listItem spans from the recursive parse
             if case .listItem = s.kind { continue }

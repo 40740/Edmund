@@ -26,11 +26,16 @@ extension EditorTextView {
         /// for a default callout, whose synthesized type name isn't in the
         /// source and stays a compact icon+name overlay.
         let customTitleRange: NSRange?
+        /// Obsidian fold state (`[!note]-`/`+`), or nil when not collapsible or
+        /// the collapsible-callout feature is off. Drives the header chevron.
+        let fold: Callout.FoldState?
     }
 
     /// Returns callout info if `span` (a `.blockquote`) begins with a known
     /// `[!type]` marker on its first line, else `nil` (a plain block quote).
     func calloutInfo(forBlockquote span: SyntaxHighlighter.Span, markdown: String) -> CalloutInfo? {
+        // Callouts off → treat every `> [!type]` as a plain block quote.
+        guard markdownFeatures.contains(.callout) else { return nil }
         guard let firstDelim = span.delimiterRanges.min(by: { $0.location < $1.location })
         else { return nil }
         let ns = markdown as NSString
@@ -45,14 +50,26 @@ extension EditorTextView {
 
         guard let rel = Callout.parseMarker(firstLine),
               let style = Callout.style(for: rel.type, overrides: calloutStyleOverrides) else { return nil }
+        // Obsidian-only callout types are non-GFM: with the master switch off
+        // (calloutExtendedTypes cleared) only the 5 GFM alert types render;
+        // the rest fall back to a plain block quote.
+        guard Callout.isGFMAlert(rel.type)
+              || markdownFeatures.contains(.calloutExtendedTypes) else { return nil }
 
         func abs(_ r: NSRange) -> NSRange { NSRange(location: r.location + contentStart, length: r.length) }
+        // The fold marker (`-`/`+`) counts only when the feature is on; otherwise
+        // it stays literal and falls into the custom title, as before.
+        let collapsible = markdownFeatures.contains(.collapsibleCallout)
+        let fold = collapsible ? rel.fold : nil
         let marker = Callout.Marker(type: rel.type,
                                     openBracket: abs(rel.openBracket),
                                     typeRange: abs(rel.typeRange),
-                                    closeBracket: abs(rel.closeBracket))
+                                    closeBracket: abs(rel.closeBracket),
+                                    fold: fold,
+                                    foldRange: fold != nil ? rel.foldRange.map(abs) : nil)
 
-        let titleStart = marker.closeBracket.upperBound
+        // Skip the fold char so `[!note]- Title` reads "Title", not "- Title".
+        let titleStart = marker.foldRange?.upperBound ?? marker.closeBracket.upperBound
         let customRaw = titleStart < lineEnd
             ? ns.substring(with: NSRange(location: titleStart, length: lineEnd - titleStart)) : ""
         let title = Callout.title(type: marker.type, customTitle: customRaw)
@@ -69,7 +86,7 @@ extension EditorTextView {
         }
 
         return CalloutInfo(marker: marker, style: style, headerRange: headerRange,
-                           title: title, customTitleRange: customTitleRange)
+                           title: title, customTitleRange: customTitleRange, fold: fold)
     }
 
     /// Applies callout styling: the box, the icon + title header image, and the
@@ -175,8 +192,19 @@ extension EditorTextView {
                 // icon + name as one compact overlay image.
                 result.addAttribute(.font, value: hiddenFont, range: header)
                 result.addAttribute(.foregroundColor, value: NSColor.clear, range: header)
+                // Collapsible: a chevron in the drawn header image marks the fold
+                // state (▸ folded / ▾ expanded). ponytail: indicator only — Edit
+                // never actually collapses the body (real fold is Read mode's
+                // native <details>); custom-title callouts show no chevron since
+                // their title is live text we can't inject into.
+                let headerTitle: String
+                switch info.fold {
+                case .folded:   headerTitle = "▸ " + info.title
+                case .expanded: headerTitle = "▾ " + info.title
+                case nil:       headerTitle = info.title
+                }
                 if let overlay = calloutHeaderOverlay(iconName: info.style.iconName,
-                                                      title: info.title, color: c.accent,
+                                                      title: headerTitle, color: c.accent,
                                                       iconNudge: info.style.iconBaselineNudge) {
                     applyOverlay(overlay, anchor: NSRange(location: header.location, length: 1),
                                  in: result)

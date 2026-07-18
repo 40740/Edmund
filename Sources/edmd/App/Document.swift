@@ -131,6 +131,7 @@ class Document: NSDocument, HeadingNavigable {
         editor.maxContentWidthPoints = initScreen?.cmToPoints(AppSettings.maxContentWidthCm) ?? 1000
         editor.updateContentInset()
         editor.allowRemoteImages = !AppSettings.blockExternalImages
+        editor.markdownFeatures = AppSettings.markdownFeatures
         editor.typewriterModeEnabled = AppDelegate.typewriterModeEnabled()
         editor.document = self
 
@@ -573,7 +574,8 @@ class Document: NSDocument, HeadingNavigable {
     private var renderOptions: ReadRenderOptions {
         ReadRenderOptions(preserveBlankLines: AppSettings.renderBlankLinesAsBreaks,
                          allowRemoteImages: !AppSettings.blockExternalImages,
-                         maxContentWidthPoints: Double(editor.maxContentWidthPoints))
+                         maxContentWidthPoints: Double(editor.maxContentWidthPoints),
+                         features: AppSettings.markdownFeatures)
     }
 
     // MARK: - Export / Print

@@ -98,6 +98,57 @@ enum AppSettings {
         static let sentCrashReports = "settings.advanced.sentCrashReports"
         static let lastWindowWidth  = "settings.window.lastWidth"
         static let lastWindowHeight = "settings.window.lastHeight"
+        // Syntax feature toggles (all default on). Read into `markdownFeatures`.
+        // Master switch: off → every non-GFM extension is disabled at once.
+        // The GFM callout alerts (NOTE/TIP/…) have no toggle — always on.
+        static let enableNonGFM      = "settings.syntax.enableNonGFM"
+        static let synFrontMatter    = "settings.syntax.frontMatter"
+        static let synMath           = "settings.syntax.math"
+        static let synHighlight      = "settings.syntax.highlight"
+        static let synComment        = "settings.syntax.comment"
+        static let synWikilink       = "settings.syntax.wikilink"
+        static let synTag            = "settings.syntax.tag"
+        static let synBlockRef       = "settings.syntax.blockRef"
+        static let synFootnote       = "settings.syntax.footnote"
+        static let synObsidianCallout = "settings.syntax.obsidianCallout"
+    }
+
+    /// A bool defaulting to `true` until the user explicitly clears it (the
+    /// "opt-out" idiom used by the markdown toggles and several others).
+    static func boolDefaultTrue(_ key: String) -> Bool {
+        guard UserDefaults.standard.object(forKey: key) != nil else { return true }
+        return UserDefaults.standard.bool(forKey: key)
+    }
+
+    /// The enabled Markdown extensions, assembled from the per-feature Settings
+    /// toggles. Pushed into every open `EditorTextView.markdownFeatures` and used
+    /// to build `ReadRenderOptions`, so Edit and Read agree. Features with no
+    /// toggle UI yet (Phase 2: front matter, tags, block refs, multi-block
+    /// comments) stay on so nothing regresses before their settings land.
+    static var markdownFeatures: MarkdownFeatures {
+        // The 5 GFM callout alerts are core GFM — always on, no toggle.
+        var f: MarkdownFeatures = [.callout]
+
+        // Master switch off → plain CommonMark/GFM (GFM callout alerts survive).
+        guard boolDefaultTrue(Key.enableNonGFM) else { return f }
+
+        // Non-GFM syntax with no grid toggle of its own is master-direct:
+        // ordinary image dimensions `![alt|200](url)` aren't tied to any grid item.
+        f.insert(.imageDimensions)
+
+        // The 5x2 grid. Related sub-syntaxes fold into their grid toggle:
+        // wikilink image embeds under Wikilink, collapsible under the Obsidian
+        // callout, multi-block comments under Comment.
+        if boolDefaultTrue(Key.synFrontMatter)    { f.insert(.frontMatter) }
+        if boolDefaultTrue(Key.synMath)           { f.insert(.math) }
+        if boolDefaultTrue(Key.synHighlight)      { f.insert(.highlight) }
+        if boolDefaultTrue(Key.synComment)        { f.formUnion([.inlineComment, .multiBlockComment]) }
+        if boolDefaultTrue(Key.synWikilink)       { f.formUnion([.wikilink, .wikilinkEmbed]) }
+        if boolDefaultTrue(Key.synTag)            { f.insert(.tag) }
+        if boolDefaultTrue(Key.synBlockRef)       { f.insert(.blockRef) }
+        if boolDefaultTrue(Key.synFootnote)       { f.insert(.footnote) }
+        if boolDefaultTrue(Key.synObsidianCallout) { f.formUnion([.calloutExtendedTypes, .collapsibleCallout]) }
+        return f
     }
 
     /// Maximum text-column width in centimetres. Wider windows center the

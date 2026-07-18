@@ -190,6 +190,17 @@ public class EditorTextView: NSTextView {
         }
     }
 
+    /// Which Markdown extensions are recognized (highlight, callouts, wikilinks,
+    /// math, …). Set from the app's `AppSettings` markdown toggles; a cleared
+    /// flag makes that syntax render as plain text. Defaults to `.all` so the
+    /// editor behaves fully until the app layer pushes the real settings in.
+    public var markdownFeatures: MarkdownFeatures = .all {
+        didSet {
+            guard oldValue != markdownFeatures else { return }
+            recomposeAllDirty()
+        }
+    }
+
     // MARK: - Derived Visual Properties
 
     /// The app accent: the macOS system accent (`controlAccentColor`), which
