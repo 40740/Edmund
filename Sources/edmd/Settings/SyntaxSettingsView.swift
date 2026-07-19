@@ -28,11 +28,18 @@ struct SyntaxSettingsView: View {
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
-            GridRow {
+            GridRow(alignment: .firstTextBaseline) {
                 Text("Markdown syntax:").gridColumnAlignment(.trailing)
-                Toggle("Enable extended Markdown syntax", isOn: $enableNonGFM)
-                    .onChange(of: enableNonGFM) { applyFeatures() }
-                // TODO: add note here "Edmund is fully compatible with [GFM](https://github.github.com/gfm/) and provides optional support for [Obsidian-flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown)."
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Enable extended Markdown syntax", isOn: $enableNonGFM)
+                        .onChange(of: enableNonGFM) { applyFeatures() }
+                    // Markdown/link syntax auto-parses from the string literal.
+                    Text("Edmund is fully compatible with [GFM](https://github.github.com/gfm/) and provides optional support for [Obsidian-flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown).")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 340, alignment: .leading)
+                }
             }
             GridRow {
                 Color.clear.frame(width: 0, height: 0)   // empty leading cell
@@ -59,9 +66,13 @@ struct SyntaxSettingsView: View {
                     refreshCodeBlocks()
                 }
             }
+            // Pull the box up toward its popup (the outer 18-pt row spacing is
+            // too wide a gap here — see the CotEditor Format ref).
             GridRow(alignment: .top) {
-                Text("Available syntax:").gridColumnAlignment(.trailing)
+                Text("Available code syntaxes:").gridColumnAlignment(.trailing)
+                    .padding(.top, -10)
                 availableSyntaxList
+                    .padding(.top, -10)
             }
         }
         .settingsPanePadding()
@@ -89,6 +100,7 @@ struct SyntaxSettingsView: View {
         let selectionIsUser = selectedSyntax.map {
             SyntaxDefinitionStore.shared.isUserDefinition($0)
         } ?? false
+        let border = Color(nsColor: .separatorColor)
         return VStack(spacing: 0) {
             List(selection: $selectedSyntax) {
                 ForEach(defs, id: \.id) { lang in
@@ -102,11 +114,18 @@ struct SyntaxSettingsView: View {
             .environment(\.defaultMinListRowHeight, rowHeight)
             .contentMargins(.vertical, 0, for: .scrollContent)  // no padding → exactly 5 rows
             .frame(height: rowHeight * 5)
+            .background(Color(nsColor: .textBackgroundColor))
+            // Border the list only (top + sides); the inset hairline below is
+            // its bottom edge. The toolbar underneath is left unframed so no
+            // box border shows beneath the divider.
+            .overlay(alignment: .top)      { border.frame(height: 1) }
+            .overlay(alignment: .leading)  { border.frame(width: 1) }
+            .overlay(alignment: .trailing) { border.frame(width: 1) }
 
-            // A hairline lighter than the box border, inset so it doesn't touch
-            // the box's left/right edges (CotEditor's toolbar separator).
+            // A lighter (#e5e5e5) hairline, inset from the edges — the divider
+            // between the list and the +/−/✎ toolbar (CotEditor's separator).
             Rectangle()
-                .fill(Color(white: 0.898))   // #e5e5e5
+                .fill(Color(white: 0.898))
                 .frame(height: 1)
                 .padding(.horizontal, 6)
             HStack(spacing: 10) {
@@ -124,10 +143,8 @@ struct SyntaxSettingsView: View {
             }
             .buttonStyle(.borderless)
             .padding(6)
-            .background(Color(nsColor: .textBackgroundColor))
         }
         .frame(width: boxWidth)
-        .border(Color(nsColor: .separatorColor))
     }
 
     private var featureGrid: some View {
