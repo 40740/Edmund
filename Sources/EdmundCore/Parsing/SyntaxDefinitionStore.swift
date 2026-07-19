@@ -3,10 +3,10 @@ import Foundation
 // MARK: - Syntax Definition Store
 //
 // Loads language definitions from two sources — the bundled JSON under
-// Resources/Syntaxes and the user's ~/.edmund/syntaxes — and resolves a fence's
-// info string (or its alias) to a definition. A user def overrides a bundled one
-// of the same name, which is what makes a bundled language customizable: drop a
-// same-named JSON and it wins.
+// Resources/Syntaxes and the user's Application Support dir — and resolves a
+// fence's info string (or its alias) to a definition. A user def overrides a
+// bundled one of the same name, which is what makes a bundled language
+// customizable: drop a same-named JSON and it wins.
 //
 // ponytail: not thread-safe. Tokenization runs during rendering (main thread) and
 // the app pushes config / reloads on the main thread, so a plain shared instance
@@ -88,9 +88,16 @@ public final class SyntaxDefinitionStore {
 
     // MARK: Filesystem
 
+    /// The canonical, update-proof home for user-editable defs:
+    /// ~/Library/Application Support/Edmund/Syntaxes. Survives app and macOS
+    /// updates (unlike an in-bundle path).
     public static var userDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".edmund/syntaxes", isDirectory: true)
+        let base = (try? FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: false))
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+        return base.appendingPathComponent("Edmund/Syntaxes", isDirectory: true)
     }
 
     private static func loadBundled() -> [(LanguageDefinition, URL)] {
