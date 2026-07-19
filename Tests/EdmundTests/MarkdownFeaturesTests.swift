@@ -90,6 +90,36 @@ struct MarkdownFeaturesTests {
         #expect(!hasKind(spans) { if case .wikilink = $0 { return true }; return false })
     }
 
+    private func embedSpan(_ spans: [SyntaxHighlighter.Span]) -> String? {
+        for s in spans { if case .embed(let d) = s.kind { return d } }
+        return nil
+    }
+
+    @Test("Non-image ![[file]] embeds become .embed spans; images stay .image")
+    func wikilinkEmbedNonImage() {
+        #expect(embedSpan(SyntaxHighlighter.parse("![[song.mp3]]", features: .all)) == "song.mp3")
+        #expect(embedSpan(SyntaxHighlighter.parse("![[doc.pdf]]", features: .all)) == "doc.pdf")
+        #expect(embedSpan(SyntaxHighlighter.parse("![[note.md]]", features: .all)) == "note.md")
+        #expect(embedSpan(SyntaxHighlighter.parse("![[note]]", features: .all)) == "note")
+        // An image type is an image, not an embed placeholder.
+        #expect(embedSpan(SyntaxHighlighter.parse("![[pic.png]]", features: .all)) == nil)
+        #expect(imageSpan(SyntaxHighlighter.parse("![[pic.png]]", features: .all))?.0 == "pic.png")
+        // Embeds are gated by the same flag as image embeds.
+        #expect(embedSpan(SyntaxHighlighter.parse("![[song.mp3]]",
+                          features: MarkdownFeatures.all.subtracting(.wikilinkEmbed))) == nil)
+    }
+
+    @Test("Embed type classifier: Obsidian-supported vs. generally unsupported")
+    func embedTypeClassifier() {
+        #expect(ImageLoadFailure.forEmbed(destination: "a.mp3") == .embedTypeUnsupported)
+        #expect(ImageLoadFailure.forEmbed(destination: "a.mp4") == .embedTypeUnsupported)
+        #expect(ImageLoadFailure.forEmbed(destination: "a.pdf") == .embedTypeUnsupported)
+        #expect(ImageLoadFailure.forEmbed(destination: "note.md") == .embedTypeUnsupported)
+        #expect(ImageLoadFailure.forEmbed(destination: "note") == .embedTypeUnsupported)
+        #expect(ImageLoadFailure.forEmbed(destination: "a.xyz") == .embedTypeGenerallyUnsupported)
+        #expect(ImageLoadFailure.forEmbed(destination: "a.zip") == .embedTypeGenerallyUnsupported)
+    }
+
     // MARK: - Collapsible callout marker
 
     @Test("Fold marker parses: - folded, + expanded, none nil")
@@ -217,6 +247,16 @@ struct MarkdownFeaturesTests {
     func readWikilinkEmbed() {
         #expect(html("![[pic.png]]", .all).contains("data-src=\"pic.png\""))
         #expect(!html("![[pic.png]]", MarkdownFeatures.all.subtracting(.wikilinkEmbed)).contains("data-src=\"pic.png\""))
+    }
+
+    @Test("Read: non-image ![[file]] embed emits a per-type unsupported label")
+    func readWikilinkEmbedUnsupported() {
+        #expect(html("![[song.mp3]]", .all).contains("Embeded file not an image"))
+        #expect(html("![[doc.pdf]]", .all).contains("Embeded file not an image"))
+        #expect(html("![[note]]", .all).contains("Embeded file not an image"))
+        #expect(html("![[data.xyz]]", .all).contains("Embed file type generally unsupported"))
+        // Gated off with embeds: the label disappears, source stays literal.
+        #expect(!html("![[song.mp3]]", MarkdownFeatures.all.subtracting(.wikilinkEmbed)).contains("Embed file type"))
     }
 
     @Test("Read: footnote bottom section is dropped when footnotes are off")

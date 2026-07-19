@@ -217,11 +217,13 @@ extension SyntaxHighlighter {
             }
             guard !overlaps else { continue }
 
-            // A `!` immediately before `[[…]]` makes it an image embed
+            // A `!` immediately before `[[…]]` makes it an embed
             // (`![[file]]` / `![[file|200]]`). The `|`-suffix is a size, not an
-            // alias. Route it to an `.image` span so the overlay/`<img>` path
-            // renders the picture; the target resolves relative to the document
-            // directory like a normal `![](file)`.
+            // alias. An image file routes to `.image` so the overlay/`<img>` path
+            // renders the picture; any other type routes to `.embed`, which draws
+            // a per-type "unsupported" placeholder (Edmund can only embed images).
+            // The target resolves relative to the document directory like a
+            // normal `![](file)`.
             let isEmbed = full.location > 0 && ns.character(at: full.location - 1) == 0x21  // '!'
             if isEmbed {
                 guard features.contains(.wikilinkEmbed) else { continue }
@@ -231,15 +233,23 @@ extension SyntaxHighlighter {
                     : innerNS.substring(to: pipe.location)
                 let target = targetPart.trimmingCharacters(in: .whitespaces)
                 guard !target.isEmpty else { continue }
-                let (w, h, _) = parseImageDimensions(from: innerNS as String)
-                // fullRange starts at the `!` so image rendering anchors the
-                // overlay there and hides `[[…]]` (matches `![alt](url)`).
+                // fullRange starts at the `!` so rendering anchors the overlay
+                // there and hides `[[…]]` (matches `![alt](url)`).
                 let embedFull = NSRange(location: full.location - 1, length: full.length + 1)
-                spans.append(Span(
-                    kind: .image(destination: target, width: w, height: h),
-                    fullRange: embedFull,
-                    contentRange: NSRange(location: inner.location, length: inner.length),
-                    delimiterRanges: []))
+                let content = NSRange(location: inner.location, length: inner.length)
+                let ext = (target as NSString).pathExtension.lowercased()
+                let imageExts: Set<String> = ["png", "jpg", "jpeg", "gif", "svg",
+                                              "webp", "bmp", "tiff", "tif", "avif"]
+                if imageExts.contains(ext) {
+                    let (w, h, _) = parseImageDimensions(from: innerNS as String)
+                    spans.append(Span(kind: .image(destination: target, width: w, height: h),
+                                      fullRange: embedFull, contentRange: content,
+                                      delimiterRanges: []))
+                } else {
+                    spans.append(Span(kind: .embed(destination: target),
+                                      fullRange: embedFull, contentRange: content,
+                                      delimiterRanges: []))
+                }
                 continue
             }
             guard features.contains(.wikilink) else { continue }

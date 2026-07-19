@@ -120,7 +120,7 @@ extension EditorTextView {
     private func isDelimiterHideable(_ kind: SyntaxHighlighter.Span.Kind) -> Bool {
         switch kind {
         case .bold, .italic, .boldItalic, .strikethrough, .highlight,
-             .code, .link, .image, .lineBreak,
+             .code, .link, .image, .embed, .lineBreak,
              .heading, .blockquote(_), .footnoteReference, .escape:
             return true
         case .listItem, .table, .codeBlock, .thematicBreak, .footnoteDefinition, .comment,
@@ -283,6 +283,28 @@ extension EditorTextView {
                     result.addAttribute(.foregroundColor, value: linkColor, range: span.contentRange)
                     let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
                     result.addAttribute(.font, value: italic, range: span.contentRange)
+                }
+
+            case .embed(let destination):
+                guard span.fullRange.upperBound <= result.length else { continue }
+                // A non-image `![[file]]` embed: draw the per-type "unsupported"
+                // placeholder (same overlay as a blocked image) when rendered,
+                // hiding the `[[…]]` source and reserving line height. Active
+                // (cursor inside): the raw `![[file]]` shows with base attributes.
+                if !cursorInToken, let overlay = embedOverlay(destination: destination) {
+                    let hideStart = span.fullRange.location + 1
+                    let hideLen = span.fullRange.upperBound - hideStart
+                    if hideLen > 0 {
+                        let hideRange = NSRange(location: hideStart, length: hideLen)
+                        result.addAttribute(.font, value: hiddenFont, range: hideRange)
+                        result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
+                    }
+                    applyOverlay(overlay,
+                                 anchor: NSRange(location: span.fullRange.location, length: 1),
+                                 in: result)
+                    reserveLineHeight(ascent: overlay.bounds.height + overlay.bounds.minY,
+                                      descent: -overlay.bounds.minY,
+                                      forOverlayAt: span.fullRange.location, in: result)
                 }
 
             case .blockquote(let depth):
