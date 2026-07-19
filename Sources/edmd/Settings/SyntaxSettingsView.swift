@@ -90,39 +90,47 @@ struct SyntaxSettingsView: View {
     /// Fixed width shared by the list box and the "Default code syntax" popup,
     /// matching CotEditor's 260-pt syntax box.
     private let boxWidth: CGFloat = 260
-    /// One list row's height; the box shows exactly 5 (`rowHeight * 5`).
-    private let rowHeight: CGFloat = 21
+    /// One list row's height; the box shows exactly 5 (`rowHeight * 5`). Matches
+    /// the List's natural single-line row height so all five rows clear the
+    /// toolbar divider.
+    private let rowHeight: CGFloat = 24
 
-    /// The CotEditor-style list of definitions with a `+ − ✎` toolbar. A single
-    /// square `.border` wraps the (separator-less) list and the white toolbar bar
-    /// — replicating FormatSettingsView's box. SwiftUI `List` covers the "menu";
-    /// only the file actions touch AppKit.
+    /// The CotEditor-style list of definitions with a `+ − ✎` toolbar, closely
+    /// following FormatSettingsView: a plain `List` with a `.border`, the toolbar
+    /// pinned by a bottom safe-area bar with a full-width `Divider` above it.
     private var availableSyntaxList: some View {
         let defs = languages.filter { $0.id != "plain" }
         let selectionIsUser = selectedSyntax.map {
             SyntaxDefinitionStore.shared.isUserDefinition($0)
         } ?? false
+        // CotEditor's FormatSettingsView box: a plain `List` over a white
+        // background, a full-width `Divider`, then the +/−/✎ toolbar — the whole
+        // stack wrapped by one `.border`. (CotEditor pins the toolbar with
+        // `.safeAreaBar`, macOS 15+; this container reproduces the same look on
+        // the macOS 14 target.)
         return VStack(spacing: 0) {
             List(selection: $selectedSyntax) {
                 ForEach(defs, id: \.id) { lang in
-                    Text(lang.label).tag(lang.id)
-                        .listRowSeparator(.hidden)
-                        // Indent every row from the box's left edge (CotEditor-style).
-                        .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 0, trailing: 0))
+                    Label {
+                        Text(lang.label)
+                    } icon: {
+                        // A dot marks a user-customized (imported) syntax.
+                        Circle()
+                            .frame(width: 4)
+                            .foregroundStyle(.secondary)
+                            .opacity(SyntaxDefinitionStore.shared.isUserDefinition(lang.id) ? 1 : 0)
+                    }
+                    .listRowSeparator(.hidden)
+                    .tag(lang.id)
                 }
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, rowHeight)
-            .contentMargins(.vertical, 0, for: .scrollContent)  // no padding → exactly 5 rows
+            .contentMargins(.vertical, 0, for: .scrollContent)  // no top inset → 5 full rows
             .frame(height: rowHeight * 5)
-            .background(Color(nsColor: .textBackgroundColor))
 
-            // A lighter (#e5e5e5) hairline, inset from the edges — the divider
-            // between the list and the +/−/✎ toolbar (CotEditor's separator).
-            Rectangle()
-                .fill(Color(white: 0.898))
-                .frame(height: 1)
-                .padding(.horizontal, 6)
+            Divider()
             HStack(spacing: 10) {
                 Button(action: importDefinition) { Image(systemName: "plus") }
                     .help("Import a language definition (.json)")
@@ -131,19 +139,16 @@ struct SyntaxSettingsView: View {
                     .disabled(!selectionIsUser)
                 Button(action: revealDefinition) { Image(systemName: "pencil") }
                     .help("Show the definition's JSON file in the Finder")
-                    // Built-ins live read-only inside the app bundle — only a
-                    // user's own def has an editable file to reveal.
+                    // Built-ins are read-only inside the app bundle.
                     .disabled(!selectionIsUser)
                 Spacer()
             }
             .buttonStyle(.borderless)
             .padding(6)
-            .background(Color(nsColor: .textBackgroundColor))
         }
         .frame(width: boxWidth)
-        // Border the whole box on top + both sides, leaving the bottom open —
-        // so the inset divider reads as the only line near the toolbar.
-        .overlay(OpenBottomBorder().stroke(Color(nsColor: .separatorColor), lineWidth: 1))
+        .background(Color(nsColor: .textBackgroundColor))
+        .border(.separator)
     }
 
     private var featureGrid: some View {
@@ -247,20 +252,5 @@ struct SyntaxSettingsView: View {
               SyntaxDefinitionStore.shared.isUserDefinition(id),
               let url = SyntaxDefinitionStore.shared.fileURL(forName: id) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-}
-
-/// A rectangle border with its bottom edge left open — top + both sides only.
-/// Inset by half the line width so the 1-pt stroke stays inside the frame
-/// (keeping the box's outer width exactly `boxWidth`).
-private struct OpenBottomBorder: Shape {
-    func path(in rect: CGRect) -> Path {
-        let r = rect.insetBy(dx: 0.5, dy: 0.5)
-        var p = Path()
-        p.move(to: CGPoint(x: r.minX, y: r.maxY))
-        p.addLine(to: CGPoint(x: r.minX, y: r.minY))
-        p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
-        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
-        return p
     }
 }
