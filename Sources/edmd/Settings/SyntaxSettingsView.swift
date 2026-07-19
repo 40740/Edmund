@@ -90,10 +90,8 @@ struct SyntaxSettingsView: View {
     /// Fixed width shared by the list box and the "Default code syntax" popup,
     /// matching CotEditor's 260-pt syntax box.
     private let boxWidth: CGFloat = 260
-    /// One list row's height; the box shows exactly 5 (`rowHeight * 5`). Matches
-    /// the List's natural single-line row height so all five rows clear the
-    /// toolbar divider.
-    private let rowHeight: CGFloat = 24
+    /// One list row's height; the box shows exactly 5 (`rowHeight * 5`).
+    private let rowHeight: CGFloat = 20
 
     /// The CotEditor-style list of definitions with a `+ − ✎` toolbar, closely
     /// following FormatSettingsView: a plain `List` with a `.border`, the toolbar
@@ -121,6 +119,9 @@ struct SyntaxSettingsView: View {
                             .opacity(SyntaxDefinitionStore.shared.isUserDefinition(lang.id) ? 1 : 0)
                     }
                     .listRowSeparator(.hidden)
+                    // Tighten each row's vertical padding (default plain-list
+                    // rows centre the text in a taller cell).
+                    .listRowInsets(EdgeInsets(top: 1, leading: 12, bottom: 1, trailing: 8))
                     .tag(lang.id)
                 }
             }
