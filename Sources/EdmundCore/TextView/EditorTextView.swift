@@ -149,6 +149,12 @@ public class EditorTextView: NSTextView {
         }
     }
 
+    /// Scrolls the Read-mode web view to a 1-indexed source line, set by the
+    /// owning document. Invoked when an internal `[[link]]`/`[[#^blockid]]` is
+    /// followed while `viewMode == .reading` (the editor itself is hidden then,
+    /// so it can't scroll the visible surface). nil in Edit/Source.
+    public var onReadScrollToLine: ((Int) -> Void)?
+
     /// User overrides for callout styles, keyed by lowercased type. Lets a
     /// settings layer customize a built-in type's color / icon / border /
     /// background (or add new types). Empty by default (GitHub styles).

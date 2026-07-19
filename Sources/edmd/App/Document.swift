@@ -134,6 +134,11 @@ class Document: NSDocument, HeadingNavigable {
         editor.markdownFeatures = AppSettings.markdownFeatures
         editor.typewriterModeEnabled = AppDelegate.typewriterModeEnabled()
         editor.document = self
+        // Following an internal link while in Read mode scrolls the visible web
+        // view (the editor is hidden), not the editor itself.
+        editor.onReadScrollToLine = { [weak self] line in
+            self?.readView?.setScrollPosition(line: line, fraction: 0)
+        }
 
         // Toolbar holds the right-aligned view-mode toggle (and gives the
         // titlebar extra height for roomy traffic lights). Set it only after

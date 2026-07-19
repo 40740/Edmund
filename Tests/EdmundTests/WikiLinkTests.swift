@@ -125,4 +125,43 @@ struct WikiLinkTests {
         let detailsLoc = (editor.rawSource as NSString).range(of: "## Details").location
         #expect(editor.selectedRange().location == detailsLoc)
     }
+
+    @Test("splitHeading keeps a ^blockid fragment intact")
+    func splitsBlockRef() {
+        #expect(EditorTextView.splitHeading("Note#^abc").path == "Note")
+        #expect(EditorTextView.splitHeading("Note#^abc").heading == "^abc")
+        #expect(EditorTextView.splitHeading("#^abc").path == "")
+        #expect(EditorTextView.splitHeading("#^abc").heading == "^abc")
+    }
+
+    @Test("scrollToBlockID selects the block defining ^id")
+    func blockIDNavigation() {
+        let editor = makeEditor()
+        editor.loadContent("First para\n\nTarget para ^abc\n\nLast para")
+        editor.scrollToBlockID("abc")
+        let targetLoc = (editor.rawSource as NSString).range(of: "Target para").location
+        #expect(editor.selectedRange().location == targetLoc)
+    }
+
+    @Test("scrollToHeading dispatches a ^-prefixed fragment to the block id")
+    func headingDispatchesBlockRef() {
+        let editor = makeEditor()
+        editor.loadContent("First para\n\nTarget para ^abc\n\nLast para")
+        editor.scrollToHeading("^abc")
+        let targetLoc = (editor.rawSource as NSString).range(of: "Target para").location
+        #expect(editor.selectedRange().location == targetLoc)
+    }
+
+    @Test("Read mode scrolls the web view (not the editor) to the target line")
+    func readModeScrollsWebView() {
+        let editor = makeEditor()
+        editor.loadContent("First para\n\nTarget para ^abc\n\nLast para")
+        editor.viewMode = .reading
+        var scrolledLine: Int?
+        editor.onReadScrollToLine = { scrolledLine = $0 }
+        editor.scrollToBlockID("abc")
+        // "Target para ^abc" is the third source line (1-indexed) and a
+        // top-level block, so the read anchor is edmund-l3.
+        #expect(scrolledLine == 3)
+    }
 }

@@ -81,18 +81,61 @@ extension EditorTextView {
     // MARK: Heading navigation
 
     /// Scrolls to the first heading block whose text matches `heading`
-    /// (case-insensitive). Beeps if there is no such heading.
+    /// (case-insensitive), or — when `heading` is a `^blockid` fragment — to the
+    /// block defining that id. Beeps if there is no match. This is the single
+    /// chokepoint every internal-link caller funnels through (`[[#heading]]`,
+    /// `[[note#heading]]`, `[[#^id]]`, `[[note#^id]]`, and cross-file opens via
+    /// `navigateToHeading`), so block-id dispatch and the Edit/Read surface
+    /// switch both live here.
     public func scrollToHeading(_ heading: String) {
+        if heading.hasPrefix("^") {
+            scrollToBlockID(String(heading.dropFirst()))
+            return
+        }
         let want = heading.lowercased()
         for block in blocks {
             guard case .heading = block.kind,
                   Self.headingText(block.content).lowercased() == want else { continue }
-            let loc = block.range.location
-            setSelectedRange(NSRange(location: loc, length: 0))
-            scrollRangeToVisible(NSRange(location: loc, length: 0))
+            scrollToBlock(block.range)
             return
         }
         NSSound.beep()
+    }
+
+    /// Scrolls to the block that defines the Obsidian `^id` block reference
+    /// (a trailing `^id` at the end of a block). Beeps if none does.
+    public func scrollToBlockID(_ id: String) {
+        for block in blocks {
+            var refs: [SyntaxHighlighter.Span] = []
+            SyntaxHighlighter.parseBlockRef(block.content, into: &refs)
+            let matches = refs.contains {
+                if case .blockRef(let bid) = $0.kind { return bid == id }
+                return false
+            }
+            if matches { scrollToBlock(block.range); return }
+        }
+        NSSound.beep()
+    }
+
+    /// Brings `range`'s block into view. In Edit/Source the editor selects the
+    /// block (a visible highlight) and scrolls to it; in Read mode the editor is
+    /// hidden, so it scrolls the web view instead — mapping the block's source
+    /// line to the nearest top-level anchor the read view actually carries.
+    private func scrollToBlock(_ range: NSRange) {
+        if viewMode == .reading {
+            let line = line(forOffset: range.location)
+            // Anchors exist only on top-level block starts; snap `line` to the
+            // enclosing block's start so `edmund-l<line>` resolves (reuses the
+            // same span map the Read→Edit round trip uses in reverse).
+            let spans = ReadModeAnchors.topLevelBlockSpans(for: rawSource)
+            let anchorLine = spans.first(where: { $0.startLine <= line && line <= $0.endLine })?.startLine
+                ?? spans.last(where: { $0.startLine <= line })?.startLine
+                ?? line
+            onReadScrollToLine?(anchorLine)
+        } else {
+            setSelectedRange(range)
+            scrollRangeToVisible(range)
+        }
     }
 
     /// The text of a heading line, stripped of its leading `#`s and whitespace.
