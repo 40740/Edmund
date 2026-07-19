@@ -251,9 +251,9 @@ struct MarkdownFeaturesTests {
 
     @Test("Read: non-image ![[file]] embed emits a per-type unsupported label")
     func readWikilinkEmbedUnsupported() {
-        #expect(html("![[song.mp3]]", .all).contains("Embed file type unsupported"))
-        #expect(html("![[doc.pdf]]", .all).contains("Embed file type unsupported"))
-        #expect(html("![[note]]", .all).contains("Embed file type unsupported"))
+        #expect(html("![[song.mp3]]", .all).contains("Embeded file not an image"))
+        #expect(html("![[doc.pdf]]", .all).contains("Embeded file not an image"))
+        #expect(html("![[note]]", .all).contains("Embeded file not an image"))
         #expect(html("![[data.xyz]]", .all).contains("Embed file type generally unsupported"))
         // Gated off with embeds: the label disappears, source stays literal.
         #expect(!html("![[song.mp3]]", MarkdownFeatures.all.subtracting(.wikilinkEmbed)).contains("Embed file type"))

@@ -62,7 +62,7 @@ enum ImageLoadFailure: Equatable {
         case .blockedBySetting: return "External images blocked"
         case .notAnImage: return "Not an image"
         case .notFound: return "Image not found"
-        case .embedTypeUnsupported: return "Embed file type unsupported"
+        case .embedTypeUnsupported: return "Embeded file not an image"
         case .embedTypeGenerallyUnsupported: return "Embed file type generally unsupported"
         }
     }
