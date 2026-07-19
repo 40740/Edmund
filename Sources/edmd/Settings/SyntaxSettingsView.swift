@@ -109,19 +109,20 @@ struct SyntaxSettingsView: View {
         return VStack(spacing: 0) {
             List(selection: $selectedSyntax) {
                 ForEach(defs, id: \.id) { lang in
-                    Label {
-                        Text(lang.label)
-                    } icon: {
-                        // A dot marks a user-customized (imported) syntax.
+                    // A tight dot + label (rather than `Label`, whose icon column
+                    // reserves ~20pt and over-indents the text). The dot marks a
+                    // user-customized syntax.
+                    HStack(spacing: 5) {
                         Circle()
                             .frame(width: 4)
                             .foregroundStyle(.secondary)
                             .opacity(SyntaxDefinitionStore.shared.isUserDefinition(lang.id) ? 1 : 0)
+                        Text(lang.label)
                     }
                     .listRowSeparator(.hidden)
                     // Tighten each row's vertical padding (default plain-list
                     // rows centre the text in a taller cell).
-                    .listRowInsets(EdgeInsets(top: 1, leading: 12, bottom: 1, trailing: 8))
+                    .listRowInsets(EdgeInsets(top: 1, leading: 6, bottom: 1, trailing: 8))
                     .tag(lang.id)
                 }
             }
