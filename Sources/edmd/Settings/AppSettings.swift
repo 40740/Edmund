@@ -111,6 +111,15 @@ enum AppSettings {
         static let synBlockRef       = "settings.syntax.blockRef"
         static let synFootnote       = "settings.syntax.footnote"
         static let synObsidianCallout = "settings.syntax.obsidianCallout"
+        // The language a fenced code block with no info string is highlighted as.
+        // "plain" = no highlighting. Consumed by the code-block highlighter.
+        static let defaultCodeSyntax = "settings.syntax.defaultCodeSyntax"
+    }
+
+    /// The default language for untagged code fences ("plain" = none).
+    static var defaultCodeSyntax: String {
+        get { UserDefaults.standard.string(forKey: Key.defaultCodeSyntax) ?? "plain" }
+        set { UserDefaults.standard.set(newValue, forKey: Key.defaultCodeSyntax) }
     }
 
     /// A bool defaulting to `true` until the user explicitly clears it (the
@@ -333,6 +342,14 @@ enum AppSettings {
                       directory: logDirectory,
                       retention: logRetention.timeInterval)
         Log.setVerbose(verboseEditorDiagnostics)
+    }
+
+    /// Pushes the default code-block language into the shared definition store and
+    /// reloads bundled + user (~/.edmund/syntaxes) definitions. Called at launch,
+    /// and after the popup changes or a def is imported/removed.
+    static func applyCodeSyntax() {
+        SyntaxDefinitionStore.shared.defaultLanguage = defaultCodeSyntax
+        SyntaxDefinitionStore.shared.reload()
     }
 
     @MainActor static func applyAppearance() {

@@ -304,12 +304,15 @@ struct HTMLRenderer: MarkupVisitor {
     /// CSS class for a code token kind (consumed by `HTMLTheme`'s `.tok-*` rules).
     private static func tokenClass(_ type: CodeHighlighter.TokenType) -> String {
         switch type {
-        case .keyword:  return "tok-keyword"
-        case .type:     return "tok-type"
-        case .string:   return "tok-string"
-        case .number:   return "tok-number"
-        case .comment:  return "tok-comment"
-        case .function: return "tok-function"
+        case .keyword:   return "tok-keyword"
+        case .command:   return "tok-command"
+        case .type:      return "tok-type"
+        case .attribute: return "tok-attribute"
+        case .variable:  return "tok-variable"
+        case .value:     return "tok-value"
+        case .number:    return "tok-number"
+        case .string:    return "tok-string"
+        case .comment:   return "tok-comment"
         }
     }
 

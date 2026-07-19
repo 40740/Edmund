@@ -205,6 +205,11 @@ extension EditorTextView {
                        settingSelection: true)
     }
 
+    /// Attribute-only restyle of the whole document, for the app layer to call
+    /// when a global styling input changed but the text did not — e.g. the
+    /// default code-block language in Settings.
+    public func rerenderStyles() { recomposeAllDirty() }
+
     /// The block-index window to style synchronously: the TextKit 2 viewport
     /// plus a margin, or — before any layout exists (fresh load) — a window
     /// around the active block. Returns nil without a scroll view (headless):
