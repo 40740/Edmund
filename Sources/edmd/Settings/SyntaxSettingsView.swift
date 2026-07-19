@@ -8,7 +8,7 @@ import EdmundCore
 /// the grid; clearing it disables (and grays) every toggle at once. GFM callout
 /// alerts (NOTE/TIP/…) and ordinary image dimensions have no toggle — the former
 /// is always on (core GFM), the latter rides the master switch directly.
-struct MarkdownSettingsView: View {
+struct SyntaxSettingsView: View {
     @AppStorage(AppSettings.Key.enableNonGFM)       private var enableNonGFM = true
     @AppStorage(AppSettings.Key.synFrontMatter)     private var frontMatter = true
     @AppStorage(AppSettings.Key.synMath)            private var math = true
@@ -30,8 +30,9 @@ struct MarkdownSettingsView: View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
             GridRow {
                 Text("Markdown syntax:").gridColumnAlignment(.trailing)
-                Toggle("Enable non-GFM syntax", isOn: $enableNonGFM)
+                Toggle("Enable extended Markdown syntax", isOn: $enableNonGFM)
                     .onChange(of: enableNonGFM) { applyFeatures() }
+                // TODO: add note here "Edmund is fully compatible with [GFM](https://github.github.com/gfm/) and provides optional support for [Obsidian-flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown)."
             }
             GridRow {
                 Color.clear.frame(width: 0, height: 0)   // empty leading cell
@@ -76,6 +77,8 @@ struct MarkdownSettingsView: View {
     /// Fixed width shared by the list box and the "Default code syntax" popup,
     /// matching CotEditor's 260-pt syntax box.
     private let boxWidth: CGFloat = 260
+    /// One list row's height; the box shows exactly 5 (`rowHeight * 5`).
+    private let rowHeight: CGFloat = 24
 
     /// The CotEditor-style list of definitions with a `+ − ✎` toolbar. A single
     /// square `.border` wraps the (separator-less) list and the white toolbar bar
@@ -91,12 +94,21 @@ struct MarkdownSettingsView: View {
                 ForEach(defs, id: \.id) { lang in
                     Text(lang.label).tag(lang.id)
                         .listRowSeparator(.hidden)
+                        // Indent every row from the box's left edge.
+                        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 0))
                 }
             }
             .listStyle(.plain)
-            .frame(height: 140)
+            .environment(\.defaultMinListRowHeight, rowHeight)
+            .contentMargins(.vertical, 0, for: .scrollContent)  // no padding → exactly 5 rows
+            .frame(height: rowHeight * 5)
 
-            Divider()
+            // A hairline lighter than the box border, inset so it doesn't touch
+            // the box's left/right edges (CotEditor's toolbar separator).
+            Rectangle()
+                .fill(Color(white: 0.898))   // #e5e5e5
+                .frame(height: 1)
+                .padding(.horizontal, 6)
             HStack(spacing: 10) {
                 Button(action: importDefinition) { Image(systemName: "plus") }
                     .help("Import a language definition (.json)")
@@ -105,7 +117,9 @@ struct MarkdownSettingsView: View {
                     .disabled(!selectionIsUser)
                 Button(action: revealDefinition) { Image(systemName: "pencil") }
                     .help("Show the definition's JSON file in the Finder")
-                    .disabled(selectedSyntax == nil)
+                    // Built-ins live read-only inside the app bundle — only a
+                    // user's own def has an editable file to reveal.
+                    .disabled(!selectionIsUser)
                 Spacer()
             }
             .buttonStyle(.borderless)
@@ -135,7 +149,7 @@ struct MarkdownSettingsView: View {
                 cell("Footnote [^1]", $footnote)
             }
             GridRow {
-                cell("Obsidian-flavored callout > [!note]", $obsidianCallout)
+                cell("Obsidian callout > [!note]", $obsidianCallout)
                     .gridCellColumns(2)
             }
         }
@@ -210,10 +224,11 @@ struct MarkdownSettingsView: View {
         reloadDefinitions()
     }
 
-    /// `✎` — reveal the selected definition's JSON file in the Finder (a user
-    /// copy in ~/.edmund/syntaxes, or the built-in one inside the app bundle).
+    /// `✎` — reveal the selected user definition's JSON in the Finder. Enabled
+    /// only for user defs (built-ins are read-only inside the app bundle).
     private func revealDefinition() {
         guard let id = selectedSyntax,
+              SyntaxDefinitionStore.shared.isUserDefinition(id),
               let url = SyntaxDefinitionStore.shared.fileURL(forName: id) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
