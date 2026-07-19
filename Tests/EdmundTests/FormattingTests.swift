@@ -76,7 +76,7 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         #expect(wrap("`", "`") { $0.formatCode(nil) } == "`x`")
         #expect(wrap("$", "$") { $0.formatInlineMath(nil) } == "$x$")
         #expect(wrap("<kbd>", "</kbd>") { $0.formatKeyboard(nil) } == "<kbd>x</kbd>")
-        #expect(wrap("%%", "%%") { $0.formatComment(nil) } == "%%x%%")
+        #expect(wrap("<!-- ", " -->") { $0.formatComment(nil) } == "<!-- x -->")
     }
 
     @Test func emptyInlineCaretCentersForMultiCharDelimiter() {

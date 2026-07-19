@@ -275,6 +275,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Format menu — built from the declarative command registry.
         mainMenu.addItem(FormatMenu.build())
 
+        // Editor right-click Font submenu mirrors Format ▸ Font.
+        EditorTextView.contextFontMenuProvider = { FormatMenu.fontMenu() }
+
         // View menu — built in its own file (ViewMenu.swift).
         mainMenu.addItem(ViewMenu.build())
 

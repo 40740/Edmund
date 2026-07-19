@@ -32,6 +32,14 @@ enum ViewMenu {
         viewMenu.addItem(withTitle: "Show Source in Editor",
                          action: #selector(Document.toggleSourceMode(_:)),
                          keyEquivalent: "")
+
+        // Web Inspector for Read mode (⌥⌘I). nil target → routes through the
+        // responder chain to the ReadModeWebView, which is first responder in
+        // Read mode; auto-disabled in Edit/Source mode.
+        let inspectItem = viewMenu.addItem(withTitle: "Inspect Read View",
+                         action: #selector(ReadModeWebView.showWebInspector(_:)),
+                         keyEquivalent: "i")
+        inspectItem.keyEquivalentModifierMask = [.command, .option]
         viewMenu.addItem(.separator())
 
         // Zoom (font size + max content width, scaled together). Target nil

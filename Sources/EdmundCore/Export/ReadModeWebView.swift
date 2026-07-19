@@ -189,6 +189,19 @@ public final class ReadModeWebView: WKWebView {
         reloadHTML()
     }
 
+    // MARK: - Web Inspector (⌥⌘I)
+
+    /// Opens the Web Inspector on this read view. Wired to the View-menu item
+    /// ("Inspect Read View", ⌥⌘I), which routes here through the responder chain
+    /// while Read mode is first responder — so the item is auto-disabled in Edit
+    /// mode. A standalone WKWebView, unlike Safari, doesn't bind ⌥⌘I on its own;
+    /// `isInspectable`/`developerExtrasEnabled` enable the inspector but don't
+    /// open it. `_inspector` is a private `_WKInspector` exposing `show`.
+    @objc public func showWebInspector(_ sender: Any?) {
+        guard let inspector = value(forKey: "_inspector") as? NSObject else { return }
+        inspector.perform(Selector(("show")))
+    }
+
     /// Forwarded from the navigation coordinator's `didFinish`.
     fileprivate func handleDidFinishLoad() {
         applyPendingScrollRestoreAndNotify()

@@ -189,7 +189,9 @@ struct MarkdownFeaturesTests {
         #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatHighlight(_:)), representedObject: nil) == .highlight)
         #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatWikilink(_:)), representedObject: nil) == .wikilink)
         #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatFootnote(_:)), representedObject: nil) == .footnote)
-        #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatComment(_:)), representedObject: nil) == .inlineComment)
+        // formatComment inserts an HTML `<!-- -->` comment, which is always
+        // recognized (parseHTMLComments is not feature-gated) — no flag needed.
+        #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatComment(_:)), representedObject: nil) == nil)
         // Callout split by type.
         #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatCallout(_:)), representedObject: "NOTE") == .callout)
         #expect(EditorTextView.requiredFeature(forAction: #selector(EditorTextView.formatCallout(_:)), representedObject: "info") == .calloutExtendedTypes)
