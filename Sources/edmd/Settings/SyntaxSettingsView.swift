@@ -31,14 +31,15 @@ struct SyntaxSettingsView: View {
             GridRow(alignment: .firstTextBaseline) {
                 Text("Markdown syntax:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Enable extended Markdown syntax", isOn: $enableNonGFM)
+                    Toggle("Enable extended Markdown syntax (non-GFM)", isOn: $enableNonGFM)
                         .onChange(of: enableNonGFM) { applyFeatures() }
                     // Markdown/link syntax auto-parses from the string literal.
-                    Text("Edmund is fully compatible with [GFM](https://github.github.com/gfm/) and provides optional support for [Obsidian-flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown).")
+                    Text("Opt-in support for [Obsidian-flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown).")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: 340, alignment: .leading)
+                        .padding(.leading, 20)
                 }
             }
             GridRow {
@@ -47,6 +48,7 @@ struct SyntaxSettingsView: View {
                 // further in, so the toggles read as its children.
                 featureGrid
                     .padding(.leading, 20)
+                    .padding(.top, -4)   // tighten the gap under the compat note
                     .disabled(!enableNonGFM)
             }
 
@@ -69,7 +71,7 @@ struct SyntaxSettingsView: View {
             // Pull the box up toward its popup (the outer 18-pt row spacing is
             // too wide a gap here — see the CotEditor Format ref).
             GridRow(alignment: .top) {
-                Text("Available code syntaxes:").gridColumnAlignment(.trailing)
+                Text("Available syntaxes:").gridColumnAlignment(.trailing)
                     .padding(.top, -10)
                 availableSyntaxList
                     .padding(.top, -10)
@@ -89,7 +91,7 @@ struct SyntaxSettingsView: View {
     /// matching CotEditor's 260-pt syntax box.
     private let boxWidth: CGFloat = 260
     /// One list row's height; the box shows exactly 5 (`rowHeight * 5`).
-    private let rowHeight: CGFloat = 24
+    private let rowHeight: CGFloat = 21
 
     /// The CotEditor-style list of definitions with a `+ − ✎` toolbar. A single
     /// square `.border` wraps the (separator-less) list and the white toolbar bar
@@ -100,14 +102,13 @@ struct SyntaxSettingsView: View {
         let selectionIsUser = selectedSyntax.map {
             SyntaxDefinitionStore.shared.isUserDefinition($0)
         } ?? false
-        let border = Color(nsColor: .separatorColor)
         return VStack(spacing: 0) {
             List(selection: $selectedSyntax) {
                 ForEach(defs, id: \.id) { lang in
                     Text(lang.label).tag(lang.id)
                         .listRowSeparator(.hidden)
-                        // Indent every row from the box's left edge.
-                        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 0))
+                        // Indent every row from the box's left edge (CotEditor-style).
+                        .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 0, trailing: 0))
                 }
             }
             .listStyle(.plain)
@@ -115,12 +116,6 @@ struct SyntaxSettingsView: View {
             .contentMargins(.vertical, 0, for: .scrollContent)  // no padding → exactly 5 rows
             .frame(height: rowHeight * 5)
             .background(Color(nsColor: .textBackgroundColor))
-            // Border the list only (top + sides); the inset hairline below is
-            // its bottom edge. The toolbar underneath is left unframed so no
-            // box border shows beneath the divider.
-            .overlay(alignment: .top)      { border.frame(height: 1) }
-            .overlay(alignment: .leading)  { border.frame(width: 1) }
-            .overlay(alignment: .trailing) { border.frame(width: 1) }
 
             // A lighter (#e5e5e5) hairline, inset from the edges — the divider
             // between the list and the +/−/✎ toolbar (CotEditor's separator).
@@ -143,18 +138,22 @@ struct SyntaxSettingsView: View {
             }
             .buttonStyle(.borderless)
             .padding(6)
+            .background(Color(nsColor: .textBackgroundColor))
         }
         .frame(width: boxWidth)
+        // Border the whole box on top + both sides, leaving the bottom open —
+        // so the inset divider reads as the only line near the toolbar.
+        .overlay(OpenBottomBorder().stroke(Color(nsColor: .separatorColor), lineWidth: 1))
     }
 
     private var featureGrid: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 24, verticalSpacing: 6) {
             GridRow {
                 cell("Front matter (YAML)", $frontMatter)
-                cell("Math ($ & $$)", $math)
+                cell("==Highlight==", $highlight)
             }
             GridRow {
-                cell("==Highlight==", $highlight)
+                cell("Math ($ & $$)", $math)
                 cell("%%Comment%%", $comment)
             }
             GridRow {
@@ -162,8 +161,8 @@ struct SyntaxSettingsView: View {
                 cell("#tag", $tag)
             }
             GridRow {
-                cell("Block ^1", $blockRef)
                 cell("Footnote [^1]", $footnote)
+                cell("Block ^1", $blockRef)
             }
             GridRow {
                 cell("Obsidian callout > [!note]", $obsidianCallout)
@@ -207,7 +206,7 @@ struct SyntaxSettingsView: View {
         refreshCodeBlocks()
     }
 
-    /// `+` — copy a chosen `.json` into ~/.edmund/syntaxes (overwriting a
+    /// `+` — copy a chosen `.json` into the user syntaxes dir (overwriting a
     /// same-named file), then reload.
     private func importDefinition() {
         let panel = NSOpenPanel()
@@ -248,5 +247,20 @@ struct SyntaxSettingsView: View {
               SyntaxDefinitionStore.shared.isUserDefinition(id),
               let url = SyntaxDefinitionStore.shared.fileURL(forName: id) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+}
+
+/// A rectangle border with its bottom edge left open — top + both sides only.
+/// Inset by half the line width so the 1-pt stroke stays inside the frame
+/// (keeping the box's outer width exactly `boxWidth`).
+private struct OpenBottomBorder: Shape {
+    func path(in rect: CGRect) -> Path {
+        let r = rect.insetBy(dx: 0.5, dy: 0.5)
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.minX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        return p
     }
 }
