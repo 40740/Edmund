@@ -87,11 +87,14 @@ enum HTMLTheme {
         return [
             rule("pre code", nil),
             rule("pre code .tok-keyword", .keyword),
+            rule("pre code .tok-command", .command),
             rule("pre code .tok-type", .type),
-            rule("pre code .tok-string", .string),
+            rule("pre code .tok-attribute", .attribute),
+            rule("pre code .tok-variable", .variable),
+            rule("pre code .tok-value", .value),
             rule("pre code .tok-number", .number),
+            rule("pre code .tok-string", .string),
             rule("pre code .tok-comment", .comment),
-            rule("pre code .tok-function", .function),
         ].joined(separator: "\n")
     }
 

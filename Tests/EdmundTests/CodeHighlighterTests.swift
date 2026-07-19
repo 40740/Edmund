@@ -17,10 +17,18 @@ struct CodeHighlighterTests {
         let t = tokens("// hi\nfunc greet() { let n = 42; return \"x\" }", "swift")
         #expect(t.contains { $0.text == "// hi" && $0.type == .comment })
         #expect(t.contains { $0.text == "func" && $0.type == .keyword })
-        #expect(t.contains { $0.text == "greet" && $0.type == .function })
+        #expect(t.contains { $0.text == "greet" && $0.type == .command })   // call → command
         #expect(t.contains { $0.text == "let" && $0.type == .keyword })
         #expect(t.contains { $0.text == "42" && $0.type == .number })
         #expect(t.contains { $0.text == "\"x\"" && $0.type == .string })
+    }
+
+    @Test("A def's `values` list colors constants as .value")
+    func valueScope() {
+        // swift.json lists nil/true/false under values, not keywords.
+        let t = tokens("let ok = true; let x = nil", "swift")
+        #expect(t.contains { $0.text == "true" && $0.type == .value })
+        #expect(t.contains { $0.text == "nil" && $0.type == .value })
     }
 
     @Test("# starts a comment in hash-comment languages only")

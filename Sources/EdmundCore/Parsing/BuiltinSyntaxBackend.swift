@@ -33,8 +33,17 @@ struct BuiltinSyntaxBackend: CodeSyntaxBackend {
         let blockClose  = def.blockComment.flatMap { $0.count == 2 ? Array($0[1].utf16) : nil }
         // String delimiters as single characters (first unit of each entry).
         let stringDelims = Set(def.strings.compactMap { $0.utf16.first })
-        let keywords = Set(def.keywords)
-        let types = Set(def.types)
+        // One word → scope lookup across all of the def's word-lists. Built in
+        // this order so a word in several lists takes the most specific scope
+        // (values/variables/attributes override commands override types over
+        // keywords) — the same precedence as CotEditor's scope ordering.
+        var wordType: [String: CodeHighlighter.TokenType] = [:]
+        for w in def.keywords   { wordType[w] = .keyword }
+        for w in def.types      { wordType[w] = .type }
+        for w in def.commands   { wordType[w] = .command }
+        for w in def.attributes { wordType[w] = .attribute }
+        for w in def.variables  { wordType[w] = .variable }
+        for w in def.values     { wordType[w] = .value }
 
         func matches(_ lit: [unichar], at i: Int) -> Bool {
             guard i + lit.count <= n else { return false }
@@ -96,18 +105,17 @@ struct BuiltinSyntaxBackend: CodeSyntaxBackend {
                 while i < n && isIdentChar(ns.character(at: i)) { i += 1 }
                 let range = NSRange(location: start, length: i - start)
                 let word = ns.substring(with: range)
-                if keywords.contains(word) {
-                    tokens.append(.init(range: range, type: .keyword))
-                } else if types.contains(word) {
-                    tokens.append(.init(range: range, type: .type))
+                if let t = wordType[word] {
+                    tokens.append(.init(range: range, type: t))
                 } else if let first = word.unicodeScalars.first, first.properties.isUppercase {
                     tokens.append(.init(range: range, type: .type))
                 } else {
                     // Function call: identifier immediately followed by `(`.
+                    // Folds into `command` (CotEditor colors calls as Commands).
                     var j = i
                     while j < n && ns.character(at: j) == 0x20 { j += 1 }
                     if j < n && ns.character(at: j) == 0x28 {
-                        tokens.append(.init(range: range, type: .function))
+                        tokens.append(.init(range: range, type: .command))
                     }
                 }
                 continue

@@ -13,8 +13,16 @@ import Foundation
 
 enum CodeHighlighter {
 
+    /// The themeable color scopes, aligned with CotEditor's Appearance palette
+    /// (Keywords, Commands, Types, Attributes, Variables, Values, Numbers,
+    /// Strings, Comments) so a future Settings › Themes can map each to a color.
+    /// The built-in scanner drives keyword/command/type/attribute/variable/value
+    /// from a def's word-lists and number/string/comment lexically; function
+    /// calls fold into `command` and character literals into `string` (the
+    /// lightweight scanner can't separate them — a full backend can).
     enum TokenType: Equatable {
-        case keyword, type, string, number, comment, function
+        case keyword, command, type, attribute, variable, value
+        case number, string, comment
     }
 
     struct Token: Equatable {

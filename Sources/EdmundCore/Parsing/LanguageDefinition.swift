@@ -24,13 +24,28 @@ struct LanguageDefinition: Codable, Equatable {
     let blockComment: [String]?
     /// Single-character string delimiters. Defaults to `"` and `'`.
     let strings: [String]
+    // Word-lists, one per themeable color scope (matching CotEditor's
+    // Keywords / Commands / Types / Attributes / Variables / Values). A word
+    // listed in more than one wins the most specific — see the scanner. All
+    // but `keywords`/`types` are optional so existing defs decode unchanged;
+    // users fill the extra scopes to control coloring for Settings › Themes.
+
     /// Keyword words (control flow, declarations, operators-as-words).
     let keywords: [String]
+    /// Builtin functions / commands (also the color for `ident(` call sites).
+    let commands: [String]
     /// Type / builtin words colored as types regardless of case.
     let types: [String]
+    /// Attribute / annotation words (e.g. decorators, HTML attributes).
+    let attributes: [String]
+    /// Variable words (globals, special names).
+    let variables: [String]
+    /// Constant values (e.g. true, false, nil).
+    let values: [String]
 
     enum CodingKeys: String, CodingKey {
-        case name, displayName, aliases, lineComment, blockComment, strings, keywords, types
+        case name, displayName, aliases, lineComment, blockComment, strings
+        case keywords, commands, types, attributes, variables, values
     }
 
     init(from decoder: Decoder) throws {
@@ -42,13 +57,19 @@ struct LanguageDefinition: Codable, Equatable {
         blockComment = try c.decodeIfPresent([String].self, forKey: .blockComment)
         strings = try c.decodeIfPresent([String].self, forKey: .strings) ?? ["\"", "'"]
         keywords = try c.decodeIfPresent([String].self, forKey: .keywords) ?? []
+        commands = try c.decodeIfPresent([String].self, forKey: .commands) ?? []
         types = try c.decodeIfPresent([String].self, forKey: .types) ?? []
+        attributes = try c.decodeIfPresent([String].self, forKey: .attributes) ?? []
+        variables = try c.decodeIfPresent([String].self, forKey: .variables) ?? []
+        values = try c.decodeIfPresent([String].self, forKey: .values) ?? []
     }
 
     /// Direct init for the built-in fallback def (no JSON round-trip).
     init(name: String, displayName: String? = nil, aliases: [String] = [],
          lineComment: String? = nil, blockComment: [String]? = nil,
-         strings: [String] = ["\"", "'"], keywords: [String] = [], types: [String] = []) {
+         strings: [String] = ["\"", "'"], keywords: [String] = [],
+         commands: [String] = [], types: [String] = [], attributes: [String] = [],
+         variables: [String] = [], values: [String] = []) {
         self.name = name.lowercased()
         self.displayName = displayName
         self.aliases = aliases.map { $0.lowercased() }
@@ -56,7 +77,11 @@ struct LanguageDefinition: Codable, Equatable {
         self.blockComment = blockComment
         self.strings = strings
         self.keywords = keywords
+        self.commands = commands
         self.types = types
+        self.attributes = attributes
+        self.variables = variables
+        self.values = values
     }
 
     /// The label shown in the settings list.
@@ -80,12 +105,13 @@ struct LanguageDefinition: Codable, Equatable {
             "guard", "defer", "async", "await", "go", "chan", "select", "with", "as",
             "is", "in", "of", "new", "delete", "typeof", "instanceof", "sizeof",
             "virtual", "override", "abstract", "extension", "init", "self", "this",
-            "super", "nil", "null", "none", "undefined", "true", "false", "and",
-            "or", "not", "lambda", "pass", "global", "nonlocal", "mut", "pub", "dyn",
-            "type", "object", "end", "begin", "then", "elsif", "unless", "until",
+            "super", "and", "or", "not", "lambda", "pass", "global", "nonlocal",
+            "mut", "pub", "dyn", "type", "object", "end", "begin", "then", "elsif",
+            "unless", "until",
         ],
         types: [
             "void", "int", "long", "short", "char", "float", "double", "bool",
             "boolean", "string", "unsigned", "signed", "auto", "typedef", "template",
-        ])
+        ],
+        values: ["nil", "null", "none", "undefined", "true", "false"])
 }

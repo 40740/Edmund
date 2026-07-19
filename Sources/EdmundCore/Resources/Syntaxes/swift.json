@@ -14,11 +14,12 @@
     "if", "else", "guard", "switch", "case", "default", "for", "while", "repeat",
     "do", "try", "catch", "throw", "throws", "rethrows", "defer", "return", "break",
     "continue", "fallthrough", "async", "await", "actor", "self", "Self", "super",
-    "nil", "true", "false", "inout", "operator", "precedencegroup"
+    "inout", "operator", "precedencegroup"
   ],
   "types": [
     "Int", "Int8", "Int16", "Int32", "Int64", "UInt", "Double", "Float", "Bool",
     "String", "Character", "Array", "Dictionary", "Set", "Optional", "Void", "Any",
     "AnyObject", "Result", "Data", "Date", "URL"
-  ]
+  ],
+  "values": ["nil", "true", "false"]
 }
