@@ -756,7 +756,7 @@ struct HTMLRenderer: MarkupVisitor {
         let relevant = spans.filter {
             switch $0.kind {
             case .highlight, .math, .wikilink, .comment, .footnoteReference,
-                 .link, .image, .tag, .blockRef: return true
+                 .link, .image, .embed, .tag, .blockRef: return true
             default: return false
             }
         }.sorted { $0.fullRange.location < $1.fullRange.location }
@@ -828,6 +828,14 @@ struct HTMLRenderer: MarkupVisitor {
                 if let width { dims += " width=\"\(width)\"" }
                 if let height { dims += " height=\"\(height)\"" }
                 out += "<img class=\"md-image\" data-src=\"\(attr(destination))\" alt=\"\"\(dims)>"
+            case .embed(let destination):
+                // A non-image `![[file]]` embed: emit the same blocked-placeholder
+                // markup as a blocked image, labelled by the file's type. A
+                // non-image embed never resolves to an asset, so no DocumentHTML
+                // pass is needed (unlike `.image`).
+                let icon = LucideIcons.inlineSVG("file-x") ?? ""
+                let label = escape(ImageLoadFailure.forEmbed(destination: destination).label)
+                out += "<span class=\"md-image-blocked\">\(icon)<span>\(label)</span></span>"
             case .tag(let name):
                 out += "<span class=\"tag\">#\(escape(name))</span>"
             case .blockRef:

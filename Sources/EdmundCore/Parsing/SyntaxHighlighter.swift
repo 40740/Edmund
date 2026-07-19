@@ -42,6 +42,11 @@ public enum SyntaxHighlighter {
             /// A markdown `![alt](src)` image, or an HTML `<img src="…">` tag
             /// (which may carry declared pixel dimensions).
             case image(destination: String, width: Int?, height: Int?)
+            /// A `![[file]]` wikilink embed of a non-image file (audio, video,
+            /// pdf, note, or an unrecognized type). Edmund can't render these, so
+            /// both back-ends draw a per-type "unsupported" placeholder instead.
+            /// Image embeds (`![[pic.png]]`) stay `.image` and render the picture.
+            case embed(destination: String)
             /// `depth` is the nesting level (0 = outermost, not itself inside
             /// another plain quote). A `> > text` emits two spans, depth 0 and
             /// depth 1, so each level's own marker hides and draws its own bar.
