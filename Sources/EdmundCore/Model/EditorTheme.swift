@@ -70,6 +70,15 @@ public struct EditorTheme: Equatable, Sendable {
         paragraphSpacingBefore: 2
     )
 
+    /// Theme for the Quick Look preview: `.default` but in the system UI font
+    /// (`system-ui`, resolved by `HTMLTheme.cssFontStack`) rather than the
+    /// editor's serif body face.
+    public static let quickLook: EditorTheme = {
+        var t = EditorTheme.default
+        t.fontName = "system-ui"
+        return t
+    }()
+
     // MARK: - Derived Properties
 
     @MainActor public var bodyFont: NSFont {

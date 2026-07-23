@@ -119,4 +119,49 @@ struct SyntaxDefinitionStoreTests {
         store.defaultLanguage = "plain"
         #expect(CodeHighlighter.tokenize("# hi", language: nil).isEmpty)
     }
+
+    // MARK: - Bundled AppleScript definition
+
+    @Test("AppleScript resolves by name and alias with -- / (* *) comments")
+    func appleScriptDefinition() {
+        let store = SyntaxDefinitionStore.shared
+        for id in ["applescript", "osascript"] {
+            guard case let .definition(def) = store.resolve(id) else {
+                Issue.record("\(id) did not resolve to a definition"); continue
+            }
+            #expect(def.name == "applescript")
+            #expect(def.lineComment == "--")
+            #expect(def.blockComment == ["(*", "*)"])
+        }
+    }
+
+    @Test("AppleScript word-list scopes are pairwise disjoint")
+    func appleScriptScopesDisjoint() {
+        guard case let .definition(def) = SyntaxDefinitionStore.shared.resolve("applescript") else {
+            Issue.record("applescript did not resolve"); return
+        }
+        let scopes = [def.keywords, def.commands, def.types, def.attributes,
+                      def.variables, def.values]
+        var seen: Set<String> = []
+        for word in scopes.flatMap({ $0 }) {
+            #expect(seen.insert(word).inserted, "duplicate scope word: \(word)")
+        }
+    }
+
+    @Test("AppleScript highlights -- line, (* block *) and \"string\"")
+    func appleScriptTokens() {
+        let code = """
+        -- note
+        (* multi
+        line *)
+        set s to "hi"
+        """
+        let ns = code as NSString
+        let t = CodeHighlighter.tokenize(code, language: "applescript")
+            .map { (text: ns.substring(with: $0.range), type: $0.type) }
+        #expect(t.contains { $0.text == "-- note" && $0.type == .comment })
+        #expect(t.contains { $0.text == "(* multi\nline *)" && $0.type == .comment })
+        #expect(t.contains { $0.text == "\"hi\"" && $0.type == .string })
+        #expect(t.contains { $0.text == "set" && $0.type == .keyword })
+    }
 }

@@ -38,6 +38,51 @@ ACTOOL="$(xcrun --find actool 2>/dev/null || echo /Applications/Xcode.app/Conten
     --output-partial-info-plist "$(mktemp)" \
     >/dev/null
 
+# Generate the App Intents metadata bundle (Metadata.appintents) that Shortcuts
+# and Spotlight read to discover the intents in Intents.swift.
+#
+# KNOWN LIMITATION: appintentsmetadataprocessor needs per-file .swiftconstvalues
+# supplementary outputs from the Swift compiler (it fails otherwise with
+# "No swift const values found … BinaryScanningError error 6"). Xcode's build
+# system requests those outputs via SWIFT_ENABLE_EMIT_CONST_VALUES; SwiftPM has
+# no equivalent — passing -const-gather-protocols-file alone does not populate
+# the output-file-map with const-values entries, so nothing is emitted. Until
+# SwiftPM supports it (or the app is built from an Xcode project), the metadata
+# bundle can't be produced here. The intents still compile and are correct; they
+# simply won't appear in Shortcuts from a SwiftPM-built app. The Services-menu
+# entries (Info.plist NSServices) provide the same "Open in Edmund" / "New
+# Document with Selection" actions with no metadata dependency.
+#
+# The step below is left in, best-effort: it succeeds automatically the day the
+# toolchain can emit the const values, and is a no-op warning until then.
+echo "Generating App Intents metadata..."
+AIMP="$(xcrun --find appintentsmetadataprocessor 2>/dev/null \
+    || echo /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor)"
+CONST_LIST="$(find .build/release -name '*.swiftconstvalues' 2>/dev/null | head -1 || true)"
+if [ -x "$AIMP" ] && [ -n "$CONST_LIST" ]; then
+    TOOLCHAIN_DIR="$(dirname "$(dirname "$(dirname "$AIMP")")")"
+    CONST_FILELIST="$(mktemp)"
+    find .build/release -name '*.swiftconstvalues' > "$CONST_FILELIST"
+    "$AIMP" \
+        --output "${BUNDLE}/Contents/Resources" \
+        --module-name edmd \
+        --target-triple "$(uname -m)-apple-macos14.0" \
+        --toolchain-dir "$TOOLCHAIN_DIR" \
+        --sdk-root "$(xcrun --show-sdk-path)" \
+        --binary-file "${BUNDLE}/Contents/MacOS/${EXECUTABLE}" \
+        --bundle-identifier com.i7t5.edmund \
+        --source-files Sources/edmd/App/Intents.swift \
+        --swift-const-vals-list "$CONST_FILELIST" \
+        --deployment-target 14.0 \
+        --xcode-version "$(xcodebuild -version 2>/dev/null | tail -1 | awk '{print $NF}')" \
+        >/dev/null 2>&1 \
+        && echo "  → Contents/Resources/Metadata.appintents" \
+        || echo "  ! metadata export failed; intents work but Shortcuts discovery unavailable" >&2
+else
+    echo "  ! no .swiftconstvalues from SwiftPM build; Shortcuts discovery unavailable" >&2
+    echo "    (intents still compile; use the Services menu, or build via an Xcode project)" >&2
+fi
+
 # Embed Sparkle.framework so the installed bundle is self-contained.
 # SwiftPM links Sparkle but doesn't copy the framework (which carries the XPC
 # helpers and Autoupdate.app) into the bundle; without this the updater crashes
@@ -56,6 +101,23 @@ cp -R "$SPARKLE_FW" "${BUNDLE}/Contents/Frameworks/"
 # the app is installed.
 install_name_tool -add_rpath "@executable_path/../Frameworks" \
     "${BUNDLE}/Contents/MacOS/${EXECUTABLE}" 2>/dev/null || true
+
+# Assemble the Quick Look preview extension as an .appex in Contents/PlugIns.
+# It's an executable target (SwiftPM has no app-extension product); its entry
+# point is Foundation's NSExtensionMain via the linker flag in Package.swift.
+# Unlike the app's own SwiftMath bundle (copied to the .app root *after* the
+# seal), the appex's resource bundles go inside Contents/Resources *before* it
+# is signed, so they're sealed legally: an appex's Bundle.module resolves via
+# Bundle.main.resourceURL, which for an .appex is Contents/Resources.
+echo "Assembling Quick Look extension..."
+QL_NAME="EdmundQuickLook"
+APPEX="${BUNDLE}/Contents/PlugIns/${QL_NAME}.appex"
+mkdir -p "${APPEX}/Contents/MacOS" "${APPEX}/Contents/Resources"
+cp ".build/release/${QL_NAME}" "${APPEX}/Contents/MacOS/${QL_NAME}"
+cp Resources/QuickLookInfo.plist "${APPEX}/Contents/Info.plist"
+for bundle in .build/release/*.bundle; do
+    [ -e "$bundle" ] && cp -R "$bundle" "${APPEX}/Contents/Resources/"
+done
 
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.
 #
@@ -77,8 +139,16 @@ install_name_tool -add_rpath "@executable_path/../Frameworks" \
 # actual check is non-strict (SecStaticCodeCheckValidityWithErrors with
 # kSecCSCheckAllArchitectures), which tolerates it. Verified end-to-end.
 echo "Code signing..."
+# Sign inside-out, then seal the app WITHOUT --deep. --deep on the outer .app
+# would re-sign every nested item with default flags — stripping the appex's
+# sandbox entitlements and resetting its identifier to the app's. Instead we
+# sign each nested item explicitly (Sparkle deep so its own XPC helpers are
+# covered; the appex with its entitlements) and let the non-deep app sign just
+# seal the container over the already-signed contents.
 codesign --force --deep --sign - "${BUNDLE}/Contents/Frameworks/Sparkle.framework"
-codesign --force --deep --sign - --identifier "com.i7t5.edmd" "$BUNDLE"
+codesign --force --sign - --entitlements Resources/QuickLook.entitlements \
+    --identifier "com.i7t5.edmund.quicklook" "$APPEX"
+codesign --force --sign - --identifier "com.i7t5.edmd" "$BUNDLE"
 
 # SwiftPM dependencies that ship resources (SwiftMath's math fonts) emit a
 # per-target bundle next to the binary. SwiftMath's generated Bundle.module

@@ -4,6 +4,15 @@ All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Added
+- macOS Services menu: "Open in Edmund" and "New Edmund Document with Selection"
+- App Intents ("Open in Edmund", "New Edmund Document") for Shortcuts / Spotlight (metadata generation requires an Xcode-project build; see build-app.sh)
+- Quick Look preview extension: renders Markdown as rich text, following the system light/dark appearance
+- AppleScript code-fence syntax highlighting
+
+
 ## [0.2.1] - 2026-07-17
 
 ### Added

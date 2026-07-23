@@ -382,6 +382,11 @@ enum HTMLTheme {
         if trimmed.isEmpty || trimmed == "ui-monospace" {
             return "ui-monospace, \(generic)"
         }
+        // "system-ui" is a keyword, not a family to quote — used by the Quick
+        // Look preset so previews render in the platform UI font.
+        if trimmed == "system-ui" {
+            return "-apple-system, system-ui, \(generic)"
+        }
         return "\"\(trimmed)\", -apple-system, \(generic)"
     }
 
