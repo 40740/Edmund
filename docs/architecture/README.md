@@ -79,6 +79,9 @@ write-ups:
   drawing works, hiding, the height-estimate and image-wedge constraints.
 - [`reader-and-export.md`](reader-and-export.md) — Read mode's WKWebView,
   the sandbox and raw-HTML policy, PDF/Print, mode-switch viewport sync.
+- [`macos-integrations.md`](macos-integrations.md) — Services, App Intents,
+  Quick Look preview, AppleScript syntax; and the two signing/toolchain
+  limitations (App Intents metadata, ad-hoc appex launch).
 - Planned, not yet written: `edit-flow-and-undo.md`,
   `app-shell-and-settings.md`.
 
