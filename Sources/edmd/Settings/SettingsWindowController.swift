@@ -13,7 +13,11 @@ final class SettingsWindowController: NSWindowController {
         let tabController = SettingsTabViewController()
         let window = NSWindow(contentViewController: tabController)
         window.styleMask = [.titled, .closable]
-        window.title = "Settings"
+        // The tab controller titles itself after the selected pane while its
+        // view loads (above, as the window takes it as content view controller),
+        // so seed the window from that — assigning a literal here would paint
+        // over the first pane's name until the user switched tabs.
+        window.title = tabController.title ?? "Settings"
         window.toolbarStyle = .preference
         window.center()
         window.isReleasedWhenClosed = false
@@ -30,13 +34,10 @@ final class SettingsTabViewController: NSTabViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         tabStyle = .toolbar
-        // The window title follows this controller's title; keep it "Settings"
-        // (NSTabViewController otherwise blanks it to the selected pane's nil title
-        // on each switch, showing "Untitled").
-        title = "Settings"
 
         addPane(GeneralSettingsView(), label: "General", symbol: "gearshape")
         addPane(AppearanceSettingsView(fonts: fonts), label: "Appearance", symbol: "eyeglasses")
+        addPane(EditSettingsView(), label: "Edit", symbol: "square.and.pencil")
         addPane(SyntaxSettingsView(), label: "Syntax", symbol: "chevron.left.forwardslash.chevron.right")
         addPane(AdvancedSettingsView(), label: "Advanced", symbol: "gearshape.2")
     }
@@ -53,8 +54,13 @@ final class SettingsTabViewController: NSTabViewController {
 
     override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
         super.tabView(tabView, didSelect: tabViewItem)
-        title = "Settings"   // re-assert after super resets it to the pane's nil title
         guard let tabViewItem else { return }
+        // The window title follows this controller's title, and names the
+        // selected pane (as System Settings does). It has to be set from the
+        // item's label: super resets the title to the pane's own — nil, since
+        // the panes are untitled NSHostingControllers — which would show
+        // "Untitled".
+        title = tabViewItem.label
         switchPane(to: tabViewItem)
     }
 

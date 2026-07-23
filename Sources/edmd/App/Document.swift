@@ -133,6 +133,7 @@ class Document: NSDocument, HeadingNavigable {
         editor.allowRemoteImages = !AppSettings.blockExternalImages
         editor.markdownFeatures = AppSettings.markdownFeatures
         editor.typewriterModeEnabled = AppDelegate.typewriterModeEnabled()
+        AppSettings.applyEditSettings(to: editor)
         editor.document = self
         // Following an internal link while in Read mode scrolls the visible web
         // view (the editor is hidden), not the editor itself.
@@ -208,9 +209,10 @@ class Document: NSDocument, HeadingNavigable {
         }
         window.center()
 
-        let wc = NSWindowController(window: window)
+        let wc = DocumentWindowController(window: window)
         addWindowController(wc)
         window.makeFirstResponder(editor)
+        applyToolbarVisibility()
         // Honor the persisted source-mode preference for the editing view.
         if AppSettings.sourceMode { setViewMode(.source) }
         updateStatusBar()
@@ -622,13 +624,38 @@ class Document: NSDocument, HeadingNavigable {
     /// the new editing mode right away.
     @objc func toggleSourceMode(_ sender: Any?) {
         AppSettings.sourceMode.toggle()
+        applySourceMode()
+    }
+
+    /// Swaps the editing view to whatever the source-mode setting now says.
+    /// Called after the menu item toggles it, and by Settings ▸ Edit ▸ Display
+    /// (which writes the setting itself, via @AppStorage).
+    func applySourceMode() {
         if editor.viewMode != .reading { setViewMode(editingMode) }
     }
 
-    /// Keeps the View-menu "Show Source in Editor" checkmark in sync with the setting.
+    /// The View menu's Show/Hide Toolbar item. Goes through the setting rather
+    /// than AppKit's own `toggleToolbarShown(_:)` so the menu and the
+    /// Settings ▸ Edit ▸ Display checkbox can't drift apart.
+    @objc func toggleToolbarShown(_ sender: Any?) {
+        AppSettings.showToolbar.toggle()
+        AppSettings.applyEditSettingsToOpenDocuments()
+    }
+
+    /// Shows or hides this window's toolbar per the setting.
+    func applyToolbarVisibility() {
+        let window = windowControllers.first?.window
+        window?.toolbar?.isVisible = AppSettings.showToolbar
+    }
+
+    /// Keeps the View-menu "Show Source in Editor" checkmark and the
+    /// Show/Hide Toolbar title in sync with the settings.
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(toggleSourceMode(_:)) {
             item.state = AppSettings.sourceMode ? .on : .off
+        }
+        if item.action == #selector(toggleToolbarShown(_:)) {
+            item.title = AppSettings.showToolbar ? "Hide Toolbar" : "Show Toolbar"
         }
         return super.validateMenuItem(item)
     }
@@ -761,5 +788,19 @@ final class DocumentWindow: NSWindow {
         case .leftMouseDown:  return event.modifierFlags.contains(.control)
         default:              return false
         }
+    }
+}
+
+// MARK: - Document Window Controller
+
+/// The document window's controller. Exists only to answer the full-screen
+/// presentation query — NSWindowController makes itself the window's delegate,
+/// and `.autoHideToolbar` can only be requested from there.
+final class DocumentWindowController: NSWindowController, NSWindowDelegate {
+    func window(_ window: NSWindow,
+                willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions)
+    -> NSApplication.PresentationOptions {
+        guard AppSettings.autoHideToolbar else { return proposedOptions }
+        return proposedOptions.union([.autoHideToolbar])
     }
 }

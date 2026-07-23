@@ -207,6 +207,30 @@ public class EditorTextView: NSTextView {
         }
     }
 
+    // MARK: - Editing Behavior (pushed from AppSettings ▸ Edit)
+    //
+    // EdmundCore can't see `AppSettings` (it lives in the app target), so every
+    // Edit-pane behavior is an instance property the app pushes in — the same
+    // shape as `markdownFeatures` and `allowRemoteImages` above. Each default is
+    // the behavior the editor had before the setting existed.
+
+    /// Whether Return inside a list item continues the list with the next
+    /// marker. Off → Return inserts a plain newline. See
+    /// EditorTextView+ListContinuation.
+    public var listContinuationEnabled = true
+
+    /// Whether typing an opening bracket or quote inserts its closing partner.
+    /// See EditorTextView+AutoPairs.
+    public var autoCloseBracketsEnabled = true
+
+    /// Whether one indent unit is a tab character rather than `indentWidth`
+    /// spaces. See EditorTextView+Indentation.
+    public var indentUsesTabs = false
+
+    /// One indent unit's width in spaces (ignored when `indentUsesTabs`).
+    /// Clamped on read, so a garbage value can't produce an empty indent unit.
+    public var indentWidth = 2
+
     // MARK: - Derived Visual Properties
 
     /// The app accent: the macOS system accent (`controlAccentColor`), which

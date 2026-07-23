@@ -68,7 +68,9 @@ extension EditorTextView {
             super.insertNewline(sender)
             return
         }
-        if handleListNewline(sel) { return }
+        // Blockquote/callout continuation is deliberately not gated: the setting
+        // is worded "Automatically continue lists".
+        if listContinuationEnabled, handleListNewline(sel) { return }
         if handleBlockquoteNewline(at: sel.location) { return }
         super.insertNewline(sender)
     }
@@ -107,7 +109,7 @@ extension EditorTextView {
             insertText("\n" + next, replacementRange: replaceRange)
         } else if !indent.isEmpty {
             // Indented empty list line → un-indent one level
-            let maxRemove = Self.indentUnit.count
+            let maxRemove = indentUnit.count
             let leading = indent.prefix(while: { $0 == " " }).count
             let remove = indent.hasPrefix("\t") ? 1 : min(leading, maxRemove)
             let dedented = String(block.content.dropFirst(remove))

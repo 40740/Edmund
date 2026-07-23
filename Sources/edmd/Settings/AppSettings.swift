@@ -48,6 +48,36 @@ enum AppSettings {
         static let displayOrder: [AppearanceMode] = [.light, .dark, .matchSystem]
     }
 
+    /// When the editor draws invisible characters (spaces, tabs, line endings).
+    /// Not implemented yet — the setting persists so the UI can ship ahead of it.
+    enum InvisibleCharacterMode: String, CaseIterable, Identifiable {
+        case always
+        case uponSelection
+        case never
+        var id: Self { self }
+        var label: String {
+            switch self {
+            case .always: return "Always"
+            case .uponSelection: return "Upon Selection"
+            case .never: return "Never"
+            }
+        }
+    }
+
+    /// What one indent unit is made of. The width (in spaces) is `indentWidth`;
+    /// a tab indent is always one tab character regardless of the width.
+    enum IndentStyle: String, CaseIterable, Identifiable {
+        case spaces
+        case tabs
+        var id: Self { self }
+        var label: String {
+            switch self {
+            case .spaces: return "Spaces"
+            case .tabs: return "Tabs"
+            }
+        }
+    }
+
     /// How long diagnostic logs are kept before being pruned on launch.
     enum LogRetention: String, CaseIterable, Identifiable {
         case oneDay, twoDays, oneWeek, twoWeeks, thirtyDays, never
@@ -114,6 +144,27 @@ enum AppSettings {
         // The language a fenced code block with no info string is highlighted as.
         // "plain" = no highlighting. Consumed by the code-block highlighter.
         static let defaultCodeSyntax = "settings.syntax.defaultCodeSyntax"
+        // Edit ▸ Display.
+        static let showToolbar         = "settings.edit.showToolbar"
+        static let autoHideToolbar     = "settings.edit.autoHideToolbar"
+        static let showInvisibles      = "settings.edit.showInvisibles"
+        static let invisibleLineEnding = "settings.edit.invisibleLineEnding"
+        static let invisibleTab        = "settings.edit.invisibleTab"
+        static let invisibleSpace      = "settings.edit.invisibleSpace"
+        static let invisibleWhitespace = "settings.edit.invisibleWhitespace"
+        static let invisibleControl    = "settings.edit.invisibleControl"
+        static let showListIndentGuides = "settings.edit.showListIndentGuides"
+        static let showLineNumbers     = "settings.edit.showLineNumbers"
+        static let highlightCurrentLine = "settings.edit.highlightCurrentLine"
+        // Edit ▸ Editing.
+        static let indentStyle         = "settings.edit.indentStyle"
+        static let indentWidth         = "settings.edit.indentWidth"
+        static let detectIndent        = "settings.edit.detectIndent"
+        static let strictLineBreaks    = "settings.edit.strictLineBreaks"
+        static let hardWrapLongLines   = "settings.edit.hardWrapLongLines"
+        static let autoCloseBrackets   = "settings.edit.autoCloseBrackets"
+        static let continueLists       = "settings.edit.continueLists"
+        static let spellCheck          = "settings.edit.spellCheck"
     }
 
     /// The default language for untagged code fences ("plain" = none).
@@ -350,6 +401,68 @@ enum AppSettings {
     static func applyCodeSyntax() {
         SyntaxDefinitionStore.shared.defaultLanguage = defaultCodeSyntax
         SyntaxDefinitionStore.shared.reload()
+    }
+
+    // MARK: - Edit pane
+
+    /// Whether document windows show their toolbar. Mirrored by the View menu's
+    /// Show/Hide Toolbar item and the Edit ▸ Display checkbox.
+    static var showToolbar: Bool {
+        get { boolDefaultTrue(Key.showToolbar) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.showToolbar) }
+    }
+
+    /// Whether the toolbar hides itself in full screen (revealed by moving the
+    /// pointer to the top of the screen).
+    static var autoHideToolbar: Bool {
+        get { boolDefaultTrue(Key.autoHideToolbar) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.autoHideToolbar) }
+    }
+
+    static var indentStyle: IndentStyle {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: Key.indentStyle),
+                  let style = IndentStyle(rawValue: raw) else {
+                return .spaces
+            }
+            return style
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.indentStyle) }
+    }
+
+    /// One indent unit, in spaces. Defaults to 2 — the width the editor has
+    /// always used, so an existing install's indentation doesn't change.
+    static var indentWidth: Int {
+        get {
+            let stored = UserDefaults.standard.integer(forKey: Key.indentWidth)
+            return (1...8).contains(stored) ? stored : 2
+        }
+        set { UserDefaults.standard.set(newValue, forKey: Key.indentWidth) }
+    }
+
+    static var autoCloseBrackets: Bool { boolDefaultTrue(Key.autoCloseBrackets) }
+    static var continueLists: Bool { boolDefaultTrue(Key.continueLists) }
+    static var spellCheck: Bool { UserDefaults.standard.bool(forKey: Key.spellCheck) }
+
+    /// Pushes every Edit-pane setting into an editor. Called when a document
+    /// window is built and again — for every open document — whenever the pane
+    /// changes something.
+    @MainActor static func applyEditSettings(to editor: EditorTextView) {
+        editor.listContinuationEnabled = continueLists
+        editor.autoCloseBracketsEnabled = autoCloseBrackets
+        editor.indentUsesTabs = indentStyle == .tabs
+        editor.indentWidth = indentWidth
+        editor.isContinuousSpellCheckingEnabled = spellCheck
+    }
+
+    /// Applies the Edit-pane settings to every open document (editor behavior
+    /// and toolbar visibility), for live changes from the Settings window and
+    /// the View menu.
+    @MainActor static func applyEditSettingsToOpenDocuments() {
+        for case let document as Document in NSDocumentController.shared.documents {
+            if let editor = document.editor { applyEditSettings(to: editor) }
+            document.applyToolbarVisibility()
+        }
     }
 
     @MainActor static func applyAppearance() {

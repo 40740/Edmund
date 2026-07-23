@@ -49,6 +49,36 @@ struct EditorTextViewListIndentationTests {
         #expect(editor.rawSource == "  - item")
     }
 
+    @Test("Indent width setting changes how much Tab adds")
+    @MainActor func tabHonorsIndentWidth() {
+        let editor = makeEditor()
+        editor.indentWidth = 4
+        editor.loadContent("- item")
+        editor.setSelectedRange(NSRange(location: 2, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "    - item")
+    }
+
+    @Test("Tab indents with a tab character when the style is tabs")
+    @MainActor func tabIndentsWithTabCharacter() {
+        let editor = makeEditor()
+        editor.indentUsesTabs = true
+        editor.loadContent("- item")
+        editor.setSelectedRange(NSRange(location: 2, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "\t- item")
+    }
+
+    @Test("Shift-Tab removes a tab indent")
+    @MainActor func backtabRemovesTabIndent() {
+        let editor = makeEditor()
+        editor.indentUsesTabs = true
+        editor.loadContent("\t- item")
+        editor.setSelectedRange(NSRange(location: 3, length: 0))
+        editor.insertBacktab(nil)
+        #expect(editor.rawSource == "- item")
+    }
+
     @Test("Tab on ordered list line adds 2 spaces")
     @MainActor func tabIndentsOrderedList() {
         let editor = makeEditor()
