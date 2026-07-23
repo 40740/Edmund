@@ -55,7 +55,7 @@ struct EditSettingsView: View {
                         .padding(.leading, 20)
                         .disabled(!showToolbar)
                 }
-                .padding(.top, -6)
+                .padding(.top, 2)
                 .onChange(of: showToolbar) { AppSettings.applyEditSettingsToOpenDocuments() }
             }
             
@@ -76,7 +76,7 @@ struct EditSettingsView: View {
             
             GridRow { Divider().gridCellColumns(2) }
 
-            // MARK: - Content-level settings
+            // MARK: - Content-level editing settings
             GridRow {
                 Text("Indentation:")
                     .gridColumnAlignment(.trailing)
@@ -109,6 +109,29 @@ struct EditSettingsView: View {
             }
             
             GridRow {
+                Text("Words:")
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Automatically insert closing parentheses and quotes", isOn: $autoCloseBrackets)
+                    Toggle("Check spelling while typing", isOn: $spellCheck)
+                }
+                .onChange(of: autoCloseBrackets) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: spellCheck) { AppSettings.applyEditSettingsToOpenDocuments() }
+            }
+            
+            GridRow {
+                Text("Lists:")
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Show list indent guides", isOn: $showListIndentGuides)
+                        .disabled(true)   // not implemented yet
+                    Toggle("Automatically continue lists", isOn: $continueLists)
+                        .onChange(of: continueLists) { AppSettings.applyEditSettingsToOpenDocuments() }
+                }
+            }
+            
+            GridRow { Divider().gridCellColumns(2) }
+                        
+            // MARK: - Content-level display settings
+            GridRow {
                 Text("Characters:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
@@ -128,19 +151,10 @@ struct EditSettingsView: View {
                     }
                     invisibleCharacterGrid
                         .padding(.leading, 20)
+                        .padding(.bottom, -16)
                         .disabled(!showInvisibles)
                 }
                 .disabled(true)   // not implemented yet
-            }
-            
-            GridRow {
-                Text("Words:")
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Automatically insert closing parentheses and quotes", isOn: $autoCloseBrackets)
-                    Toggle("Check spelling while typing", isOn: $spellCheck)
-                }
-                .onChange(of: autoCloseBrackets) { AppSettings.applyEditSettingsToOpenDocuments() }
-                .onChange(of: spellCheck) { AppSettings.applyEditSettingsToOpenDocuments() }
             }
             
             GridRow {
@@ -159,16 +173,6 @@ struct EditSettingsView: View {
                         .padding(.leading, 20)
                 }
                 .disabled(true)   // not implemented yet
-            }
-            
-            GridRow {
-                Text("Lists:")
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Show list indent guides", isOn: $showListIndentGuides)
-                        .disabled(true)   // not implemented yet
-                    Toggle("Automatically continue lists", isOn: $continueLists)
-                        .onChange(of: continueLists) { AppSettings.applyEditSettingsToOpenDocuments() }
-                }
             }
             
             GridRow {
