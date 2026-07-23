@@ -23,9 +23,9 @@ struct InlineStylingActiveTests {
 
         // Delimiters should be dimmed
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
+        #expect(delimColor == expectedDimColor)
         let endDelimColor = fgColor(at: 7, in: editor)
-        #expect(endDelimColor == NSColor.tertiaryLabelColor)
+        #expect(endDelimColor == expectedDimColor)
     }
 
     @Test("Active __bold__ with underscores has bold font")
@@ -50,7 +50,7 @@ struct InlineStylingActiveTests {
         #expect(NSFontManager.shared.traits(of: contentFont).contains(.italicFontMask))
 
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
+        #expect(delimColor == expectedDimColor)
     }
 
     @Test("Active _italic_ with underscores has italic font")
@@ -101,7 +101,7 @@ struct InlineStylingActiveTests {
         #expect(contentColor == editor.foregroundColor)
 
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
+        #expect(delimColor == expectedDimColor)
     }
 
     // MARK: - Strikethrough
@@ -144,7 +144,7 @@ struct InlineStylingActiveTests {
 
         // Delimiter "[" should be dimmed
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
+        #expect(delimColor == expectedDimColor)
     }
 
     // MARK: - Combinations

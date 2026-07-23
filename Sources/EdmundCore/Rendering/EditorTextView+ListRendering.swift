@@ -64,12 +64,10 @@ extension EditorTextView {
         NSColor(srgbRed: 85 / 255, green: 85 / 255, blue: 85 / 255, alpha: 1)
     }
 
-    /// Ink for every list marker (dot, checkbox circle, ordered "N."), shared so
-    /// the three marker kinds always read at the same weight. Light mode keeps
-    /// the original `tertiaryLabelColor`.
-    var listMarkerColor: NSColor {
-        isDarkAppearance ? Self.darkChromeGray : .tertiaryLabelColor
-    }
+    /// Ink for every list marker (dot, checkbox circle, ordered "N."). Markers
+    /// are part of the dim tier, so this is `syntaxDimColor` under a name that
+    /// says what it is at the call sites.
+    var listMarkerColor: NSColor { syntaxDimColor }
 
     /// Creates a fragment overlay with an SF Symbol for checkbox rendering.
     /// Unchecked: dim outlined `circle`. Checked: filled `checkmark.circle.fill`.

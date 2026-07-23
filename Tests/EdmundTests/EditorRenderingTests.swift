@@ -906,7 +906,7 @@ struct EditorRecomposeTests {
         let ts = editor.textStorage!
         // ** at position 0 should be dimmed (visible), not hidden
         let color = ts.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
-        #expect(color == NSColor.tertiaryLabelColor)
+        #expect(color == expectedDimColor)
         let f = ts.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
         #expect(f != nil)
         #expect(f!.pointSize > 1.0)  // Not hidden

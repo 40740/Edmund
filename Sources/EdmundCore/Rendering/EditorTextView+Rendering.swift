@@ -37,8 +37,14 @@ extension NSAttributedString.Key {
 
 extension EditorTextView {
 
-    /// Color for dimmed syntax delimiters (*, **, `, #, etc.)
-    var syntaxDimColor: NSColor { .tertiaryLabelColor }
+    /// Color for dimmed syntax delimiters (*, **, `, #, …) and for the ink of
+    /// syntax that stays visible but recedes (%%comments%%, ^blockrefs). In dark
+    /// mode `tertiaryLabelColor` (0.25 white) sits too close to the background,
+    /// so the whole dim tier moves to the marker gray — one tertiary substitute
+    /// for every dimmed thing on the dark side. Light mode is untouched.
+    var syntaxDimColor: NSColor {
+        isDarkAppearance ? Self.darkChromeGray : .tertiaryLabelColor
+    }
 
     /// Color for links and wikilinks — always the theme's accent blue, independent of
     /// the system accent so links stay consistently blue across user accent preferences.
@@ -373,7 +379,7 @@ extension EditorTextView {
                                             length: paraRange.upperBound - firstLineEnd)
                     for (range, hugs) in [(firstRange, true), (restRange, false)] {
                         guard range.length > 0 else { continue }
-                        let ownBar = BlockDecoration(.leftBar(color: .tertiaryLabelColor, width: 2),
+                        let ownBar = BlockDecoration(.leftBar(color: syntaxDimColor, width: 2),
                                                      inset: CGFloat(depth) * quoteMarkerWidth,
                                                      hugsTextTop: hugs)
                         if depth == 0 {
