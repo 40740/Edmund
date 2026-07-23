@@ -57,7 +57,7 @@ enum AppSettings {
         var id: Self { self }
         var label: String {
             switch self {
-            case .uponSelection: return "Upon selection"
+            case .uponSelection: return "Upon Selection"
             case .always: return "Always"
             }
         }
