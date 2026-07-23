@@ -24,6 +24,14 @@ let package = Package(
         .executableTarget(
             name: "edmd",
             dependencies: ["EdmundCore", .product(name: "Sparkle", package: "Sparkle")]),
+        // The Quick Look preview extension. Built as an executable target but
+        // packaged as an `.appex` by build-app.sh; its entry point is
+        // Foundation's NSExtensionMain, redirected via the linker `-e` flag
+        // (SwiftPM has no first-class app-extension product type).
+        .executableTarget(
+            name: "EdmundQuickLook",
+            dependencies: ["EdmundCore"],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"])]),
         .testTarget(
             name: "EdmundTests",
             dependencies: ["EdmundCore"]),
