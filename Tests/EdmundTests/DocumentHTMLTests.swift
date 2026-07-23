@@ -55,6 +55,19 @@ struct DocumentHTMLTests {
         #expect(out.contains("src=\"data:image/png;base64,"))
     }
 
+    // `$$…$$` inside a prose line gets its own centered block (as a span, since
+    // the placeholder sits inside the paragraph's <p>); the prose keeps flowing
+    // above and below it.
+    @Test("Display math amid prose becomes a centered block, not an inline image")
+    func displayMathAmidProseIsBlock() {
+        let out = doc("before $$x^2$$ after")
+        #expect(out.contains("<span class=\"math-display-block\"><img class=\"math\""))
+        #expect(!out.contains("math-display-inline"))   // placeholder was filled
+        #expect(out.contains("before"))
+        #expect(out.contains("after"))
+        #expect(out.contains(".math-display-block { display: block;"))   // CSS shipped
+    }
+
     @Test("Unparseable math falls back to showing the source")
     func mathFallback() {
         let out = doc("bad $\\frac{$ math")

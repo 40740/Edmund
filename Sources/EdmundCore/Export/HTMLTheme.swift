@@ -274,6 +274,9 @@ enum HTMLTheme {
     img { max-width: 100%; }
     img.math { vertical-align: middle; }
     .math-display { text-align: center; margin: 1em 0; }
+    /* `$$…$$` embedded in a prose line: same centered block treatment, but as
+       a span (it lives inside the paragraph's <p>, where a <div> is invalid). */
+    .math-display-block { display: block; text-align: center; margin: 1em 0; }
     /* Stand-in for a plain-http image, which never loads under ATS. */
     .md-image-blocked { display: inline-flex; align-items: center; gap: 0.4em;
                         color: var(--faint); background: var(--code-bg);
@@ -342,7 +345,8 @@ enum HTMLTheme {
          keeps them. `print-color-adjust: exact` forces faithful color output
          so callout backgrounds, code blocks, and highlights survive printing. */
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .callout, pre, blockquote, .table-wrap, .math-display { break-inside: avoid; }
+      .callout, pre, blockquote, .table-wrap, .math-display,
+      .math-display-block { break-inside: avoid; }
       h1, h2, h3, h4, h5, h6 { break-after: avoid; }
       thead { display: table-header-group; }
     }

@@ -79,13 +79,17 @@ enum DocumentHTML {
         }
         out = replaceMatches(out, pattern: displayInlineMathPattern) { groups in
             let tex = unescapeAttr(groups[1])
+            // Display math embedded in a prose line still gets its own centered
+            // block (a `<span>` promoted to display:block, since the placeholder
+            // sits inside a `<p>` where a `<div>` would be invalid). The
+            // paragraph's text keeps flowing above and below it.
             guard let r = mathImage(latex: tex, display: true,
                                     fontSize: theme.fontSize, color: color),
                   let data = pngData(r.image, scale: 2) else {
-                return "<code>\(HTMLRenderer.escape(tex))</code>"
+                return "<span class=\"math-display-block\"><code>\(HTMLRenderer.escape(tex))</code></span>"
             }
             let uri = "data:image/png;base64,\(data.base64EncodedString())"
-            return "<img class=\"math math-inline\" style=\"height:\(fmt(r.image.size.height))px; vertical-align:\(fmt(-r.descent))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\">"
+            return "<span class=\"math-display-block\"><img class=\"math\" style=\"height:\(fmt(r.image.size.height))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\"></span>"
         }
         return out
     }
