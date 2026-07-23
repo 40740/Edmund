@@ -96,7 +96,7 @@ extension EditorTextView {
     /// invisible on the dark background, so dark mode uses the shared marker
     /// gray instead; light mode keeps `separatorColor`. Read mode's `--hr` matches.
     var thematicBreakColor: NSColor {
-        isDarkAppearance ? Self.darkChromeGray : .separatorColor
+        isDarkAppearance ? Self.darkRuleGray : .separatorColor
     }
 
     /// Width of the `> ` quote marker in body text. Used as the hanging indent

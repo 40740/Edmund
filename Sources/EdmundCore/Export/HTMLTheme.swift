@@ -38,6 +38,8 @@ enum HTMLTheme {
         // Markers, rules and table borders in dark mode: the same gray the editor
         // draws them at (EditorTextView.darkChromeGray, 0.41 white).
         let darkChrome = "#696969"
+        // Rules and table borders sit a step dimmer (EditorTextView.darkRuleGray).
+        let darkRule = "#555555"
         let codeBg = dark ? "#2a2a2a" : "#f4f4f4"
 
         // line-height: editor `NSParagraphStyle.lineSpacing` adds extra points
@@ -66,8 +68,8 @@ enum HTMLTheme {
           --rule: \(rule);
           --code-bg: \(codeBg);
           --marker: \(dark ? darkChrome : resolvedRGBA(.tertiaryLabelColor, dark: dark));
-          --table-border: \(dark ? darkChrome : rule);
-          --hr: \(dark ? darkChrome : rule);
+          --table-border: \(dark ? darkRule : rule);
+          --hr: \(dark ? darkRule : rule);
           --quote-bar: \(dark ? darkChrome : rule);
           --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));

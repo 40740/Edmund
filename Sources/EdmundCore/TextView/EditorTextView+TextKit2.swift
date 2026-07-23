@@ -628,7 +628,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             // separatorColor. Read mode's --table-border matches.
             let darkChrome = NSAppearance.currentDrawing()
                 .bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            context.setStrokeColor((darkChrome ? EditorTextView.darkChromeGray
+            context.setStrokeColor((darkChrome ? EditorTextView.darkRuleGray
                                                : NSColor.separatorColor).cgColor)
             context.setLineWidth(1)
             for x in xOffsets {

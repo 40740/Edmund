@@ -56,6 +56,14 @@ extension EditorTextView {
         NSColor(srgbRed: 105 / 255, green: 105 / 255, blue: 105 / 255, alpha: 1)
     }
 
+    /// Dark-mode ink for the `---` hairline and table borders. They cover far
+    /// more pixels than a marker glyph does, so at the marker gray they read as
+    /// heavy furniture; a step dimmer keeps them structural. Read mode's `--hr`
+    /// and `--table-border` carry the same value.
+    nonisolated static var darkRuleGray: NSColor {
+        NSColor(srgbRed: 85 / 255, green: 85 / 255, blue: 85 / 255, alpha: 1)
+    }
+
     /// Ink for every list marker (dot, checkbox circle, ordered "N."), shared so
     /// the three marker kinds always read at the same weight. Light mode keeps
     /// the original `tertiaryLabelColor`.
