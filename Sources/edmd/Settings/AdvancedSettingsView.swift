@@ -2,6 +2,8 @@ import SwiftUI
 import AppKit
 
 struct AdvancedSettingsView: View {
+    @AppStorage(AppSettings.Key.automaticallyChecksForUpdates)
+    private var autoCheckUpdates = true
     @AppStorage(AppSettings.Key.blockExternalImages) private var blockExternalImages = true
     @AppStorage(AppSettings.Key.diagnosticLogging) private var diagnosticLogging = false
     @AppStorage(AppSettings.Key.verboseEditorDiagnostics) private var verboseEditorDiagnostics = false
@@ -10,17 +12,28 @@ struct AdvancedSettingsView: View {
     // is hidden (commented out below) so it isn't offered with nowhere to send to.
     // Uncomment this and the "Crash reports:" GridRow once the server is live.
     // @AppStorage(AppSettings.Key.sendCrashLogs) private var sendCrashLogs = false
-    @State private var showingWarnings = false
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
+            GridRow {
+                Text("Software updates:")
+                    .gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Automatically check for updates", isOn: $autoCheckUpdates)
+                }
+            }
+            
+            GridRow {
+                Divider().gridCellColumns(2)
+            }
+            
             GridRow {
                 Text("Privacy & Security:")
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Block external images", isOn: $blockExternalImages)
                         .onChange(of: blockExternalImages) { refreshOpenReadViews() }
-                    Text("For more information, refer to this [proposal](https://github.com/opencloud-eu/opencloud/issues/1145).")
+                    Text("Refer to [this proposal](https://github.com/opencloud-eu/opencloud/issues/1145) for specific security implications.")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
@@ -90,17 +103,8 @@ struct AdvancedSettingsView: View {
             //             .padding(.leading, 20)
             //     }
             // }
-
-            GridRow {
-                Text("Dialog warnings:")
-                    .gridColumnAlignment(.trailing)
-                Button("Manage Warnings…") { showingWarnings = true }
-            }
         }
         .settingsPanePadding()
-        .sheet(isPresented: $showingWarnings) {
-            ManageWarningsView()
-        }
     }
 
     /// Pushes the toggle to every open document's editor (Edit mode's inline
@@ -110,26 +114,5 @@ struct AdvancedSettingsView: View {
             document.editor?.allowRemoteImages = !blockExternalImages
             document.refreshReadView()
         }
-    }
-}
-
-/// The Manage Warnings sheet: per-warning suppression toggles.
-private struct ManageWarningsView: View {
-    @AppStorage(AppSettings.Key.suppressInconsistentLineEndingWarning)
-    private var suppressLineEnding = false
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Suppress the following warnings:")
-            Toggle("Inconsistent line endings", isOn: $suppressLineEnding)
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .scenePadding()
-        .frame(width: 360)
     }
 }
