@@ -15,6 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     var aboutWindowController: AboutWindowController?
     var settingsWindowController: SettingsWindowController?
+    let servicesProvider = ServicesProvider()
     // startingUpdater: true kicks off the scheduled background check immediately;
     // the "Check for Updates…" menu item targets this controller directly.
     // `-debug.disableUpdater YES` skips the start entirely: on dev builds the
@@ -41,6 +42,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         AppSettings.applyAppearance()
         AppSettings.applyCodeSyntax()
         setupMenuBar()
+
+        // Right-click ▸ Services entries (see Info.plist NSServices). Held
+        // strongly — `NSApplication.servicesProvider` does not retain.
+        NSApp.servicesProvider = servicesProvider
 
         // Opt-in (default off): upload any crash reports macOS wrote for us since
         // last launch. Fire-and-forget; never blocks startup.

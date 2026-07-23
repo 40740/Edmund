@@ -56,6 +56,26 @@ class DocumentController: NSDocumentController {
         }
     }
 
+    // MARK: - New Document With Content
+    //
+    // Seeds a fresh untitled document with `content` and shows it. The standard
+    // NSDocument dance (make → set pendingContent → add → windows → mark dirty)
+    // reuses `Document.pendingContent`, consumed in `Document.showWindows()`.
+    // Shared by the "New Edmund Document" App Intent and the Services provider
+    // so both routes create documents identically.
+    @MainActor
+    @discardableResult
+    func newDocument(withContent content: String) -> Document? {
+        guard let doc = try? makeUntitledDocument(
+            ofType: defaultType ?? "net.daringfireball.markdown") as? Document else { return nil }
+        doc.pendingContent = content
+        addDocument(doc)
+        doc.makeWindowControllers()
+        doc.showWindows()
+        doc.updateChangeCount(.changeDone)
+        return doc
+    }
+
     // MARK: - Untitled Window Cleanup
     //
     // Apple's documented single funnel for opening an existing file — the Open
