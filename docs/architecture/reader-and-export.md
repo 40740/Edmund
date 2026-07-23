@@ -44,10 +44,16 @@ theme changes. Code blocks are syntax-colored by the same `CodeHighlighter`
 Lucide SVG (vector); math glyphs are high-DPI PNG (SwiftMath has no SVG
 output yet) — in PDF export, everything else is vector.
 
-Math classing (agrees with Edit mode via the shared `parseDisplayMath`): a
-`$$…$$` that is a whole paragraph is a block (`math-display`); one embedded in
-a prose line is display-mode math flowed inline (`math-display-inline`); a `$$`
-inside code stays literal.
+Math classing (classing agrees with Edit mode via the shared
+`parseDisplayMath`): a `$$…$$` that is a whole paragraph is a block
+(`math-display`); one embedded in a prose line is `math-display-inline`, which
+`DocumentHTML.fillMath` fills as a `display:block` span
+(`.math-display-block`) so it gets its own centered line with the prose
+flowing above and below — a `<span>`, not a `<div>`, because the placeholder
+sits inside the paragraph's `<p>`. **This is a deliberate divergence**: Edit
+mode still flows that case inline, because breaking the line around the run
+needs a line break where the source has no break character, which
+storage==rawSource forbids. A `$$` inside code stays literal.
 
 ## 3. Specs
 

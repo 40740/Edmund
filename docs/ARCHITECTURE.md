@@ -135,6 +135,24 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
     drawing's advance width (same trick as the table renderer).
 - **Hiding** text = `hiddenFont` (≈0.01pt) + clear `foregroundColor` — how
   delimiters and in-source markers vanish without changing the string.
+- **Dark-mode chrome palette** (`+ListRendering.swift`): the system semantic
+  colors are too faint on the `#292929` background, so dark mode substitutes
+  fixed sRGB grays and Read mode's CSS vars carry the same values, so the two
+  views match pixel-for-pixel. `syntaxDimColor` (the whole dim tier —
+  delimiters, `%%comments%%`, `^blockrefs`, list markers, quote bars) →
+  `darkChromeGray` #696969 = `--marker`; table borders → `darkRuleGray`
+  #555555 = `--table-border`; the `---` rule → `darkHRuleGray` #4a4a4a =
+  `--hr`; body text → #e6e6e6 = `--fg`; code backgrounds #333333 = `--code-bg`
+  with inline code a step above at #3c3c3c = `--inline-code-bg`. Light mode
+  keeps the semantic colors. Build these with `srgbRed:`, **not**
+  `NSColor(hex:)` or `calibratedWhite:` — the calibrated space renders visibly
+  lighter than the hex it was given (same trap as `editorBackgroundColor`).
+- **Hairlines are filled, not stroked.** A 1pt stroke straddles a pixel
+  boundary and covers *two* device rows on Retina, so stroked table verticals
+  read twice as heavy as the row rules beside them. Table column borders fill
+  exactly one device pixel and the `---` rule fills three. The backing scale
+  comes from `context.convertToDeviceSpace(CGSize(width: 1, height: 1))` —
+  `context.ctm.a` reports 1 even at 2x.
 - **Image overlays only work on single-line fragments.** An *image* on a
   *multi-line* (wrapping) fragment re-triggers a layout pass that wedges it
   to one line; a *shape* does not. So the wrapping callout custom title's
@@ -208,6 +226,11 @@ Notable subsystems:
   `http`/`https`/`mailto` links open in the browser, `file:`/unknown
   schemes cancelled; wikilinks/relative links use private
   `x-edmund-wiki:`/`x-edmund-link:` schemes the nav coordinator intercepts.
+  **Inspect Reader (⌥⌘I)** is a semi-toggle on `Document`, not on the web
+  view, so it works from Edit too: it switches to Read and opens WebKit's
+  private `_inspector`, and closes it when already up; entering Edit always
+  hides it. The read view's context menu carries the same item as "Inspect
+  Element", with WebKit's own duplicate removed.
   **Export as PDF… / Print… (⌘P)** run the same HTML through
   `WKWebView.printOperation` (`MarkdownPrinter`; vector text, math is
   high-DPI PNG). Full spec: `docs/architecture/reader-and-export.md`.
@@ -456,9 +479,10 @@ Notable subsystems:
   only wraps a whole paragraph at the container edge and has no per-cell
   flow region (that's NSTextTable/NSTextBlock, banned per §2).
   Click-to-caret inside a wrapped, non-active cell is approximate as a
-  result. Every data row draws a full-width bottom grid line (`.tableRow`'s
+  result. Interior data rows draw a full-width bottom grid line (`.tableRow`'s
   `bottomBorder`) — the header/body boundary already gets its line from
-  `separator`, so only rows after the separator set it.
+  `separator`, and the last row draws none, so the table's bottom edge is open
+  like its left and right edges.
 - *(Track larger roadmap items in README/ROADMAP; track code-debt here.)*
 
 ---
