@@ -33,6 +33,7 @@ struct SyntaxSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Enable extended Markdown syntax (non-GFM)", isOn: $enableNonGFM)
                         .onChange(of: enableNonGFM) { applyFeatures() }
+                        .padding(.top, -8)
                     // Markdown/link syntax auto-parses from the string literal.
                     Text("Opt-in support for [Obsidian-flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown).")
                         .font(.callout)
@@ -42,6 +43,7 @@ struct SyntaxSettingsView: View {
                         .padding(.leading, 20)
                 }
             }
+
             GridRow {
                 Color.clear.frame(width: 0, height: 0)   // empty leading cell
                 // The feature grid sits below the master switch and indented

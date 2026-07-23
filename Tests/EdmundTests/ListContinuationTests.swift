@@ -19,6 +19,16 @@ struct ListContinuationTests {
         #expect(editor.rawSource == "- hello\n- ")
     }
 
+    @Test("Disabled: Enter after a bullet inserts a plain newline")
+    @MainActor func disabledInsertsPlainNewline() {
+        let editor = makeEditor()
+        editor.listContinuationEnabled = false
+        editor.loadContent("- hello")
+        editor.setSelectedRange(NSRange(location: 7, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "- hello\n")
+    }
+
     @Test("Enter after * bullet inserts new * bullet")
     @MainActor func enterAfterStarBullet() {
         let editor = makeEditor()

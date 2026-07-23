@@ -11,6 +11,16 @@ enum ViewMenu {
         let viewMenuItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
 
+        // Routes through the responder chain to the key window's Document, which
+        // flips the persisted setting and retitles this item Show/Hide in
+        // validateMenuItem — so it always agrees with Settings ▸ Edit ▸ Display.
+        // (AppKit's own toggleToolbarShown(_:) would move the toolbar behind the
+        // setting's back.) The title here is the first-launch default; the real
+        // one is applied every time the menu opens.
+        viewMenu.addItem(withTitle: "Hide Toolbar",
+                         action: #selector(Document.toggleToolbarShown(_:)),
+                         keyEquivalent: "")
+
         // Routes through the responder chain to the key window's toolbar.
         // AppKit auto-inserts "Show Tab Bar"/"Show All Tabs" above this at
         // runtime (window tabbing is on by default) — that position isn't

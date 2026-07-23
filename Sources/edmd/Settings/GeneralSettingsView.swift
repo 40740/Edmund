@@ -6,27 +6,14 @@ import AppKit
 // MARK: - General
 
 struct GeneralSettingsView: View {
-    @AppStorage(AppSettings.Key.automaticallyChecksForUpdates)
-    private var autoCheckUpdates = true
     @AppStorage(AppSettings.Key.reopenWindows) private var reopenWindows = false
     @AppStorage(AppSettings.Key.startupAction) private var startupAction = AppSettings.StartupAction.createNewDocument
     @AppStorage(AppSettings.Key.autoSaveWithVersions) private var autoSave = true
     @AppStorage(AppSettings.Key.conflictResolution) private var conflict = AppSettings.ConflictResolution.ask
+    @State private var showingWarnings = false
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
-            GridRow {
-                Text("Software updates:")
-                    .gridColumnAlignment(.trailing)
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Automatically check for updates", isOn: $autoCheckUpdates)
-                }
-            }
-            
-            GridRow {
-                Divider().gridCellColumns(2)
-            }
-            
             GridRow {
                 Text("On startup:")
                     .gridColumnAlignment(.trailing)
@@ -71,7 +58,35 @@ struct GeneralSettingsView: View {
                 .labelsHidden()
             }
 
+            GridRow {
+                Text("Dialog warnings:")
+                    .gridColumnAlignment(.trailing)
+                Button("Manage Warnings…") { showingWarnings = true }
+            }
         }
         .settingsPanePadding()
+        .sheet(isPresented: $showingWarnings) { ManageWarningsView() }
+    }
+}
+
+
+/// The Manage Warnings sheet: per-warning suppression toggles.
+private struct ManageWarningsView: View {
+    @AppStorage(AppSettings.Key.suppressInconsistentLineEndingWarning)
+    private var suppressLineEnding = false
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Suppress the following warnings:")
+            Toggle("Inconsistent line endings", isOn: $suppressLineEnding)
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .scenePadding()
+        .frame(width: 360)
     }
 }

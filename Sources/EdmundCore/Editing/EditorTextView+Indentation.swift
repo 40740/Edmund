@@ -10,7 +10,12 @@ import AppKit
 extension EditorTextView {
 
     private static let listLineRegex = try! NSRegularExpression(pattern: #"^\s*(?:[-*+]|\d+\.)\s"#)
-    static let indentUnit = "  "  // 2 spaces
+    /// One level of indentation, from the Edit ▸ Editing settings: a tab, or
+    /// `indentWidth` spaces. The width is clamped so a bad stored value can
+    /// never yield an empty unit (which would make Tab a no-op).
+    var indentUnit: String {
+        indentUsesTabs ? "\t" : String(repeating: " ", count: min(max(indentWidth, 1), 8))
+    }
 
     /// Returns true if the line looks like a markdown list item
     /// (optionally indented): `- `, `* `, `+ `, `1. `, etc.
@@ -72,7 +77,7 @@ extension EditorTextView {
         let sel = selectedRange()
         let rawStart = sel.location
         let rawEnd = sel.location + sel.length
-        let indentLen = (Self.indentUnit as NSString).length
+        let indentLen = (indentUnit as NSString).length
 
         // The pre-edit storage span covering exactly the affected blocks; only
         // this is replaced so layout above/below — and the viewport — is kept.
@@ -90,7 +95,7 @@ extension EditorTextView {
         var parts: [String] = []
         for (i, block) in blocks.enumerated() {
             if i >= startBlock && i <= endBlock {
-                parts.append(Self.indentUnit + block.content)
+                parts.append(indentUnit + block.content)
             } else {
                 parts.append(block.content)
             }
@@ -144,7 +149,7 @@ extension EditorTextView {
         let sel = selectedRange()
         let rawStart = sel.location
         let rawEnd = sel.location + sel.length
-        let maxRemove = Self.indentUnit.count
+        let maxRemove = indentUnit.count
 
         // Compute how many leading whitespace characters to strip from each block.
         var removed: [Int] = Array(repeating: 0, count: blocks.count)
