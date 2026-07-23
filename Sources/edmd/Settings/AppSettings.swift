@@ -48,18 +48,17 @@ enum AppSettings {
         static let displayOrder: [AppearanceMode] = [.light, .dark, .matchSystem]
     }
 
-    /// When the editor draws invisible characters (spaces, tabs, line endings).
-    /// Not implemented yet — the setting persists so the UI can ship ahead of it.
+    /// When the editor draws invisible characters (spaces, tabs, line endings),
+    /// once `showInvisibles` turns them on at all. Not implemented yet — the
+    /// setting persists so the UI can ship ahead of it.
     enum InvisibleCharacterMode: String, CaseIterable, Identifiable {
-        case always
         case uponSelection
-        case never
+        case always
         var id: Self { self }
         var label: String {
             switch self {
+            case .uponSelection: return "Upon selection"
             case .always: return "Always"
-            case .uponSelection: return "Upon Selection"
-            case .never: return "Never"
             }
         }
     }
@@ -148,6 +147,7 @@ enum AppSettings {
         static let showToolbar         = "settings.edit.showToolbar"
         static let autoHideToolbar     = "settings.edit.autoHideToolbar"
         static let showInvisibles      = "settings.edit.showInvisibles"
+        static let invisiblesMode      = "settings.edit.invisiblesMode"
         static let invisibleLineEnding = "settings.edit.invisibleLineEnding"
         static let invisibleTab        = "settings.edit.invisibleTab"
         static let invisibleSpace      = "settings.edit.invisibleSpace"

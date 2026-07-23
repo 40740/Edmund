@@ -40,8 +40,9 @@ private struct DisplayEditsView: View {
     @AppStorage(AppSettings.Key.showToolbar)     private var showToolbar = true
     @AppStorage(AppSettings.Key.autoHideToolbar) private var autoHideToolbar = true
     @AppStorage(AppSettings.Key.sourceMode)      private var sourceMode = false
-    @AppStorage(AppSettings.Key.showInvisibles)
-    private var showInvisibles = AppSettings.InvisibleCharacterMode.never
+    @AppStorage(AppSettings.Key.showInvisibles) private var showInvisibles = false
+    @AppStorage(AppSettings.Key.invisiblesMode)
+    private var invisiblesMode = AppSettings.InvisibleCharacterMode.uponSelection
     @AppStorage(AppSettings.Key.invisibleLineEnding) private var lineEnding = true
     @AppStorage(AppSettings.Key.invisibleTab)        private var tab = true
     @AppStorage(AppSettings.Key.invisibleSpace)      private var space = true
@@ -81,33 +82,32 @@ private struct DisplayEditsView: View {
                 Text("Show:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("Invisible characters")
-                        Picker("", selection: $showInvisibles) {
+                        // fixedSize, or the picker's flexible width squeezes the
+                        // label down to "Invisible charac…".
+                        Toggle("Invisible characters", isOn: $showInvisibles)
+                            .fixedSize()
+                        // When to draw them, once they're on at all.
+                        Picker("", selection: $invisiblesMode) {
                             ForEach(AppSettings.InvisibleCharacterMode.allCases) {
                                 Text($0.label).tag($0)
                             }
                         }
                         .labelsHidden()
                         .fixedSize()
+                        .disabled(!showInvisibles)
                     }
                     invisibleCharacterGrid
                         .padding(.leading, 20)
-                        .disabled(showInvisibles == .never)
+                        .disabled(!showInvisibles)
+                    
+                    Toggle("List indent guides", isOn: $showListIndentGuides)
+                        .disabled(true)   // not implemented yet
+                    
+                    // Leftmost of the window only — not in print / PDF, for now.
+                    Toggle("Line numbers", isOn: $showLineNumbers)
+                        .disabled(true)   // not implemented yet
                 }
                 .disabled(true)   // not implemented yet
-            }
-
-            GridRow {
-                Color.clear.frame(width: 0, height: 0)   // empty leading cell
-                Toggle("List indent guides", isOn: $showListIndentGuides)
-                    .disabled(true)   // not implemented yet
-            }
-
-            GridRow {
-                Color.clear.frame(width: 0, height: 0)
-                // Leftmost of the window only — not in print / PDF, for now.
-                Toggle("Line numbers", isOn: $showLineNumbers)
-                    .disabled(true)   // not implemented yet
             }
 
             GridRow {
