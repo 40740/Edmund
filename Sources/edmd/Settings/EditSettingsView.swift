@@ -1,5 +1,5 @@
-// The Edit settings pane: how the editing view looks (Display) and how it
-// behaves as you type (Editing).
+// The Edit settings pane: one page, in three sections separated by rules —
+// the window chrome, what typing does, and what you see.
 //
 // Several controls here are deliberately `.disabled(true)`: their setting is
 // stored and the UI is final, but the feature behind them isn't built yet
@@ -12,10 +12,6 @@ import AppKit
 import EdmundCore
 
 struct EditSettingsView: View {
-    /// Inner-tab content inset. The pane's own breathing room comes from
-    /// `settingsPanePadding()`; this is the gap inside the tab box.
-    private let insets = EdgeInsets(top: 4, leading: 10, bottom: 10, trailing: 10)
-    
     @AppStorage(AppSettings.Key.showToolbar)     private var showToolbar = true
     @AppStorage(AppSettings.Key.autoHideToolbar) private var autoHideToolbar = true
     @AppStorage(AppSettings.Key.sourceMode)      private var sourceMode = false
