@@ -274,6 +274,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                          action: #selector(NSText.selectAll(_:)),
                          keyEquivalent: "a")
 
+        editMenu.addItem(NSMenuItem.separator())
+
+        // Find submenu — routes to first-responder actions on EditorTextView,
+        // which forward to the document's FindController. Grays out in Reading
+        // mode (the web view is first responder and implements none of these).
+        let findMenuItem = NSMenuItem()
+        let findMenu = NSMenu(title: "Find")
+        findMenu.addItem(withTitle: "Find…",
+                         action: #selector(EditorTextView.showFindBar(_:)),
+                         keyEquivalent: "f")
+        findMenu.addItem(withTitle: "Find and Replace…",
+                         action: #selector(EditorTextView.showFindReplaceBar(_:)),
+                         keyEquivalent: "f").keyEquivalentModifierMask = [.command, .option]
+        findMenu.addItem(withTitle: "Find Next",
+                         action: #selector(EditorTextView.findNext(_:)),
+                         keyEquivalent: "g")
+        findMenu.addItem(withTitle: "Find Previous",
+                         action: #selector(EditorTextView.findPrevious(_:)),
+                         keyEquivalent: "g").keyEquivalentModifierMask = [.command, .shift]
+        findMenuItem.submenu = findMenu
+        findMenuItem.title = "Find"
+        editMenu.addItem(findMenuItem)
+
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
