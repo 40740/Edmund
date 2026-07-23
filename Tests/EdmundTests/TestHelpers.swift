@@ -159,13 +159,23 @@ func isInvisible(at offset: Int, in result: NSAttributedString) -> Bool {
     return true
 }
 
-/// Returns true if the character at `offset` is dimmed (tertiary label color).
+/// The dim-syntax ink for the appearance the tests are running under — dark
+/// mode substitutes its own gray for `tertiaryLabelColor` (see
+/// `EditorTextView.syntaxDimColor`), so asserting the constant directly makes a
+/// test pass or fail depending on the machine's appearance.
+@MainActor
+var expectedDimColor: NSColor {
+    NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        ? EditorTextView.darkChromeGray : .tertiaryLabelColor
+}
+
+/// Returns true if the character at `offset` is dimmed (syntax-dim color).
 @MainActor
 func isDimmed(at offset: Int, in result: NSAttributedString) -> Bool {
     guard offset < result.length else { return false }
     let a = result.attributes(at: offset, effectiveRange: nil)
     guard let c = a[.foregroundColor] as? NSColor else { return false }
-    return c == NSColor.tertiaryLabelColor
+    return c == expectedDimColor
 }
 
 // MARK: - Full-Recompose Oracle

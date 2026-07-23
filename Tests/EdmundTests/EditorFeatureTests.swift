@@ -390,7 +390,7 @@ struct AppearanceIntegrationTests {
         activateBlock(0, in: editor)
 
         // Cursor at 0 → inside bold token. Bold delimiters dimmed.
-        #expect(fgColor(at: 0, in: editor) == NSColor.tertiaryLabelColor)
+        #expect(fgColor(at: 0, in: editor) == expectedDimColor)
         // Italic and code delimiters hidden (cursor not inside those tokens)
         #expect(fgColor(at: 9, in: editor) == NSColor.clear)
         #expect(fgColor(at: 18, in: editor) == NSColor.clear)

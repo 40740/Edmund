@@ -35,7 +35,14 @@ enum HTMLTheme {
         let fg = dark ? "#e6e6e6" : "#1a1a1a"
         let faint = dark ? "#9a9a9a" : "#6a6a6a"
         let rule = dark ? "#3a3a3a" : "#e0e0e0"
-        let codeBg = dark ? "#2a2a2a" : "#f4f4f4"
+        // Markers, rules and table borders in dark mode: the same gray the editor
+        // draws them at (EditorTextView.darkChromeGray, 0.41 white).
+        let darkChrome = "#696969"
+        // Rules and table borders sit a step dimmer (EditorTextView.darkRuleGray).
+        let darkRule = "#555555"
+        // #2a2a2a sat one level above the #292929 page background — code blocks
+        // and table header rows had no visible tint at all in dark mode.
+        let codeBg = dark ? "#333333" : "#f4f4f4"
 
         // line-height: editor `NSParagraphStyle.lineSpacing` adds extra points
         // *between* lines on top of the font's natural leading (~1.2×). The CSS
@@ -62,7 +69,13 @@ enum HTMLTheme {
           --faint: \(faint);
           --rule: \(rule);
           --code-bg: \(codeBg);
-          --marker: \(resolvedRGBA(.tertiaryLabelColor, dark: dark));
+          /* Inline code sits directly on --bg, where the block --code-bg is only
+             one level lighter and reads as nothing; dark mode needs its own step. */
+          --inline-code-bg: \(dark ? "#3c3c3c" : codeBg);
+          --marker: \(dark ? darkChrome : resolvedRGBA(.tertiaryLabelColor, dark: dark));
+          --table-border: \(dark ? darkRule : rule);
+          --hr: \(dark ? "#4a4a4a" : rule);
+          --quote-bar: \(dark ? darkChrome : rule);
           --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
@@ -157,8 +170,10 @@ enum HTMLTheme {
     h4 { font-size: 1.1em; } h5 { font-size: 1em; } h6 { font-size: 0.9em; color: var(--faint); }
     :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
     a { color: var(--accent); text-decoration: underline; }
-    code { font-family: var(--mono-font); font-size: 0.92em; color: var(--code);
-           background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+    /* Body color, not --code: the editor draws inline code in the body color
+       too, and the two views must agree. --code still tints block code. */
+    code { font-family: var(--mono-font); font-size: 0.92em; color: var(--fg);
+           background: var(--inline-code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
     pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto;
           /* tab-size: browsers default to 8; match the common editor convention of 4. */
           tab-size: 4; -moz-tab-size: 4; }
@@ -178,7 +193,9 @@ enum HTMLTheme {
        at rest. */
     .code-copy-icon { opacity: 0; transition: opacity .15s; }
     .code-block-wrap:hover .code-copy-icon { opacity: 1; }
-    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--rule); color: var(--faint); }
+    /* Dark mode lifts the bar to the marker gray (--rule is nearly invisible
+       there); light mode keeps --rule. */
+    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--quote-bar); color: var(--faint); }
     /* Without this, the 1em bottom margin on the last <p> inside a blockquote
        creates asymmetric vertical padding — the blockquote looks heavier at the
        bottom than at the top. Reset it so padding alone controls the spacing. */
@@ -188,7 +205,7 @@ enum HTMLTheme {
        the parent's padding. Collapse it. */
     blockquote > blockquote:last-child,
     .callout-body > blockquote:last-child { margin-bottom: 0; }
-    hr { border: none; border-top: 1px solid var(--rule); margin: 1.6em 0; }
+    hr { border: none; border-top: 1.5px solid var(--hr); margin: 1.6em 0; }
     mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
     /* Obsidian #tag: an accent-colored pill. Style only, no navigation. */
     .tag { color: var(--accent);
@@ -225,6 +242,9 @@ enum HTMLTheme {
     ul { list-style-type: disc; }
     li { margin: 0.35em 0; }
     li::marker { color: var(--marker); font-size: 0.85em; }
+    /* Numbers read as text, not as a glyph: keep them at the item's own size so
+       Read mode matches Edit mode, where the "N." keeps the body font. */
+    ol > li::marker { font-size: 1em; }
     li > p { margin: 0; }
     /* Task items: float the checkbox into the marker slot so the label and
        wrapped lines sit at the same content edge as bullet/number text. The
@@ -269,11 +289,14 @@ enum HTMLTheme {
        wrap — same idiom as `pre`'s overflow-x below. */
     .table-wrap { overflow-x: auto; margin: 1em 0; }
     table { border-collapse: collapse; }
-    th, td { border: 1px solid var(--rule); padding: 6px 10px; }
+    th, td { border: 1px solid var(--table-border); padding: 6px 10px; }
     thead th { background: var(--code-bg); }
     img { max-width: 100%; }
     img.math { vertical-align: middle; }
     .math-display { text-align: center; margin: 1em 0; }
+    /* `$$…$$` embedded in a prose line: same centered block treatment, but as
+       a span (it lives inside the paragraph's <p>, where a <div> is invalid). */
+    .math-display-block { display: block; text-align: center; margin: 1em 0; }
     /* Stand-in for a plain-http image, which never loads under ATS. */
     .md-image-blocked { display: inline-flex; align-items: center; gap: 0.4em;
                         color: var(--faint); background: var(--code-bg);
@@ -342,7 +365,8 @@ enum HTMLTheme {
          keeps them. `print-color-adjust: exact` forces faithful color output
          so callout backgrounds, code blocks, and highlights survive printing. */
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .callout, pre, blockquote, .table-wrap, .math-display { break-inside: avoid; }
+      .callout, pre, blockquote, .table-wrap, .math-display,
+      .math-display-block { break-inside: avoid; }
       h1, h2, h3, h4, h5, h6 { break-after: avoid; }
       thead { display: table-header-group; }
     }

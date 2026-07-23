@@ -37,8 +37,14 @@ extension NSAttributedString.Key {
 
 extension EditorTextView {
 
-    /// Color for dimmed syntax delimiters (*, **, `, #, etc.)
-    var syntaxDimColor: NSColor { .tertiaryLabelColor }
+    /// Color for dimmed syntax delimiters (*, **, `, #, …) and for the ink of
+    /// syntax that stays visible but recedes (%%comments%%, ^blockrefs). In dark
+    /// mode `tertiaryLabelColor` (0.25 white) sits too close to the background,
+    /// so the whole dim tier moves to the marker gray — one tertiary substitute
+    /// for every dimmed thing on the dark side. Light mode is untouched.
+    var syntaxDimColor: NSColor {
+        isDarkAppearance ? Self.darkChromeGray : .tertiaryLabelColor
+    }
 
     /// Color for links and wikilinks — always the theme's accent blue, independent of
     /// the system accent so links stay consistently blue across user accent preferences.
@@ -57,9 +63,12 @@ extension EditorTextView {
     /// Monospaced font for inline code spans.
     var inlineCodeFont: NSFont { theme.monospaceFont() }
 
-    /// Subtle background color for inline code spans.
+    /// Subtle background color for inline code spans. The 10% wash reads fine
+    /// on white but nearly disappears on the dark background (it lands ~4 levels
+    /// above it), so dark mode more than doubles the alpha to hold the same
+    /// visible step as Read mode's --inline-code-bg.
     var inlineCodeBackground: NSColor {
-        NSColor(calibratedWhite: 0.5, alpha: 0.1)
+        NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.22 : 0.1)
     }
 
     /// Paragraph style for thematic breaks. The raw dashes are hidden with a
@@ -91,6 +100,13 @@ extension EditorTextView {
     /// it down to the optical midpoint between the surrounding text. Tuned
     /// against rendered output (see RenderingRegressionTests / screencapture).
     var thematicBreakCenterOffset: CGFloat { bodyFont.pointSize * 0.3 }
+
+    /// Ink for the `---` hairline. `separatorColor` sits at ~10% and is nearly
+    /// invisible on the dark background, so dark mode uses the shared marker
+    /// gray instead; light mode keeps `separatorColor`. Read mode's `--hr` matches.
+    var thematicBreakColor: NSColor {
+        isDarkAppearance ? Self.darkHRuleGray : .separatorColor
+    }
 
     /// Width of the `> ` quote marker in body text. Used as the hanging indent
     /// for blockquotes and callouts so wrapped/continuation lines align after
@@ -366,7 +382,7 @@ extension EditorTextView {
                                             length: paraRange.upperBound - firstLineEnd)
                     for (range, hugs) in [(firstRange, true), (restRange, false)] {
                         guard range.length > 0 else { continue }
-                        let ownBar = BlockDecoration(.leftBar(color: .tertiaryLabelColor, width: 2),
+                        let ownBar = BlockDecoration(.leftBar(color: syntaxDimColor, width: 2),
                                                      inset: CGFloat(depth) * quoteMarkerWidth,
                                                      hugsTextTop: hugs)
                         if depth == 0 {
@@ -425,7 +441,7 @@ extension EditorTextView {
                     // Non-active: horizontal hairline decoration, hide raw text
                     result.addAttribute(.paragraphStyle, value: thematicBreakParagraphStyle(), range: span.fullRange)
                     result.addAttribute(.blockDecoration,
-                                        value: BlockDecoration(.horizontalRule(color: .separatorColor,
+                                        value: BlockDecoration(.horizontalRule(color: thematicBreakColor,
                                                                                centerOffset: thematicBreakCenterOffset)),
                                         range: span.fullRange)
                     result.addAttribute(.font, value: hiddenFont, range: span.fullRange)

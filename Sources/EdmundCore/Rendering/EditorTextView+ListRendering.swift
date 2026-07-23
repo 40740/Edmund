@@ -44,6 +44,38 @@ extension EditorTextView {
 
     // MARK: Marker Icons
 
+    /// Dark-mode ink for markers, rules and table borders: the gray the
+    /// unchecked checkbox circle renders at, which reads clearly against the
+    /// dark background without shouting. `secondaryLabelColor` (0.55 white ≈
+    /// #9f9f9f) was too hot; `tertiaryLabelColor` (0.25) too dim. Fixed gray
+    /// rather than a dynamic color — it is only ever used on the dark side.
+    /// Read mode's `--marker` carries the same value.
+    /// sRGB, not `calibratedWhite`: the gamma difference between the two puts
+    /// the same 0.41 on screen as #7c7c7c instead of the #696969 wanted here.
+    nonisolated static var darkChromeGray: NSColor {
+        NSColor(srgbRed: 105 / 255, green: 105 / 255, blue: 105 / 255, alpha: 1)
+    }
+
+    /// Dark-mode ink for the `---` hairline and table borders. They cover far
+    /// more pixels than a marker glyph does, so at the marker gray they read as
+    /// heavy furniture; a step dimmer keeps them structural. Read mode's `--hr`
+    /// and `--table-border` carry the same value.
+    nonisolated static var darkRuleGray: NSColor {
+        NSColor(srgbRed: 85 / 255, green: 85 / 255, blue: 85 / 255, alpha: 1)
+    }
+
+    /// Dark-mode ink for the `---` hairline specifically. It is thicker than a
+    /// table border (3 device pixels), so it needs a dimmer gray to carry the
+    /// same visual weight. Read mode's `--hr` matches.
+    nonisolated static var darkHRuleGray: NSColor {
+        NSColor(srgbRed: 74 / 255, green: 74 / 255, blue: 74 / 255, alpha: 1)
+    }
+
+    /// Ink for every list marker (dot, checkbox circle, ordered "N."). Markers
+    /// are part of the dim tier, so this is `syntaxDimColor` under a name that
+    /// says what it is at the call sites.
+    var listMarkerColor: NSColor { syntaxDimColor }
+
     /// Creates a fragment overlay with an SF Symbol for checkbox rendering.
     /// Unchecked: dim outlined `circle`. Checked: filled `checkmark.circle.fill`.
     private func checkboxOverlay(checked: Bool) -> FragmentOverlay {
@@ -51,7 +83,7 @@ extension EditorTextView {
         let symbolName = checked ? "checkmark.circle.fill" : "circle"
         // Checked: white checkmark knocked out of an accent-tinted circle (two
         // palette layers — checkmark first, circle second). Unchecked: dim outline.
-        let palette: [NSColor] = checked ? [.white, accentColor] : [.tertiaryLabelColor]
+        let palette: [NSColor] = checked ? [.white, accentColor] : [listMarkerColor]
         let config = NSImage.SymbolConfiguration(pointSize: fontSize, weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: palette))
 
@@ -80,11 +112,11 @@ extension EditorTextView {
     /// share one indentation (Apple Notes style).
     private func bulletOverlay() -> FragmentOverlay {
         let fontSize = bodyFont.pointSize
+        let dotColor = listMarkerColor
         let image = NSImage(size: NSSize(width: fontSize, height: fontSize), flipped: true) { bounds in
             let r = fontSize * 0.13                 // small dot
             let dot = NSRect(x: bounds.midX - r, y: bounds.midY - r, width: 2 * r, height: 2 * r)
-            // Match the dim used for numbered-list markers (syntaxDimColor).
-            NSColor.tertiaryLabelColor.setFill()
+            dotColor.setFill()
             NSBezierPath(ovalIn: dot).fill()
             return true
         }
@@ -120,7 +152,7 @@ extension EditorTextView {
                 result.addAttribute(.foregroundColor, value: NSColor.clear, range: before)
             }
             let numStart = dr.location + wsLen
-            result.addAttribute(.foregroundColor, value: syntaxDimColor,
+            result.addAttribute(.foregroundColor, value: listMarkerColor,
                                 range: NSRange(location: numStart, length: dr.upperBound - numStart))
             return
         }

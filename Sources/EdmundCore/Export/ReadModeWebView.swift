@@ -189,6 +189,49 @@ public final class ReadModeWebView: WKWebView {
         reloadHTML()
     }
 
+    // MARK: - Web Inspector (⌥⌘I)
+
+    /// The private `_WKInspector` backing this web view. A standalone WKWebView,
+    /// unlike Safari, doesn't bind ⌥⌘I on its own; `isInspectable` /
+    /// `developerExtrasEnabled` enable the inspector but never open it.
+    private var webInspector: NSObject? { value(forKey: "_inspector") as? NSObject }
+
+    /// Whether the Web Inspector is currently showing for this read view.
+    public var isWebInspectorVisible: Bool {
+        (webInspector?.value(forKey: "isVisible") as? Bool) ?? false
+    }
+
+    /// Opens the Web Inspector on this read view. Wired to the View-menu item
+    /// ("Inspect Reader", ⌥⌘I) via `Document.toggleReaderInspector`.
+    @objc public func showWebInspector(_ sender: Any?) {
+        webInspector?.perform(Selector(("show")))
+    }
+
+    /// Closes the Web Inspector, leaving the read view in place.
+    @objc public func hideWebInspector(_ sender: Any?) {
+        webInspector?.perform(Selector(("hide")))
+    }
+
+    /// Append "Inspect Element" (⌥⌘I) to the web view's right-click menu.
+    /// Already in Read mode here, so the item is a plain open/close toggle of
+    /// the inspector. WebKit's own "Inspect Element" item is dropped first —
+    /// it does the same job without the toggle and without the shortcut, so
+    /// keeping both would just be a duplicate entry.
+    public override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        menu.items.filter { $0.identifier?.rawValue.contains("InspectElement") == true }
+            .forEach(menu.removeItem)
+        let item = NSMenuItem(title: "Inspect Element",
+                              action: isWebInspectorVisible
+                                  ? #selector(hideWebInspector(_:))
+                                  : #selector(showWebInspector(_:)),
+                              keyEquivalent: "i")
+        item.keyEquivalentModifierMask = [.command, .option]
+        item.target = self
+        menu.addItem(.separator())
+        menu.addItem(item)
+    }
+
     /// Forwarded from the navigation coordinator's `didFinish`.
     fileprivate func handleDidFinishLoad() {
         applyPendingScrollRestoreAndNotify()

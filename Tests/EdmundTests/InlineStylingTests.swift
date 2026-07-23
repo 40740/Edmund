@@ -23,9 +23,9 @@ struct InlineStylingActiveTests {
 
         // Delimiters should be dimmed
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
+        #expect(delimColor == expectedDimColor)
         let endDelimColor = fgColor(at: 7, in: editor)
-        #expect(endDelimColor == NSColor.tertiaryLabelColor)
+        #expect(endDelimColor == expectedDimColor)
     }
 
     @Test("Active __bold__ with underscores has bold font")
@@ -50,7 +50,7 @@ struct InlineStylingActiveTests {
         #expect(NSFontManager.shared.traits(of: contentFont).contains(.italicFontMask))
 
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
+        #expect(delimColor == expectedDimColor)
     }
 
     @Test("Active _italic_ with underscores has italic font")
@@ -101,7 +101,7 @@ struct InlineStylingActiveTests {
         #expect(contentColor == editor.foregroundColor)
 
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
+        #expect(delimColor == expectedDimColor)
     }
 
     // MARK: - Strikethrough
@@ -144,7 +144,7 @@ struct InlineStylingActiveTests {
 
         // Delimiter "[" should be dimmed
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
+        #expect(delimColor == expectedDimColor)
     }
 
     // MARK: - Combinations
@@ -405,5 +405,24 @@ struct InlineStylingInactiveTests {
         // Raw text always preserved
         let text = displayText(for: 0, in: editor)
         #expect(text == "*hi**")
+    }
+}
+
+// MARK: - Indented headings
+
+@Suite("Heading indent")
+struct HeadingIndentTests {
+
+    // CommonMark allows up to 3 spaces before the `#`. cmark's heading range
+    // starts at the `#`, so that whitespace used to keep the heading font and
+    // push the title right of every other block (test.md's " # Edmund").
+    @Test("Leading spaces before # are hidden with the opener")
+    @MainActor func leadingSpaceHidden() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("  # Title")
+        #expect(isHidden(at: 0, in: styled))   // first indent space
+        #expect(isHidden(at: 1, in: styled))   // second indent space
+        #expect(isHidden(at: 2, in: styled))   // the `#`
+        #expect(!isHidden(at: 4, in: styled))  // "T" of the title
     }
 }

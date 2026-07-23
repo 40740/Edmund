@@ -181,9 +181,16 @@ enum FormatMenu {
 
     private static func fontSubmenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "Font", action: nil, keyEquivalent: "")
+        item.submenu = fontMenu()
+        return item
+    }
+
+    /// A fresh Font submenu built from `fontCommands` (Bold, Italic, …). Also
+    /// used to replace the system Font submenu in the editor's right-click menu
+    /// (see `EditorTextView.contextFontMenuProvider`).
+    static func fontMenu() -> NSMenu {
         let menu = NSMenu(title: "Font")
         for cmd in fontCommands { menu.addItem(cmd.makeItem()) }
-        item.submenu = menu
-        return item
+        return menu
     }
 }

@@ -534,7 +534,8 @@ struct EditorStylingTests {
         let editor = makeEditor()
         let styled = editor.styleBlock("1. hello")
         #expect(styled.string == "1. hello")
-        #expect(isDimmed(at: 0, in: styled))
+        #expect(styled.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+                == editor.listMarkerColor)
     }
 
     @Test("Indented list (4 spaces) has wider hanging indent than top-level")
@@ -905,7 +906,7 @@ struct EditorRecomposeTests {
         let ts = editor.textStorage!
         // ** at position 0 should be dimmed (visible), not hidden
         let color = ts.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
-        #expect(color == NSColor.tertiaryLabelColor)
+        #expect(color == expectedDimColor)
         let f = ts.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
         #expect(f != nil)
         #expect(f!.pointSize > 1.0)  // Not hidden

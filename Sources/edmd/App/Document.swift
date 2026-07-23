@@ -540,6 +540,9 @@ class Document: NSDocument, HeadingNavigable {
     /// hidden scroll view is unhidden — a click used to supply the missing
     /// event, leaving the editor blank until one arrived.
     private func swapToEditor() {
+        // The inspector inspects the read view; leaving it up over the editor
+        // would show a document that is no longer on screen.
+        readView?.hideWebInspector(nil)
         readView?.isHidden = true
         scrollView.isHidden = false
         editor.window?.makeFirstResponder(editor)
@@ -635,6 +638,21 @@ class Document: NSDocument, HeadingNavigable {
     /// Source ↔ Read; otherwise Edit ↔ Read.
     @objc func toggleViewMode(_ sender: Any?) {
         setViewMode(editor.viewMode == .reading ? editingMode : .reading)
+    }
+
+    /// "Inspect Reader" (⌥⌘I) — a semi-toggle, so one shortcut always gets you
+    /// to "reading with the inspector open": from Edit (or from Read with the
+    /// inspector closed) it lands in Read mode with the inspector up; pressed
+    /// again in that state it closes the inspector and leaves you in Read mode.
+    @objc func toggleReaderInspector(_ sender: Any?) {
+        if editor.viewMode == .reading, readView?.isWebInspectorVisible == true {
+            readView?.hideWebInspector(nil)
+            return
+        }
+        if editor.viewMode != .reading { setViewMode(.reading) }
+        // The read view is created (and its HTML rendered) by `setViewMode`, so
+        // by here `readView` exists even on the first entry into Read mode.
+        readView?.showWebInspector(nil)
     }
 
     /// One mode menu item: icon + title, checked when `on`.

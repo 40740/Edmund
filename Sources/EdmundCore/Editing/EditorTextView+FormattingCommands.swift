@@ -67,7 +67,7 @@ extension EditorTextView {
     @objc public func formatCode(_ sender: Any?)          { toggleInlineWrap(open: "`", close: "`", expandToWord: true) }
     @objc public func formatInlineMath(_ sender: Any?)    { toggleInlineWrap(open: "$", close: "$", expandToWord: true) }
     @objc public func formatKeyboard(_ sender: Any?)      { toggleInlineWrap(open: "<kbd>", close: "</kbd>", expandToWord: true) }
-    @objc public func formatComment(_ sender: Any?)       { toggleInlineWrap(open: "%%", close: "%%", expandToWord: true) }
+    @objc public func formatComment(_ sender: Any?)       { toggleInlineWrap(open: "<!-- ", close: " -->", expandToWord: true) }
 
     // MARK: - Inline links
     // Link / Image: caret in `()` so URL can be typed next.
@@ -104,6 +104,29 @@ extension EditorTextView {
         applyCalloutType(type)
     }
 
+    // MARK: - Context menu
+
+    /// Builds the editor's right-click Font submenu, replacing the system one.
+    /// Set by the app (edmd) at menu setup so EdmundCore doesn't depend on the
+    /// Format-menu command table. nil → keep the system Font submenu.
+    public static var contextFontMenuProvider: (() -> NSMenu)?
+
+    /// Swap the system "Font" submenu (Show Fonts, Bold, Bigger, …) for our
+    /// Markdown Font menu (Bold, Italic, Highlight, Comments, …) so right-click
+    /// offers the same commands as Format ▸ Font.
+    public override func menu(for event: NSEvent) -> NSMenu? {
+        guard let menu = super.menu(for: event) else { return nil }
+        if let provider = Self.contextFontMenuProvider,
+           let fontItem = menu.items.first(where: { item in
+               item.submenu?.items.contains {
+                   $0.action == #selector(NSFontManager.orderFrontFontPanel(_:))
+               } == true
+           }) {
+            fontItem.submenu = provider()
+        }
+        return menu
+    }
+
     // MARK: - Menu validation
     // Formatting actions are disabled in Reading mode (the editor is read-only).
 
@@ -130,7 +153,8 @@ extension EditorTextView {
                                 representedObject: Any?) -> MarkdownFeatures? {
         switch action {
         case #selector(formatHighlight(_:)): return .highlight
-        case #selector(formatComment(_:)):   return .inlineComment
+        // formatComment inserts an HTML `<!-- -->` comment, which is always
+        // recognized (parseHTMLComments is not feature-gated) — so no gate.
         case #selector(formatWikilink(_:)):  return .wikilink
         case #selector(formatFootnote(_:)):  return .footnote
         case #selector(formatInlineMath(_:)), #selector(formatMathBlock(_:)): return .math

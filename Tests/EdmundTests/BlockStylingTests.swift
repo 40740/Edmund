@@ -52,7 +52,7 @@ struct BlockStylingActiveTests {
         activateBlock(0, in: editor)
 
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
+        #expect(delimColor == expectedDimColor)
     }
 
     // MARK: - Bullet Lists
@@ -88,7 +88,7 @@ struct BlockStylingActiveTests {
         activateBlock(0, in: editor)
 
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
+        #expect(delimColor == expectedDimColor)
     }
 
     // MARK: - Numbered Lists
@@ -128,7 +128,7 @@ struct BlockStylingActiveTests {
         activateBlock(0, in: editor)
 
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
+        #expect(delimColor == expectedDimColor)
     }
 
     @Test("Active blockquote shows its raw text")
@@ -276,7 +276,7 @@ struct BlockStylingNonActiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "1. first")
         let numColor = fgColor(at: 0, in: editor)
-        #expect(numColor == NSColor.tertiaryLabelColor)
+        #expect(numColor == editor.listMarkerColor)
     }
 
     // MARK: - Todo Lists
@@ -453,7 +453,7 @@ struct TableActiveTests {
         activateBlock(0, in: editor)
 
         let color = fgColor(at: 0, in: editor)
-        #expect(color == NSColor.tertiaryLabelColor)
+        #expect(color == expectedDimColor)
     }
 }
 
@@ -517,7 +517,7 @@ struct CodeBlockActiveTests {
         activateBlock(0, in: editor)
 
         let color = fgColor(at: 0, in: editor)
-        #expect(color == NSColor.tertiaryLabelColor)
+        #expect(color == expectedDimColor)
     }
 
     @Test("Active code block content has monospace font")
@@ -600,7 +600,7 @@ struct BlockTransitionTests {
         // Block 0 active: ** delimiters dimmed (visible)
         activateBlock(0, in: editor)
         let dimColor = fgColor(at: 0, in: editor)
-        #expect(dimColor == NSColor.tertiaryLabelColor)
+        #expect(dimColor == expectedDimColor)
 
         // Switch to block 1: block 0's ** delimiters become hidden
         activateBlock(1, in: editor)
@@ -641,7 +641,7 @@ struct ThematicBreakActiveTests {
         activateBlock(0, in: editor)
 
         let color = fgColor(at: 0, in: editor)
-        #expect(color == NSColor.tertiaryLabelColor)
+        #expect(color == expectedDimColor)
     }
 
     @Test("Active *** is dimmed")
@@ -651,7 +651,7 @@ struct ThematicBreakActiveTests {
         activateBlock(0, in: editor)
 
         let color = fgColor(at: 0, in: editor)
-        #expect(color == NSColor.tertiaryLabelColor)
+        #expect(color == expectedDimColor)
     }
 
     @Test("Active --- shows raw markdown text")
@@ -735,7 +735,7 @@ struct ImageActiveTests {
         activateBlock(0, in: editor)
 
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
+        #expect(delimColor == expectedDimColor)
     }
 }
 
@@ -809,7 +809,7 @@ struct LineBreakActiveTests {
         editor.recompose(cursorInRaw: 5)
 
         let color = fgColor(at: 5, in: editor)
-        #expect(color == NSColor.tertiaryLabelColor)
+        #expect(color == expectedDimColor)
     }
 }
 

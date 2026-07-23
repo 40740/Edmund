@@ -118,7 +118,23 @@ public enum SyntaxHighlighter {
         var walker = SpanCollector(source: parseText, features: features)
         walker.visit(doc)
         if !linkDefinitions.isEmpty {
-            walker.spans.removeAll { $0.fullRange.upperBound > textLen }
+            // A block-level node can legitimately run past the block into the
+            // appended region: an indented code block swallows the blank
+            // separator line, so its span ends at textLen+2. Dropping those
+            // left the block unstyled (serif, no mono). Clamp spans that START
+            // inside the block; drop only what begins in the appended region.
+            walker.spans = walker.spans.compactMap { span in
+                guard span.fullRange.location < textLen else { return nil }
+                guard span.fullRange.upperBound > textLen else { return span }
+                func clamp(_ r: NSRange) -> NSRange {
+                    NSRange(location: min(r.location, textLen),
+                            length: max(0, min(r.upperBound, textLen) - min(r.location, textLen)))
+                }
+                return Span(kind: span.kind,
+                            fullRange: clamp(span.fullRange),
+                            contentRange: clamp(span.contentRange),
+                            delimiterRanges: span.delimiterRanges.map(clamp).filter { $0.length > 0 })
+            }
         }
 
         // Each custom pass below is gated by its feature flag: a cleared flag

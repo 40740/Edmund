@@ -623,12 +623,28 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator, let bottomBorder):
             // Offsets are text-relative; the fragment's origin is the text start.
-            context.setStrokeColor(NSColor.separatorColor.cgColor)
+            // In dark mode `separatorColor` is ~10% ink and the grid all but
+            // vanishes, so use the shared marker gray there; light mode keeps
+            // separatorColor. Read mode's --table-border matches.
+            let darkChrome = NSAppearance.currentDrawing()
+                .bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let borderColor = (darkChrome ? EditorTextView.darkRuleGray
+                                          : NSColor.separatorColor)
+            context.setStrokeColor(borderColor.cgColor)
             context.setLineWidth(1)
+            // Column borders are FILLED at exactly one device pixel rather than
+            // stroked: a 1pt stroke straddling a pixel boundary lands on two
+            // device rows on a Retina display, which made the verticals read
+            // twice as heavy as the row rules beside them.
+            // `ctm.a` reports the user-space transform only (1 even on Retina);
+            // converting a unit size into device space gives the real backing scale.
+            let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
+            let hairline = 1 / scale
+            context.setFillColor(borderColor.cgColor)
             for x in xOffsets {
-                let lineX = round(point.x + x) + 0.5
-                context.move(to: CGPoint(x: lineX, y: point.y))
-                context.addLine(to: CGPoint(x: lineX, y: point.y + frame.height))
+                let lineX = (((point.x + x) * scale).rounded()) / scale
+                context.fill(CGRect(x: lineX, y: point.y,
+                                    width: hairline, height: frame.height))
             }
             if separator {
                 let y = round(point.y + frame.height / 2) + 0.5
@@ -643,12 +659,15 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             context.strokePath()
 
         case .horizontalRule(let color, let centerOffset):
-            context.setStrokeColor(color.cgColor)
-            context.setLineWidth(1)
-            let y = round(point.y + frame.height / 2 + centerOffset) + 0.5
-            context.move(to: CGPoint(x: columnRect.minX, y: y))
-            context.addLine(to: CGPoint(x: columnRect.maxX, y: y))
-            context.strokePath()
+            // Filled at a fixed 3 device pixels (1.5pt on Retina) rather than
+            // stroked at 1pt: a section divider wants a little more presence
+            // than a table gridline, and filling keeps the edges crisp.
+            let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
+            let thickness = 3 / scale
+            let y = ((point.y + frame.height / 2 + centerOffset) * scale).rounded() / scale
+            context.setFillColor(color.cgColor)
+            context.fill(CGRect(x: columnRect.minX, y: y,
+                                width: columnRect.maxX - columnRect.minX, height: thickness))
         }
     }
 }

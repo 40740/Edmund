@@ -175,6 +175,26 @@ extension SyntaxHighlighter {
             let cLen = max(0, full.length - openDelimLen)
             var delimiterRanges = [NSRange(location: full.location, length: openDelimLen)]
 
+            // CommonMark allows up to 3 spaces of indent before the `#`, and
+            // cmark's range starts at the `#` — so that whitespace stayed visible
+            // at heading size and pushed the title right of every other block.
+            // Hide it with the opener.
+            let src = source as NSString
+            var indentStart = full.location
+            while indentStart > 0 {
+                let c = src.character(at: indentStart - 1)
+                guard c == 0x20 || c == 0x09 else { break }
+                indentStart -= 1
+            }
+            // Only when that whitespace is the start of the line — otherwise the
+            // run belongs to an enclosing marker (`> # x`), whose own styling
+            // owns it.
+            let atLineStart = indentStart == 0 || src.character(at: indentStart - 1) == 0x0A
+            if indentStart < full.location, atLineStart {
+                delimiterRanges[0] = NSRange(location: indentStart,
+                                             length: openDelimLen + full.location - indentStart)
+            }
+
             // Whatever raw text follows `full` to the end of this
             // single-line block is exactly what cmark trimmed as the
             // closing sequence (its required separating whitespace, the
