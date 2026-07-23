@@ -97,7 +97,6 @@ struct EditSettingsView: View {
                         Text("spaces")
                     }
                     Toggle("Detect and learn indent style on document opening", isOn: $detectIndent)
-                        .disabled(true)   // not implemented yet
                 }
                 .padding(.top, -6)
                 .onChange(of: indentStyle) { AppSettings.applyEditSettingsToOpenDocuments() }
@@ -159,8 +158,9 @@ struct EditSettingsView: View {
                     // Leftmost of the window only — not in print / PDF, for now.
                     Toggle("Show line numbers", isOn: $showLineNumbers)
                         .disabled(true)   // not implemented yet
-                    
+
                     Toggle("Strict line breaks", isOn: $strictLineBreaks)
+                        .onChange(of: strictLineBreaks) { refreshReadViews() }
                     Text("Markdown specs ignore single line breaks in read view. Turn off to make single line breaks visible.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -168,7 +168,6 @@ struct EditSettingsView: View {
                         .frame(maxWidth: 380, alignment: .leading)
                         .padding(.leading, 20)
                 }
-                .disabled(true)   // not implemented yet
             }
             
             GridRow {
@@ -217,6 +216,14 @@ struct EditSettingsView: View {
     private func applySourceMode() {
         for case let document as Document in NSDocumentController.shared.documents {
             document.applySourceMode()
+        }
+    }
+
+    /// Strict line breaks changes Read-mode output, so re-render every open
+    /// document (Read mode reads `AppSettings.strictLineBreaks` on render).
+    private func refreshReadViews() {
+        for case let document as Document in NSDocumentController.shared.documents {
+            document.refreshReadView()
         }
     }
 }

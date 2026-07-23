@@ -444,6 +444,16 @@ enum AppSettings {
     static var continueLists: Bool { boolDefaultTrue(Key.continueLists) }
     static var spellCheck: Bool { UserDefaults.standard.bool(forKey: Key.spellCheck) }
 
+    /// Strict line breaks (default on): when off, Read mode / export render each
+    /// single source newline as a literal `<br>`. Read at render time (passed
+    /// into `ReadRenderOptions`), not pushed onto the editor.
+    static var strictLineBreaks: Bool { boolDefaultTrue(Key.strictLineBreaks) }
+
+    /// Detect and learn a document's indent style when it opens (default on).
+    /// Read once at open time in `Document.showWindows`, overriding this
+    /// document's indent; it never rewrites the global `indentStyle`/`indentWidth`.
+    static var detectIndent: Bool { boolDefaultTrue(Key.detectIndent) }
+
     /// Pushes every Edit-pane setting into an editor. Called when a document
     /// window is built and again — for every open document — whenever the pane
     /// changes something.

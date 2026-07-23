@@ -305,6 +305,12 @@ class Document: NSDocument, HeadingNavigable {
         super.showWindows()
         if let content = pendingContent {
             editor?.loadContent(content)
+            // Learn this document's indent from what it actually uses, overriding
+            // the global style for this window only (never writes the setting).
+            if AppSettings.detectIndent, let detected = EditorTextView.detectIndent(in: content) {
+                editor?.indentUsesTabs = detected.usesTabs
+                if !detected.usesTabs { editor?.indentWidth = detected.width }
+            }
             pendingContent = nil
             warnIfInconsistentLineEndings(in: content)
         }
@@ -585,7 +591,8 @@ class Document: NSDocument, HeadingNavigable {
         ReadRenderOptions(preserveBlankLines: AppSettings.renderBlankLinesAsBreaks,
                          allowRemoteImages: !AppSettings.blockExternalImages,
                          maxContentWidthPoints: Double(editor.maxContentWidthPoints),
-                         features: AppSettings.markdownFeatures)
+                         features: AppSettings.markdownFeatures,
+                         strictLineBreaks: AppSettings.strictLineBreaks)
     }
 
     // MARK: - Export / Print
