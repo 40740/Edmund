@@ -44,13 +44,23 @@ extension EditorTextView {
 
     // MARK: Marker Icons
 
+    /// Dark-mode ink for markers, rules and table borders: the gray the
+    /// unchecked checkbox circle renders at, which reads clearly against the
+    /// dark background without shouting. `secondaryLabelColor` (0.55 white ≈
+    /// #9f9f9f) was too hot; `tertiaryLabelColor` (0.25) too dim. Fixed gray
+    /// rather than a dynamic color — it is only ever used on the dark side.
+    /// Read mode's `--marker` carries the same value.
+    /// sRGB, not `calibratedWhite`: the gamma difference between the two puts
+    /// the same 0.41 on screen as #7c7c7c instead of the #696969 wanted here.
+    nonisolated static var darkChromeGray: NSColor {
+        NSColor(srgbRed: 105 / 255, green: 105 / 255, blue: 105 / 255, alpha: 1)
+    }
+
     /// Ink for every list marker (dot, checkbox circle, ordered "N."), shared so
-    /// the three marker kinds always read at the same weight. Tertiary is ~25%
-    /// white in dark mode — markers all but vanish against the dark background —
-    /// so dark mode steps up to secondary. Read mode's `--marker` matches.
+    /// the three marker kinds always read at the same weight. Light mode keeps
+    /// the original `tertiaryLabelColor`.
     var listMarkerColor: NSColor {
-        effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? .secondaryLabelColor : .tertiaryLabelColor
+        isDarkAppearance ? Self.darkChromeGray : .tertiaryLabelColor
     }
 
     /// Creates a fragment overlay with an SF Symbol for checkbox rendering.

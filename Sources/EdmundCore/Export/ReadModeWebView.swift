@@ -212,12 +212,16 @@ public final class ReadModeWebView: WKWebView {
         webInspector?.perform(Selector(("hide")))
     }
 
-    /// Append "Inspect Reader" (⌥⌘I) to the web view's right-click menu,
-    /// mirroring the View-menu item. Already in Read mode here, so the item is
-    /// a plain open/close toggle of the inspector.
+    /// Append "Inspect Element" (⌥⌘I) to the web view's right-click menu.
+    /// Already in Read mode here, so the item is a plain open/close toggle of
+    /// the inspector. WebKit's own "Inspect Element" item is dropped first —
+    /// it does the same job without the toggle and without the shortcut, so
+    /// keeping both would just be a duplicate entry.
     public override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
-        let item = NSMenuItem(title: "Inspect Reader",
+        menu.items.filter { $0.identifier?.rawValue.contains("InspectElement") == true }
+            .forEach(menu.removeItem)
+        let item = NSMenuItem(title: "Inspect Element",
                               action: isWebInspectorVisible
                                   ? #selector(hideWebInspector(_:))
                                   : #selector(showWebInspector(_:)),

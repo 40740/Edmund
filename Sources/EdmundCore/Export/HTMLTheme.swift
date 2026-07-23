@@ -35,6 +35,9 @@ enum HTMLTheme {
         let fg = dark ? "#e6e6e6" : "#1a1a1a"
         let faint = dark ? "#9a9a9a" : "#6a6a6a"
         let rule = dark ? "#3a3a3a" : "#e0e0e0"
+        // Markers, rules and table borders in dark mode: the same gray the editor
+        // draws them at (EditorTextView.darkChromeGray, 0.41 white).
+        let darkChrome = "#696969"
         let codeBg = dark ? "#2a2a2a" : "#f4f4f4"
 
         // line-height: editor `NSParagraphStyle.lineSpacing` adds extra points
@@ -62,9 +65,10 @@ enum HTMLTheme {
           --faint: \(faint);
           --rule: \(rule);
           --code-bg: \(codeBg);
-          --marker: \(resolvedRGBA(dark ? .secondaryLabelColor : .tertiaryLabelColor, dark: dark));
-          --table-border: \(resolvedRGBA(.secondaryLabelColor, dark: dark));
-          --hr: \(dark ? resolvedRGBA(.tertiaryLabelColor, dark: dark) : rule);
+          --marker: \(dark ? darkChrome : resolvedRGBA(.tertiaryLabelColor, dark: dark));
+          --table-border: \(dark ? darkChrome : rule);
+          --hr: \(dark ? darkChrome : rule);
+          --quote-bar: \(dark ? darkChrome : rule);
           --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
@@ -180,9 +184,9 @@ enum HTMLTheme {
        at rest. */
     .code-copy-icon { opacity: 0; transition: opacity .15s; }
     .code-block-wrap:hover .code-copy-icon { opacity: 1; }
-    /* Bar color matches Edit mode's quote bar (tertiaryLabelColor, = --marker);
-       --rule was too faint to read as a quote marker. */
-    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--marker); color: var(--faint); }
+    /* Dark mode lifts the bar to the marker gray (--rule is nearly invisible
+       there); light mode keeps --rule. */
+    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--quote-bar); color: var(--faint); }
     /* Without this, the 1em bottom margin on the last <p> inside a blockquote
        creates asymmetric vertical padding — the blockquote looks heavier at the
        bottom than at the top. Reset it so padding alone controls the spacing. */

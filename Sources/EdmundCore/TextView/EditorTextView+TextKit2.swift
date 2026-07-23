@@ -623,9 +623,13 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator, let bottomBorder):
             // Offsets are text-relative; the fragment's origin is the text start.
-            // secondaryLabelColor, not separatorColor: the latter is ~10% ink and
-            // the grid all but vanished. Read mode uses the same color (--table-border).
-            context.setStrokeColor(NSColor.secondaryLabelColor.cgColor)
+            // In dark mode `separatorColor` is ~10% ink and the grid all but
+            // vanishes, so use the shared marker gray there; light mode keeps
+            // separatorColor. Read mode's --table-border matches.
+            let darkChrome = NSAppearance.currentDrawing()
+                .bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            context.setStrokeColor((darkChrome ? EditorTextView.darkChromeGray
+                                               : NSColor.separatorColor).cgColor)
             context.setLineWidth(1)
             for x in xOffsets {
                 let lineX = round(point.x + x) + 0.5

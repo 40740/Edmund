@@ -93,11 +93,10 @@ extension EditorTextView {
     var thematicBreakCenterOffset: CGFloat { bodyFont.pointSize * 0.3 }
 
     /// Ink for the `---` hairline. `separatorColor` sits at ~10% and is nearly
-    /// invisible on the dark background, so dark mode uses the list-marker
-    /// tertiary/secondary step instead. Read mode's `--hr` matches.
+    /// invisible on the dark background, so dark mode uses the shared marker
+    /// gray instead; light mode keeps `separatorColor`. Read mode's `--hr` matches.
     var thematicBreakColor: NSColor {
-        effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? .tertiaryLabelColor : .separatorColor
+        isDarkAppearance ? Self.darkChromeGray : .separatorColor
     }
 
     /// Width of the `> ` quote marker in body text. Used as the hanging indent

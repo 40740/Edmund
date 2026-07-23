@@ -377,7 +377,7 @@ extension EditorTextView {
 
     // MARK: Colors (appearance-aware)
 
-    private var isDarkAppearance: Bool {
+    var isDarkAppearance: Bool {
         effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
 
