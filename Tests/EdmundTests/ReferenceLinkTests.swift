@@ -68,6 +68,18 @@ struct ReferenceLinkTests {
         let spans = SyntaxHighlighter.parse(text, linkDefinitions: "[foo]: https://f.com")
         #expect(spans.allSatisfy { $0.fullRange.upperBound <= (text as NSString).length })
     }
+
+    // An indented code block's node range runs past the block over the blank
+    // separator line the append adds; the span must be clamped, not dropped,
+    // or the block loses its monospace font (test.md "\tIndented").
+    @Test("Indented code keeps its span when definitions are appended")
+    func indentedCodeSurvivesAppend() {
+        let text = "\tIndented"
+        let spans = SyntaxHighlighter.parse(text, linkDefinitions: "[foo]: https://f.com")
+        #expect(spans.contains { if case .codeBlock = $0.kind {
+            return $0.fullRange == NSRange(location: 0, length: 9)
+        }; return false })
+    }
 }
 
 // MARK: - LinkDefinitionState

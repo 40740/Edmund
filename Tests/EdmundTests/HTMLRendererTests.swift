@@ -290,6 +290,15 @@ struct HTMLRendererInlineTests {
         #expect(out.contains("\\int_0^1"))
     }
 
+
+    // Single-line `$$…$$` owning its paragraph — the shape used in test.md.
+    @Test("Single-line $$math$$ paragraph → math-display div, not inline span")
+    func singleLineDisplayMath() {
+        let out = html("$$f(x)=a_nx^n+a_1x+a_0$$")
+        #expect(out.contains("class=\"math-display\""))
+        #expect(!out.contains("math-display-inline"))
+    }
+
     // Read-mode parity with the editor's list-item block math: a `$$…$$` that is
     // the whole content of a list item renders as a display-math block inside the
     // <li> (swift-markdown lazy-continues the item's following lines into one

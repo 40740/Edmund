@@ -51,7 +51,11 @@ extension EditorTextView {
         let symbolName = checked ? "checkmark.circle.fill" : "circle"
         // Checked: white checkmark knocked out of an accent-tinted circle (two
         // palette layers — checkmark first, circle second). Unchecked: dim outline.
-        let palette: [NSColor] = checked ? [.white, accentColor] : [.tertiaryLabelColor]
+        // Tertiary is ~25% white in dark mode — the outline all but disappears
+        // against the dark background, so bump it to secondary there.
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let palette: [NSColor] = checked ? [.white, accentColor]
+                                         : [dark ? .secondaryLabelColor : .tertiaryLabelColor]
         let config = NSImage.SymbolConfiguration(pointSize: fontSize, weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: palette))
 
