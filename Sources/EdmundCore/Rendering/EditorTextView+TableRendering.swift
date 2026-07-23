@@ -151,7 +151,10 @@ extension EditorTextView {
                                                      width: totalWidth,
                                                      leftInset: cellHPad,
                                                      separator: i == 1,
-                                                     bottomBorder: i > 1)),
+                                                     // No rule under the last row: the
+                                                     // table's bottom edge is open, like
+                                                     // its left and right edges.
+                                                     bottomBorder: i > 1 && i < lines.count - 1)),
                     range: lineRange)
 
                 // Cells whose styled width exceeds their column's (clamped)

@@ -62,7 +62,9 @@ enum HTMLTheme {
           --faint: \(faint);
           --rule: \(rule);
           --code-bg: \(codeBg);
-          --marker: \(resolvedRGBA(.tertiaryLabelColor, dark: dark));
+          --marker: \(resolvedRGBA(dark ? .secondaryLabelColor : .tertiaryLabelColor, dark: dark));
+          --table-border: \(resolvedRGBA(.secondaryLabelColor, dark: dark));
+          --hr: \(dark ? resolvedRGBA(.tertiaryLabelColor, dark: dark) : rule);
           --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
@@ -178,7 +180,9 @@ enum HTMLTheme {
        at rest. */
     .code-copy-icon { opacity: 0; transition: opacity .15s; }
     .code-block-wrap:hover .code-copy-icon { opacity: 1; }
-    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--rule); color: var(--faint); }
+    /* Bar color matches Edit mode's quote bar (tertiaryLabelColor, = --marker);
+       --rule was too faint to read as a quote marker. */
+    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--marker); color: var(--faint); }
     /* Without this, the 1em bottom margin on the last <p> inside a blockquote
        creates asymmetric vertical padding — the blockquote looks heavier at the
        bottom than at the top. Reset it so padding alone controls the spacing. */
@@ -188,7 +192,7 @@ enum HTMLTheme {
        the parent's padding. Collapse it. */
     blockquote > blockquote:last-child,
     .callout-body > blockquote:last-child { margin-bottom: 0; }
-    hr { border: none; border-top: 1px solid var(--rule); margin: 1.6em 0; }
+    hr { border: none; border-top: 1px solid var(--hr); margin: 1.6em 0; }
     mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
     /* Obsidian #tag: an accent-colored pill. Style only, no navigation. */
     .tag { color: var(--accent);
@@ -225,6 +229,9 @@ enum HTMLTheme {
     ul { list-style-type: disc; }
     li { margin: 0.35em 0; }
     li::marker { color: var(--marker); font-size: 0.85em; }
+    /* Numbers read as text, not as a glyph: keep them at the item's own size so
+       Read mode matches Edit mode, where the "N." keeps the body font. */
+    ol > li::marker { font-size: 1em; }
     li > p { margin: 0; }
     /* Task items: float the checkbox into the marker slot so the label and
        wrapped lines sit at the same content edge as bullet/number text. The
@@ -269,7 +276,7 @@ enum HTMLTheme {
        wrap — same idiom as `pre`'s overflow-x below. */
     .table-wrap { overflow-x: auto; margin: 1em 0; }
     table { border-collapse: collapse; }
-    th, td { border: 1px solid var(--rule); padding: 6px 10px; }
+    th, td { border: 1px solid var(--table-border); padding: 6px 10px; }
     thead th { background: var(--code-bg); }
     img { max-width: 100%; }
     img.math { vertical-align: middle; }

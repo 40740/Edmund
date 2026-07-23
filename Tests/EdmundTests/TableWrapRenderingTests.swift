@@ -84,7 +84,7 @@ struct TableWrapRenderingTests {
         #expect(offsetsPerRow.dropFirst().allSatisfy { $0 == offsetsPerRow[0] })
     }
 
-    @Test("Every data row gets a bottom grid line; header and separator rows don't")
+    @Test("Interior data rows get a bottom grid line; header, separator and last row don't")
     func bottomBorderOnDataRowsOnly() {
         let editor = makeEditor()
         let styled = editor.styleBlock("| a | b |\n|---|---|\n| x | y |\n| p | q |", cursorPosition: nil)
@@ -100,8 +100,9 @@ struct TableWrapRenderingTests {
             guard nl.location != NSNotFound else { break }
             lineStart = nl.upperBound
         }
-        // Rows: header, separator, "x | y", "p | q".
-        #expect(bottoms == [false, false, true, true])
+        // Rows: header, separator, "x | y", "p | q". The last row draws no
+        // bottom rule — the table's bottom edge is open.
+        #expect(bottoms == [false, false, true, false])
     }
 
     @Test("distributeColumnWidths keeps under-fair-share columns, clamps the rest")

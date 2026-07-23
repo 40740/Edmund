@@ -92,6 +92,14 @@ extension EditorTextView {
     /// against rendered output (see RenderingRegressionTests / screencapture).
     var thematicBreakCenterOffset: CGFloat { bodyFont.pointSize * 0.3 }
 
+    /// Ink for the `---` hairline. `separatorColor` sits at ~10% and is nearly
+    /// invisible on the dark background, so dark mode uses the list-marker
+    /// tertiary/secondary step instead. Read mode's `--hr` matches.
+    var thematicBreakColor: NSColor {
+        effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? .tertiaryLabelColor : .separatorColor
+    }
+
     /// Width of the `> ` quote marker in body text. Used as the hanging indent
     /// for blockquotes and callouts so wrapped/continuation lines align after
     /// the marker (like list items) rather than under the `>`. The marker is
@@ -425,7 +433,7 @@ extension EditorTextView {
                     // Non-active: horizontal hairline decoration, hide raw text
                     result.addAttribute(.paragraphStyle, value: thematicBreakParagraphStyle(), range: span.fullRange)
                     result.addAttribute(.blockDecoration,
-                                        value: BlockDecoration(.horizontalRule(color: .separatorColor,
+                                        value: BlockDecoration(.horizontalRule(color: thematicBreakColor,
                                                                                centerOffset: thematicBreakCenterOffset)),
                                         range: span.fullRange)
                     result.addAttribute(.font, value: hiddenFont, range: span.fullRange)

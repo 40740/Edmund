@@ -623,7 +623,9 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator, let bottomBorder):
             // Offsets are text-relative; the fragment's origin is the text start.
-            context.setStrokeColor(NSColor.separatorColor.cgColor)
+            // secondaryLabelColor, not separatorColor: the latter is ~10% ink and
+            // the grid all but vanished. Read mode uses the same color (--table-border).
+            context.setStrokeColor(NSColor.secondaryLabelColor.cgColor)
             context.setLineWidth(1)
             for x in xOffsets {
                 let lineX = round(point.x + x) + 0.5

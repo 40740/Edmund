@@ -534,7 +534,8 @@ struct EditorStylingTests {
         let editor = makeEditor()
         let styled = editor.styleBlock("1. hello")
         #expect(styled.string == "1. hello")
-        #expect(isDimmed(at: 0, in: styled))
+        #expect(styled.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+                == editor.listMarkerColor)
     }
 
     @Test("Indented list (4 spaces) has wider hanging indent than top-level")

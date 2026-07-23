@@ -33,11 +33,12 @@ enum ViewMenu {
                          action: #selector(Document.toggleSourceMode(_:)),
                          keyEquivalent: "")
 
-        // Web Inspector for Read mode (⌥⌘I). nil target → routes through the
-        // responder chain to the ReadModeWebView, which is first responder in
-        // Read mode; auto-disabled in Edit/Source mode.
-        let inspectItem = viewMenu.addItem(withTitle: "Inspect Read View",
-                         action: #selector(ReadModeWebView.showWebInspector(_:)),
+        // Web Inspector (⌥⌘I). nil target → routes through the responder chain
+        // to the key window's Document, so it works from Edit mode too: it
+        // switches to Read mode and opens the inspector, and toggles the
+        // inspector back off when it's already up.
+        let inspectItem = viewMenu.addItem(withTitle: "Inspect Reader",
+                         action: #selector(Document.toggleReaderInspector(_:)),
                          keyEquivalent: "i")
         inspectItem.keyEquivalentModifierMask = [.command, .option]
         viewMenu.addItem(.separator())

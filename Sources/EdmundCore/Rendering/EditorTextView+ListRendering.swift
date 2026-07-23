@@ -44,6 +44,15 @@ extension EditorTextView {
 
     // MARK: Marker Icons
 
+    /// Ink for every list marker (dot, checkbox circle, ordered "N."), shared so
+    /// the three marker kinds always read at the same weight. Tertiary is ~25%
+    /// white in dark mode — markers all but vanish against the dark background —
+    /// so dark mode steps up to secondary. Read mode's `--marker` matches.
+    var listMarkerColor: NSColor {
+        effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? .secondaryLabelColor : .tertiaryLabelColor
+    }
+
     /// Creates a fragment overlay with an SF Symbol for checkbox rendering.
     /// Unchecked: dim outlined `circle`. Checked: filled `checkmark.circle.fill`.
     private func checkboxOverlay(checked: Bool) -> FragmentOverlay {
@@ -51,11 +60,7 @@ extension EditorTextView {
         let symbolName = checked ? "checkmark.circle.fill" : "circle"
         // Checked: white checkmark knocked out of an accent-tinted circle (two
         // palette layers — checkmark first, circle second). Unchecked: dim outline.
-        // Tertiary is ~25% white in dark mode — the outline all but disappears
-        // against the dark background, so bump it to secondary there.
-        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        let palette: [NSColor] = checked ? [.white, accentColor]
-                                         : [dark ? .secondaryLabelColor : .tertiaryLabelColor]
+        let palette: [NSColor] = checked ? [.white, accentColor] : [listMarkerColor]
         let config = NSImage.SymbolConfiguration(pointSize: fontSize, weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: palette))
 
@@ -84,11 +89,11 @@ extension EditorTextView {
     /// share one indentation (Apple Notes style).
     private func bulletOverlay() -> FragmentOverlay {
         let fontSize = bodyFont.pointSize
+        let dotColor = listMarkerColor
         let image = NSImage(size: NSSize(width: fontSize, height: fontSize), flipped: true) { bounds in
             let r = fontSize * 0.13                 // small dot
             let dot = NSRect(x: bounds.midX - r, y: bounds.midY - r, width: 2 * r, height: 2 * r)
-            // Match the dim used for numbered-list markers (syntaxDimColor).
-            NSColor.tertiaryLabelColor.setFill()
+            dotColor.setFill()
             NSBezierPath(ovalIn: dot).fill()
             return true
         }
@@ -124,7 +129,7 @@ extension EditorTextView {
                 result.addAttribute(.foregroundColor, value: NSColor.clear, range: before)
             }
             let numStart = dr.location + wsLen
-            result.addAttribute(.foregroundColor, value: syntaxDimColor,
+            result.addAttribute(.foregroundColor, value: listMarkerColor,
                                 range: NSRange(location: numStart, length: dr.upperBound - numStart))
             return
         }

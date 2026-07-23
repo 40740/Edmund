@@ -276,7 +276,7 @@ struct BlockStylingNonActiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "1. first")
         let numColor = fgColor(at: 0, in: editor)
-        #expect(numColor == NSColor.tertiaryLabelColor)
+        #expect(numColor == editor.listMarkerColor)
     }
 
     // MARK: - Todo Lists

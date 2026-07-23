@@ -93,7 +93,7 @@ struct ListRenumberingTests {
         // The caret (and thus the active, intentionally-undimmed block) sits
         // at the deletion point, on "2. c" — "1. a" stays inactive throughout.
         #expect(editor.blocks[0].content == "1. a")
-        #expect(fgColor(at: editor.blocks[0].range.location, in: editor) == NSColor.tertiaryLabelColor)
+        #expect(fgColor(at: editor.blocks[0].range.location, in: editor) == editor.listMarkerColor)
     }
 
     @Test("Enter on an empty item leaves a blank line but still renumbers across it")
