@@ -147,7 +147,7 @@ struct EditSettingsView: View {
                     }
                     invisibleCharacterGrid
                         .padding(.leading, 20)
-                        .padding(.bottom, -16)
+                        .padding(.bottom, -15)  // hardcoded
                         .disabled(!showInvisibles)
                 }
                 .disabled(true)   // not implemented yet

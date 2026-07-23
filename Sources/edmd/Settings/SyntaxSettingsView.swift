@@ -33,7 +33,7 @@ struct SyntaxSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Enable extended Markdown syntax (non-GFM)", isOn: $enableNonGFM)
                         .onChange(of: enableNonGFM) { applyFeatures() }
-                        .padding(.top, -6)
+                        .padding(.top, -8)
                     // Markdown/link syntax auto-parses from the string literal.
                     Text("Opt-in support for [Obsidian-flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown).")
                         .font(.callout)
