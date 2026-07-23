@@ -74,7 +74,7 @@ enum HTMLTheme {
           --inline-code-bg: \(dark ? "#3c3c3c" : codeBg);
           --marker: \(dark ? darkChrome : resolvedRGBA(.tertiaryLabelColor, dark: dark));
           --table-border: \(dark ? darkRule : rule);
-          --hr: \(dark ? darkRule : rule);
+          --hr: \(dark ? "#4a4a4a" : rule);
           --quote-bar: \(dark ? darkChrome : rule);
           --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));
@@ -170,7 +170,9 @@ enum HTMLTheme {
     h4 { font-size: 1.1em; } h5 { font-size: 1em; } h6 { font-size: 0.9em; color: var(--faint); }
     :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
     a { color: var(--accent); text-decoration: underline; }
-    code { font-family: var(--mono-font); font-size: 0.92em; color: var(--code);
+    /* Body color, not --code: the editor draws inline code in the body color
+       too, and the two views must agree. --code still tints block code. */
+    code { font-family: var(--mono-font); font-size: 0.92em; color: var(--fg);
            background: var(--inline-code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
     pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto;
           /* tab-size: browsers default to 8; match the common editor convention of 4. */
@@ -203,7 +205,7 @@ enum HTMLTheme {
        the parent's padding. Collapse it. */
     blockquote > blockquote:last-child,
     .callout-body > blockquote:last-child { margin-bottom: 0; }
-    hr { border: none; border-top: 1px solid var(--hr); margin: 1.6em 0; }
+    hr { border: none; border-top: 1.5px solid var(--hr); margin: 1.6em 0; }
     mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
     /* Obsidian #tag: an accent-colored pill. Style only, no navigation. */
     .tag { color: var(--accent);

@@ -659,12 +659,15 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             context.strokePath()
 
         case .horizontalRule(let color, let centerOffset):
-            context.setStrokeColor(color.cgColor)
-            context.setLineWidth(1)
-            let y = round(point.y + frame.height / 2 + centerOffset) + 0.5
-            context.move(to: CGPoint(x: columnRect.minX, y: y))
-            context.addLine(to: CGPoint(x: columnRect.maxX, y: y))
-            context.strokePath()
+            // Filled at a fixed 3 device pixels (1.5pt on Retina) rather than
+            // stroked at 1pt: a section divider wants a little more presence
+            // than a table gridline, and filling keeps the edges crisp.
+            let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
+            let thickness = 3 / scale
+            let y = ((point.y + frame.height / 2 + centerOffset) * scale).rounded() / scale
+            context.setFillColor(color.cgColor)
+            context.fill(CGRect(x: columnRect.minX, y: y,
+                                width: columnRect.maxX - columnRect.minX, height: thickness))
         }
     }
 }

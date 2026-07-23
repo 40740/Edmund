@@ -407,3 +407,22 @@ struct InlineStylingInactiveTests {
         #expect(text == "*hi**")
     }
 }
+
+// MARK: - Indented headings
+
+@Suite("Heading indent")
+struct HeadingIndentTests {
+
+    // CommonMark allows up to 3 spaces before the `#`. cmark's heading range
+    // starts at the `#`, so that whitespace used to keep the heading font and
+    // push the title right of every other block (test.md's " # Edmund").
+    @Test("Leading spaces before # are hidden with the opener")
+    @MainActor func leadingSpaceHidden() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("  # Title")
+        #expect(isHidden(at: 0, in: styled))   // first indent space
+        #expect(isHidden(at: 1, in: styled))   // second indent space
+        #expect(isHidden(at: 2, in: styled))   // the `#`
+        #expect(!isHidden(at: 4, in: styled))  // "T" of the title
+    }
+}

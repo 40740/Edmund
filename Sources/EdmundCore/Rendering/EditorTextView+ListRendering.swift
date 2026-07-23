@@ -64,6 +64,13 @@ extension EditorTextView {
         NSColor(srgbRed: 85 / 255, green: 85 / 255, blue: 85 / 255, alpha: 1)
     }
 
+    /// Dark-mode ink for the `---` hairline specifically. It is thicker than a
+    /// table border (3 device pixels), so it needs a dimmer gray to carry the
+    /// same visual weight. Read mode's `--hr` matches.
+    nonisolated static var darkHRuleGray: NSColor {
+        NSColor(srgbRed: 74 / 255, green: 74 / 255, blue: 74 / 255, alpha: 1)
+    }
+
     /// Ink for every list marker (dot, checkbox circle, ordered "N."). Markers
     /// are part of the dim tier, so this is `syntaxDimColor` under a name that
     /// says what it is at the call sites.
