@@ -628,13 +628,23 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             // separatorColor. Read mode's --table-border matches.
             let darkChrome = NSAppearance.currentDrawing()
                 .bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            context.setStrokeColor((darkChrome ? EditorTextView.darkRuleGray
-                                               : NSColor.separatorColor).cgColor)
+            let borderColor = (darkChrome ? EditorTextView.darkRuleGray
+                                          : NSColor.separatorColor)
+            context.setStrokeColor(borderColor.cgColor)
             context.setLineWidth(1)
+            // Column borders are FILLED at exactly one device pixel rather than
+            // stroked: a 1pt stroke straddling a pixel boundary lands on two
+            // device rows on a Retina display, which made the verticals read
+            // twice as heavy as the row rules beside them.
+            // `ctm.a` reports the user-space transform only (1 even on Retina);
+            // converting a unit size into device space gives the real backing scale.
+            let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
+            let hairline = 1 / scale
+            context.setFillColor(borderColor.cgColor)
             for x in xOffsets {
-                let lineX = round(point.x + x) + 0.5
-                context.move(to: CGPoint(x: lineX, y: point.y))
-                context.addLine(to: CGPoint(x: lineX, y: point.y + frame.height))
+                let lineX = (((point.x + x) * scale).rounded()) / scale
+                context.fill(CGRect(x: lineX, y: point.y,
+                                    width: hairline, height: frame.height))
             }
             if separator {
                 let y = round(point.y + frame.height / 2) + 0.5

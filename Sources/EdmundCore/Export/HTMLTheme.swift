@@ -40,7 +40,9 @@ enum HTMLTheme {
         let darkChrome = "#696969"
         // Rules and table borders sit a step dimmer (EditorTextView.darkRuleGray).
         let darkRule = "#555555"
-        let codeBg = dark ? "#2a2a2a" : "#f4f4f4"
+        // #2a2a2a sat one level above the #292929 page background — code blocks
+        // and table header rows had no visible tint at all in dark mode.
+        let codeBg = dark ? "#333333" : "#f4f4f4"
 
         // line-height: editor `NSParagraphStyle.lineSpacing` adds extra points
         // *between* lines on top of the font's natural leading (~1.2×). The CSS
@@ -67,6 +69,9 @@ enum HTMLTheme {
           --faint: \(faint);
           --rule: \(rule);
           --code-bg: \(codeBg);
+          /* Inline code sits directly on --bg, where the block --code-bg is only
+             one level lighter and reads as nothing; dark mode needs its own step. */
+          --inline-code-bg: \(dark ? "#3c3c3c" : codeBg);
           --marker: \(dark ? darkChrome : resolvedRGBA(.tertiaryLabelColor, dark: dark));
           --table-border: \(dark ? darkRule : rule);
           --hr: \(dark ? darkRule : rule);
@@ -166,7 +171,7 @@ enum HTMLTheme {
     :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
     a { color: var(--accent); text-decoration: underline; }
     code { font-family: var(--mono-font); font-size: 0.92em; color: var(--code);
-           background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+           background: var(--inline-code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
     pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto;
           /* tab-size: browsers default to 8; match the common editor convention of 4. */
           tab-size: 4; -moz-tab-size: 4; }

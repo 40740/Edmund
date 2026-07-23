@@ -18,8 +18,11 @@ extension EditorTextView {
     /// Background tint for a code block's box. Matches Read mode's
     /// `--code-bg` (HTMLTheme.swift) so Edit and Read mode agree.
     var codeBlockBackground: NSColor {
-        effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? (NSColor(hex: "#2a2a2a") ?? NSColor(calibratedWhite: 0.16, alpha: 1))
+        // sRGB, not the calibrated `NSColor(hex:)` helper — same reason as
+        // `editorBackgroundColor`: calibrated renders visibly lighter, and this
+        // has to land exactly on Read mode's --code-bg.
+        isDarkAppearance
+            ? NSColor(srgbRed: 0x33 / 255.0, green: 0x33 / 255.0, blue: 0x33 / 255.0, alpha: 1)
             : (NSColor(hex: "#f4f4f4") ?? NSColor(calibratedWhite: 0.96, alpha: 1))
     }
 

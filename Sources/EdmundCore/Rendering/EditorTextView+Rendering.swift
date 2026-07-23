@@ -63,9 +63,12 @@ extension EditorTextView {
     /// Monospaced font for inline code spans.
     var inlineCodeFont: NSFont { theme.monospaceFont() }
 
-    /// Subtle background color for inline code spans.
+    /// Subtle background color for inline code spans. The 10% wash reads fine
+    /// on white but nearly disappears on the dark background (it lands ~4 levels
+    /// above it), so dark mode more than doubles the alpha to hold the same
+    /// visible step as Read mode's --inline-code-bg.
     var inlineCodeBackground: NSColor {
-        NSColor(calibratedWhite: 0.5, alpha: 0.1)
+        NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.22 : 0.1)
     }
 
     /// Paragraph style for thematic breaks. The raw dashes are hidden with a

@@ -218,7 +218,14 @@ public class EditorTextView: NSTextView {
 
     /// Foreground color for all body text. Uses the system text color so it
     /// flips automatically between near-black (light) and near-white (dark).
-    var foregroundColor: NSColor { .textColor }
+    /// Body text. `textColor` is pure white in dark mode, which glares against
+    /// the near-black background; soften it to the same #e6e6e6 Read mode has
+    /// always used (--fg). Light mode keeps the system color.
+    var foregroundColor: NSColor {
+        isDarkAppearance ? NSColor(srgbRed: 230 / 255, green: 230 / 255,
+                                   blue: 230 / 255, alpha: 1)
+                         : .textColor
+    }
 
     /// Background tint for text selection. Uses system orange so selections read
     /// as warm amber rather than tracking the (potentially red) brand accent.
