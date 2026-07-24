@@ -48,21 +48,6 @@ enum AppSettings {
         static let displayOrder: [AppearanceMode] = [.light, .dark, .matchSystem]
     }
 
-    /// When the editor draws invisible characters (spaces, tabs, line endings),
-    /// once `showInvisibles` turns them on at all. Not implemented yet — the
-    /// setting persists so the UI can ship ahead of it.
-    enum InvisibleCharacterMode: String, CaseIterable, Identifiable {
-        case uponSelection
-        case always
-        var id: Self { self }
-        var label: String {
-            switch self {
-            case .uponSelection: return "Upon Selection"
-            case .always: return "Always"
-            }
-        }
-    }
-
     /// What one indent unit is made of. The width (in spaces) is `indentWidth`;
     /// a tab indent is always one tab character regardless of the width.
     enum IndentStyle: String, CaseIterable, Identifiable {
@@ -147,7 +132,6 @@ enum AppSettings {
         static let showToolbar         = "settings.edit.showToolbar"
         static let autoHideToolbar     = "settings.edit.autoHideToolbar"
         static let showInvisibles      = "settings.edit.showInvisibles"
-        static let invisiblesMode      = "settings.edit.invisiblesMode"
         static let invisibleLineEnding = "settings.edit.invisibleLineEnding"
         static let invisibleTab        = "settings.edit.invisibleTab"
         static let invisibleSpace      = "settings.edit.invisibleSpace"
@@ -454,15 +438,9 @@ enum AppSettings {
     /// document's indent; it never rewrites the global `indentStyle`/`indentWidth`.
     static var detectIndent: Bool { boolDefaultTrue(Key.detectIndent) }
 
-    /// Show invisible characters (whitespace marks) in the editor — default off.
+    /// Show invisible characters (whitespace marks) within the selection —
+    /// default off.
     static var showInvisibles: Bool { UserDefaults.standard.bool(forKey: Key.showInvisibles) }
-
-    /// When invisibles draw: always, or only within the selection (default).
-    static var invisiblesMode: InvisibleCharacterMode {
-        guard let raw = UserDefaults.standard.string(forKey: Key.invisiblesMode),
-              let mode = InvisibleCharacterMode(rawValue: raw) else { return .uponSelection }
-        return mode
-    }
 
     // The per-category toggles (default on, gated by `showInvisibles`).
     static var invisibleLineEnding: Bool { boolDefaultTrue(Key.invisibleLineEnding) }
@@ -478,7 +456,6 @@ enum AppSettings {
         return InvisiblesConfig(
             lineEnding: invisibleLineEnding, tab: invisibleTab, space: invisibleSpace,
             otherWhitespace: invisibleWhitespace, otherControl: invisibleControl,
-            mode: invisiblesMode == .always ? .always : .uponSelection,
             color: .tertiaryLabelColor)
     }
 
