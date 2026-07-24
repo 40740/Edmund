@@ -128,7 +128,7 @@ final class FindController: NSObject, EditorFindHandling {
         let caret = editor.selectedRange().location
         let current = matches.firstIndex { $0.location >= caret } ?? 0
         editor.setFindMatches(matches, current: current)
-        if resetToFirst { editor.scrollFindMatchToVisible(current) }
+        if resetToFirst { editor.revealFindMatch(current) }
     }
 
     private func step(_ delta: Int) {
@@ -136,7 +136,7 @@ final class FindController: NSObject, EditorFindHandling {
               let current = editor.currentMatchIndex else { return }
         let next = (current + delta + matches.count) % matches.count
         editor.setFindMatches(matches, current: next)
-        editor.scrollFindMatchToVisible(next)
+        editor.revealFindMatch(next)
     }
 
     // MARK: - Replace

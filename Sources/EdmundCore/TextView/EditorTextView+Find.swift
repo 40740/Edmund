@@ -34,11 +34,17 @@ extension EditorTextView {
         needsDisplay = true
     }
 
-    /// Scrolls the match at `index` into view without moving the caret (a
-    /// selection change would trigger the active-block-renders-raw recompose).
-    public func scrollFindMatchToVisible(_ index: Int) {
+    /// Reveals the match at `index` without moving the caret (a selection change
+    /// would trigger the active-block-renders-raw recompose). Already-visible
+    /// matches don't move the viewport; otherwise the match's line goes to the
+    /// top, so a document jump lands the hit predictably rather than at an edge.
+    public func revealFindMatch(_ index: Int) {
         guard findMatches.indices.contains(index) else { return }
-        scrollRangeToVisible(findMatches[index])
+        let range = findMatches[index]
+        let origin = enclosingScrollView?.contentView.bounds.origin ?? .zero
+        if !rangeIsVisible(range, forViewportOrigin: origin) {
+            scrollCharacterToTop(range.location)
+        }
     }
 
     // MARK: - Highlight drawing
@@ -54,7 +60,10 @@ extension EditorTextView {
 
         let visible = viewportCharRange(tlm)
         let current = NSColor.findHighlightColor
-        let other = current.withAlphaComponent(0.5)
+        // Non-current matches are dimmer, and dimmer still in light mode where
+        // the yellow reads stronger against the white page.
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let other = current.withAlphaComponent(dark ? 0.55 : 0.3)
         // Layout-fragment frames are in text-container space; the view offsets
         // them by textContainerOrigin (which also carries the content-width
         // centering). Translate to draw in view coordinates.

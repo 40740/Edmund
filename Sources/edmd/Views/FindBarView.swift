@@ -1,26 +1,95 @@
 import AppKit
 
-/// The in-document find/replace bar, styled after Apple Notes: a full-width
-/// strip under the toolbar with a magnifier search field (case / whole-word
-/// options in its menu), a live match count, prev/next arrows, a Done button,
-/// and a Replace toggle that reveals the replace row.
+// MARK: - Search field with an inline match count
+
+/// Reserves room on the right of the search text for the count label so the
+/// typed text never runs under it.
+private final class CountingSearchFieldCell: NSSearchFieldCell {
+    var countWidth: CGFloat = 0
+    override func searchTextRect(forBounds rect: NSRect) -> NSRect {
+        var r = super.searchTextRect(forBounds: rect)
+        r.size.width = max(0, r.width - countWidth)
+        return r
+    }
+}
+
+/// An `NSSearchField` that shows the match count inside the field, just left of
+/// the cancel (✕) button — the Notes placement.
+final class CountingSearchField: NSSearchField {
+    private let countLabel = NSTextField(labelWithString: "")
+
+    override class var cellClass: AnyClass? {
+        get { CountingSearchFieldCell.self }
+        set { }
+    }
+
+    /// nil or an empty query hides the count.
+    var matchCount: Int? { didSet { updateCount() } }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        countLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        countLabel.textColor = .secondaryLabelColor
+        countLabel.isHidden = true
+        addSubview(countLabel)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    private func updateCount() {
+        if let c = matchCount, !stringValue.isEmpty {
+            countLabel.stringValue = "\(c)"
+            countLabel.sizeToFit()
+            countLabel.isHidden = false
+            (cell as? CountingSearchFieldCell)?.countWidth = countLabel.frame.width + 10
+        } else {
+            countLabel.isHidden = true
+            (cell as? CountingSearchFieldCell)?.countWidth = 0
+        }
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        guard !countLabel.isHidden else { return }
+        let cancel = (cell as? NSSearchFieldCell)?.cancelButtonRect(forBounds: bounds) ?? .zero
+        let rightEdge = cancel.width > 0 ? cancel.minX : bounds.maxX - 6
+        let w = countLabel.frame.width
+        countLabel.frame = NSRect(x: rightEdge - w - 4,
+                                  y: (bounds.height - countLabel.frame.height) / 2,
+                                  width: w, height: countLabel.frame.height)
+    }
+}
+
+// MARK: - Find bar
+
+/// The in-document find/replace bar, styled after Apple Notes. Laid out on an
+/// `NSGridView` so the search/replace fields share a left edge and the `‹ ›` /
+/// `Replace|All` control groups share a left edge. Find-only is one row; toggling
+/// Replace reveals a second row and moves **Done** down onto it.
 ///
-/// This view is dumb: it owns the controls and reports events through closures.
-/// All search/replace logic lives in `FindController`.
-final class FindBarView: NSVisualEffectView {
+/// Dumb view: owns the controls, reports events through closures. All logic is
+/// in `FindController`.
+final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
 
-    static let findRowHeight: CGFloat = 32
-    static let replaceRowHeight: CGFloat = 30
-
-    let searchField = NSSearchField()
+    let searchField = CountingSearchField()
     let replaceField = NSTextField()
-    private let countLabel = NSTextField(labelWithString: "0")
+
     private let nav = NSSegmentedControl(
         images: [NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Previous")!,
                  NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Next")!],
         trackingMode: .momentary, target: nil, action: nil)
     private let replaceToggle = NSButton(checkboxWithTitle: "Replace", target: nil, action: nil)
-    private let replaceRow = NSStackView()
+    private let replaceGroup = NSSegmentedControl(
+        labels: ["Replace", "All"], trackingMode: .momentary, target: nil, action: nil)
+    // Two Done buttons — one per row — toggled by visibility. Simpler and more
+    // robust than moving a single button between grid cells (which failed to
+    // render). find-only shows the top one; replace shows the bottom one.
+    private let doneTop = NSButton(title: "Done", target: nil, action: nil)
+    private let doneBottom = NSButton(title: "Done", target: nil, action: nil)
+    /// Row-0 trailing cell: Done (find-only) + the Replace checkbox.
+    private let trailing0 = NSStackView()
+
+    private var grid: NSGridView!
 
     // Event callbacks, wired by the controller.
     var onSearchChanged: (() -> Void)?
@@ -39,13 +108,16 @@ final class FindBarView: NSVisualEffectView {
         get { replaceToggle.state == .on }
         set {
             replaceToggle.state = newValue ? .on : .off
-            replaceRow.isHidden = !newValue
+            grid.row(at: 1).isHidden = !newValue   // hides replace field + group + doneBottom
+            doneTop.isHidden = newValue            // Done only on the visible row
+            needsLayout = true
         }
     }
 
-    /// The bar's current height for the active replace state.
+    /// The bar's height for the active replace state (drives the content inset).
     var preferredHeight: CGFloat {
-        Self.findRowHeight + (showsReplaceRow ? Self.replaceRowHeight : 0)
+        grid.layoutSubtreeIfNeeded()
+        return grid.fittingSize.height + 12
     }
 
     override init(frame frameRect: NSRect) {
@@ -54,76 +126,64 @@ final class FindBarView: NSVisualEffectView {
         blendingMode = .withinWindow
         state = .active
         buildUI()
+        showsReplaceRow = false
     }
-
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     // MARK: - Build
 
     private func buildUI() {
         searchField.placeholderString = "Find"
-        searchField.sendsWholeSearchString = false          // fire per keystroke
+        searchField.sendsWholeSearchString = false
         searchField.sendsSearchStringImmediately = true
         searchField.target = self
         searchField.action = #selector(searchChanged)
+        searchField.delegate = self
         searchField.searchMenuTemplate = optionsMenu()
+        searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        countLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        countLabel.textColor = .secondaryLabelColor
-        countLabel.alignment = .right
-        countLabel.setContentHuggingPriority(.required, for: .horizontal)
-
-        nav.target = self
-        nav.action = #selector(navClicked)
-        nav.setContentHuggingPriority(.required, for: .horizontal)
-
-        let done = NSButton(title: "Done", target: self, action: #selector(doneClicked))
-        done.bezelStyle = .rounded
-        done.setContentHuggingPriority(.required, for: .horizontal)
-
-        replaceToggle.target = self
-        replaceToggle.action = #selector(replaceToggled)
-        replaceToggle.setContentHuggingPriority(.required, for: .horizontal)
-
-        let findRow = NSStackView(views: [searchField, countLabel, nav, done, replaceToggle])
-        findRow.orientation = .horizontal
-        findRow.spacing = 8
-        findRow.alignment = .centerY
-        findRow.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
-        searchField.setContentHuggingPriority(.defaultLow, for: .horizontal) // takes slack
-
-        // Replace row.
         replaceField.placeholderString = "Replace"
         replaceField.target = self
         replaceField.action = #selector(replaceReturn)
-        let replaceBtn = NSButton(title: "Replace", target: self, action: #selector(replaceClicked))
-        replaceBtn.bezelStyle = .rounded
-        let replaceAllBtn = NSButton(title: "Replace All", target: self, action: #selector(replaceAllClicked))
-        replaceAllBtn.bezelStyle = .rounded
-        for b in [replaceBtn, replaceAllBtn] { b.setContentHuggingPriority(.required, for: .horizontal) }
+        replaceField.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        replaceRow.setViews([replaceField, replaceBtn, replaceAllBtn], in: .leading)
-        replaceRow.orientation = .horizontal
-        replaceRow.spacing = 8
-        replaceRow.alignment = .centerY
-        replaceRow.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
-        replaceRow.isHidden = true
+        nav.target = self
+        nav.action = #selector(navClicked)
 
-        let column = NSStackView(views: [findRow, replaceRow])
-        column.orientation = .vertical
-        column.spacing = 0
-        column.alignment = .leading
-        column.distribution = .fill
-        column.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(column)
+        replaceGroup.target = self
+        replaceGroup.action = #selector(replaceGroupClicked)
+        replaceGroup.segmentDistribution = .fit
+
+        for done in [doneTop, doneBottom] {
+            done.bezelStyle = .rounded
+            done.target = self
+            done.action = #selector(doneClicked)
+        }
+
+        replaceToggle.target = self
+        replaceToggle.action = #selector(replaceToggled)
+
+        trailing0.orientation = .horizontal
+        trailing0.spacing = 8
+        trailing0.setViews([doneTop, replaceToggle], in: .leading)
+
+        grid = NSGridView(views: [
+            [searchField, nav, trailing0],
+            [replaceField, replaceGroup, doneBottom],
+        ])
+        grid.columnSpacing = 8
+        grid.rowSpacing = 5
+        grid.column(at: 0).xPlacement = .fill        // fields absorb slack
+        grid.column(at: 1).xPlacement = .leading      // ‹›/Replace|All share a left edge
+        grid.column(at: 2).xPlacement = .trailing
+        for r in 0..<grid.numberOfRows { grid.row(at: r).yPlacement = .center }
+
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(grid)
         NSLayoutConstraint.activate([
-            column.leadingAnchor.constraint(equalTo: leadingAnchor),
-            column.trailingAnchor.constraint(equalTo: trailingAnchor),
-            column.topAnchor.constraint(equalTo: topAnchor),
-            findRow.heightAnchor.constraint(equalToConstant: Self.findRowHeight),
-            replaceRow.heightAnchor.constraint(equalToConstant: Self.replaceRowHeight),
-            findRow.widthAnchor.constraint(equalTo: column.widthAnchor),
-            replaceRow.widthAnchor.constraint(equalTo: column.widthAnchor),
+            grid.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            grid.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            grid.topAnchor.constraint(equalTo: topAnchor, constant: 6),
         ])
     }
 
@@ -145,35 +205,35 @@ final class FindBarView: NSVisualEffectView {
 
     // MARK: - Display
 
-    func setCount(_ count: Int) {
-        countLabel.stringValue = "\(count)"
+    func setCount(_ count: Int) { searchField.matchCount = count }
+
+    // MARK: - Search-field Return → find next
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard control === searchField else { return false }
+        if selector == #selector(NSResponder.insertNewline(_:)) { onNext?(); return true }
+        return false
     }
 
     // MARK: - Actions
 
     @objc private func searchChanged() { onSearchChanged?() }
     @objc private func doneClicked() { onDone?() }
-    @objc private func replaceClicked() { onReplace?() }
     @objc private func replaceReturn() { onReplace?() }
-    @objc private func replaceAllClicked() { onReplaceAll?() }
 
     @objc private func navClicked() {
         if nav.selectedSegment == 0 { onPrevious?() } else { onNext?() }
     }
 
+    @objc private func replaceGroupClicked() {
+        if replaceGroup.selectedSegment == 0 { onReplace?() } else { onReplaceAll?() }
+    }
+
     @objc private func replaceToggled() {
-        let on = replaceToggle.state == .on
-        replaceRow.isHidden = !on
-        onToggleReplace?(on)
+        showsReplaceRow = replaceToggle.state == .on
+        onToggleReplace?(showsReplaceRow)
     }
 
-    @objc private func toggleCase() {
-        caseSensitive.toggle()
-        onOptionsChanged?()
-    }
-
-    @objc private func toggleWholeWord() {
-        wholeWord.toggle()
-        onOptionsChanged?()
-    }
+    @objc private func toggleCase() { caseSensitive.toggle(); onOptionsChanged?() }
+    @objc private func toggleWholeWord() { wholeWord.toggle(); onOptionsChanged?() }
 }
