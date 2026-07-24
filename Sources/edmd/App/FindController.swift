@@ -68,7 +68,6 @@ final class FindController: NSObject, EditorFindHandling {
             if !picked.contains("\n") { bar.searchField.stringValue = picked }
         }
         editor.window?.makeFirstResponder(bar.searchField)
-        editor.findDimActive = true   // dim the page until focus returns to it
         runSearch(resetToFirst: true)
     }
 

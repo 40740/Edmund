@@ -88,8 +88,6 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
     private let doneBottom = NSButton(title: "Done", target: nil, action: nil)
     /// Row-0 trailing cell: Done (find-only) + the Replace checkbox.
     private let trailing0 = NSStackView()
-    /// Row-1 trailing cell: Replace|All group butted up against Done (no gap).
-    private let trailing1 = NSStackView()
 
     private var grid: NSGridView!
 
@@ -170,13 +168,12 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         trailing0.spacing = 8
         trailing0.setViews([doneTop, replaceToggle], in: .leading)
 
-        trailing1.orientation = .horizontal
-        trailing1.spacing = 6   // Replace|All butted up against Done, per the reference
-        trailing1.setViews([replaceGroup, doneBottom], in: .leading)
-
+        // ‹›/Replace|All share col1's left edge; ☑Replace/Done share col2 (trailing,
+        // far right) — the reference grid. Done lands under the Replace checkbox
+        // with a small gap after Replace|All, driven by the column widths.
         grid = NSGridView(views: [
             [searchField, nav, trailing0],
-            [replaceField, NSGridCell.emptyContentView, trailing1],
+            [replaceField, replaceGroup, doneBottom],
         ])
         grid.columnSpacing = 8
         grid.rowSpacing = 5

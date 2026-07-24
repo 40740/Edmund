@@ -31,7 +31,7 @@ extension EditorTextView {
         findMatches = []
         currentMatchIndex = nil
         findActive = false
-        findDimActive = false
+        stopEmphasis()
         needsDisplay = true
     }
 
@@ -39,6 +39,7 @@ extension EditorTextView {
     /// would trigger the active-block-renders-raw recompose). Already-visible
     /// matches don't move the viewport; otherwise the match's line goes to the
     /// top, so a document jump lands the hit predictably rather than at an edge.
+    /// Also fires the pop animation on the freshly-focused match.
     public func revealFindMatch(_ index: Int) {
         guard findMatches.indices.contains(index) else { return }
         let range = findMatches[index]
@@ -46,24 +47,28 @@ extension EditorTextView {
         if !rangeIsVisible(range, forViewportOrigin: origin) {
             scrollCharacterToTop(range.location)
         }
+        emphasize(range)
     }
 
     // MARK: - Highlight drawing
 
-    /// Paints the match highlights behind the glyphs, using the system find
-    /// colour. Runs on the normal background-draw pass (so scrolling repaints
-    /// exposed matches for free) and is bounded to matches intersecting the
-    /// laid-out viewport, so a document with many scattered hits doesn't force
+    /// Paints a grey background behind every match (CotEditor-style), plus a
+    /// yellow→grey settle animation on the match just navigated to. Draw-only,
+    /// on the background pass so scrolling repaints exposed matches for free and
+    /// bounded to the laid-out viewport, so many scattered hits don't force
     /// whole-document layout on every frame.
     public override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         guard findActive, !findMatches.isEmpty, let tlm = textLayoutManager else { return }
 
         let visible = viewportCharRange(tlm)
-        // All matches read equal weight; the "current" one is distinguished by
-        // the viewport revealing it, not by colour. Emphasis now comes from the
-        // dimmed document behind them (see `draw(_:)`).
-        NSColor.findHighlightColor.setFill()
+        let rest = NSColor.unemphasizedSelectedTextBackgroundColor   // grey for unfocused hits
+        // The emphasised hit starts at find-yellow and blends to grey as the pop
+        // settles. sRGB-convert both first: catalog colours won't blend directly.
+        let hot = NSColor.findHighlightColor.usingColorSpace(.sRGB)
+        let cool = rest.usingColorSpace(.sRGB)
+        let emphasised = (hot != nil && cool != nil)
+            ? (hot!.blended(withFraction: emphasisProgress, of: cool!) ?? rest) : rest
         // Layout-fragment frames are in text-container space; the view offsets
         // them by textContainerOrigin (which also carries the content-width
         // centering). Translate to draw in view coordinates.
@@ -72,6 +77,8 @@ extension EditorTextView {
         for match in findMatches {
             if let visible, NSIntersectionRange(visible, match).length == 0 { continue }
             guard let tr = blockTextRange(match, tlm) else { continue }
+            let isEmphasised = emphasisRange.map { NSEqualRanges($0, match) } ?? false
+            (isEmphasised ? emphasised : rest).setFill()
             tlm.enumerateTextSegments(in: tr, type: .highlight, options: []) { _, frame, _, _ in
                 let r = frame.offsetBy(dx: origin.x, dy: origin.y)
                 if r.intersects(rect) { r.fill() }
@@ -80,32 +87,35 @@ extension EditorTextView {
         }
     }
 
-    /// Paints the Notes-style dim veil *over* the glyphs while the find bar holds
-    /// focus, punching a hole around every match so the highlighted hits stay
-    /// bright and the rest of the page recedes. Draw-only, no storage touch.
-    /// Cleared when focus returns to the editor (`findDimActive`).
-    public override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        guard findActive, findDimActive, let tlm = textLayoutManager else { return }
+    // MARK: - Pop animation
 
-        // Full dirty area, minus a rect per visible match → even-odd fill leaves
-        // the matches undimmed.
-        let veil = NSBezierPath(rect: dirtyRect)
-        let visible = viewportCharRange(tlm)
-        let origin = textContainerOrigin
-        for match in findMatches {
-            if let visible, NSIntersectionRange(visible, match).length == 0 { continue }
-            guard let tr = blockTextRange(match, tlm) else { continue }
-            tlm.enumerateTextSegments(in: tr, type: .highlight, options: []) { _, frame, _, _ in
-                let r = frame.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -1.5, dy: -1.5)
-                if r.intersects(dirtyRect) { veil.appendRect(r) }
-                return true
-            }
-        }
-        veil.windingRule = .evenOdd
-        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        NSColor.black.withAlphaComponent(dark ? 0.45 : 0.12).setFill()
-        veil.fill()
+    private static let emphasisDuration: CFTimeInterval = 0.45
+
+    /// Starts (or restarts) the yellow→grey settle on `range`, driven by a
+    /// display link so it stays smooth without a manual timer.
+    private func emphasize(_ range: NSRange) {
+        emphasisLink?.invalidate()
+        emphasisRange = range
+        emphasisProgress = 0
+        let link = displayLink(target: self, selector: #selector(stepEmphasis))
+        link.add(to: .main, forMode: .common)
+        emphasisLink = link
+        needsDisplay = true
+    }
+
+    private func stopEmphasis() {
+        emphasisLink?.invalidate()
+        emphasisLink = nil
+        emphasisRange = nil
+        emphasisProgress = 0
+    }
+
+    @objc private func stepEmphasis(_ link: CADisplayLink) {
+        // targetTimestamp - duration ≈ link start on the first tick; use the
+        // link's own clock so pauses/dropped frames stay in sync.
+        emphasisProgress = min(1, emphasisProgress + CGFloat(link.duration / Self.emphasisDuration))
+        needsDisplay = true
+        if emphasisProgress >= 1 { stopEmphasis(); needsDisplay = true }
     }
 
     /// The character range currently laid out in the viewport, or nil if

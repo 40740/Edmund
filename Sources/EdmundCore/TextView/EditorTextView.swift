@@ -43,10 +43,12 @@ public class EditorTextView: NSTextView {
     public var currentMatchIndex: Int?
     /// True while the find bar is open; gates highlight drawing.
     public var findActive = false
-    /// Dims the document (Notes-style) while the find bar holds focus, so the
-    /// bright matches pop. Cleared the moment focus returns to the editor
-    /// (a click into the text) — see `becomeFirstResponder`.
-    public var findDimActive = false
+    /// The match currently being emphasised (the newly-navigated hit), and how
+    /// far its yellow→grey settle animation has progressed (0…1). Drives the
+    /// CotEditor-style pop; nil when nothing is animating. See EditorTextView+Find.
+    var emphasisRange: NSRange?
+    var emphasisProgress: CGFloat = 0
+    var emphasisLink: CADisplayLink?
     /// Routes menu/keyboard find commands to the app-side find controller.
     /// Weak; mirrors the module decoupling of `contextFontMenuProvider` so
     /// EdmundCore need not know about edmd's FindController.
@@ -561,11 +563,7 @@ public class EditorTextView: NSTextView {
     /// This formalizes the focus-switch recovery users already stumble into.
     public override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
-        if became {
-            recoverFromStrandedCompositionIfNeeded()
-            // Clicking/typing into the editor lifts the find dim (matches stay).
-            if findDimActive { findDimActive = false; needsDisplay = true }
-        }
+        if became { recoverFromStrandedCompositionIfNeeded() }
         return became
     }
 
