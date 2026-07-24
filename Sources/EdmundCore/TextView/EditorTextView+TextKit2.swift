@@ -264,6 +264,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// handed over at vend time (the fragment has no theme access).
     let codeBlockLabelFont: NSFont
 
+    /// Whitespace-mark config, or nil when invisibles are off. Drawn over the
+    /// real glyphs after `super.draw` — see EditorTextView+Invisibles.
+    let invisibles: InvisiblesConfig?
+
     init(textElement: NSTextElement, range: NSTextRange?,
          decorations: [BlockDecoration],
          overlays: [(offset: Int, overlay: FragmentOverlay)],
@@ -271,13 +275,15 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
          antialias: Bool,
          codeBlockLabel: String? = nil,
          codeBlockLabelAnchor: String? = nil,
-         codeBlockLabelFont: NSFont = .monospacedSystemFont(ofSize: 10, weight: .regular)) {
+         codeBlockLabelFont: NSFont = .monospacedSystemFont(ofSize: 10, weight: .regular),
+         invisibles: InvisiblesConfig? = nil) {
         self.decorations = decorations
         self.overlays = overlays
         self.antialias = antialias
         self.codeBlockLabel = codeBlockLabel
         self.codeBlockLabelAnchor = codeBlockLabelAnchor
         self.codeBlockLabelFont = codeBlockLabelFont
+        self.invisibles = invisibles
         var resolved: [(x: CGFloat, lines: [NSTextLineFragment])] = []
         var stacks: [(NSTextContentStorage, NSTextLayoutManager, NSTextContainer)] = []
         for wrap in cellWraps {
@@ -393,6 +399,12 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         if let rect = codeBlockLabelRect() {
             bounds = bounds.union(rect.insetBy(dx: -2, dy: -2))
         }
+        // The line-ending mark (¬) sits just past the last glyph — give it room.
+        if invisibles != nil {
+            let frame = layoutFragmentFrame
+            bounds = bounds.union(CGRect(x: containerLeft, y: 0,
+                                         width: containerWidth + 12, height: frame.height))
+        }
         return bounds
     }
 
@@ -463,6 +475,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             }
         }
         drawCodeBlockLabel(at: point, in: context)
+        drawInvisibles(at: point, in: context)
     }
 
     /// The excess of this row's glyph cap-top gap (baseline minus capHeight)
@@ -712,7 +725,9 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
         // fragment so its draw can disable antialiasing. (A `.codeBlockLabel`
         // line always also carries the box decoration, so it needs no extra
         // clause here.)
+        let invisibles = self.invisibles
         guard !decorations.isEmpty || !overlays.isEmpty || !cellWraps.isEmpty || !textAntialias
+                || (invisibles?.drawsAnything ?? false)
         else {
             return NSTextLayoutFragment(textElement: textElement,
                                         range: textElement.elementRange)
@@ -725,7 +740,8 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                            antialias: textAntialias,
                                            codeBlockLabel: codeBlockLabelValue,
                                            codeBlockLabelAnchor: codeBlockLabelAnchorValue,
-                                           codeBlockLabelFont: codeBlockLabelFont)
+                                           codeBlockLabelFont: codeBlockLabelFont,
+                                           invisibles: invisibles)
     }
 }
 

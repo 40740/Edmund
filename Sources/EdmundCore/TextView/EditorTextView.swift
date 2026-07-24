@@ -231,6 +231,14 @@ public class EditorTextView: NSTextView {
     /// Clamped on read, so a garbage value can't produce an empty indent unit.
     public var indentWidth = 2
 
+    /// Invisible-character marks (whitespace made visible), or nil = off (the
+    /// default). Editor-only; Read mode never shows these. `nonisolated(unsafe)`
+    /// like `textAntialias` because the (nonisolated) layout-fragment delegate
+    /// reads it at vend time; always set from the main actor. After changing it,
+    /// call `refreshInvisibles()` — it alters no attributes, so a restyle won't
+    /// re-vend the fragments. See EditorTextView+Invisibles.
+    nonisolated(unsafe) public var invisibles: InvisiblesConfig?
+
     // MARK: - Derived Visual Properties
 
     /// The app accent: the macOS system accent (`controlAccentColor`), which

@@ -3,9 +3,8 @@
 //
 // Several controls here are deliberately `.disabled(true)`: their setting is
 // stored and the UI is final, but the feature behind them isn't built yet
-// (invisible characters, indent guides, line numbers, focus mode, indent
-// detection, strict line breaks, hard wrap). Each becomes live by deleting its
-// `.disabled(true)` when the feature lands — see misc/backlog.md.
+// (indent guides, line numbers, focus mode, hard wrap). Each becomes live by
+// deleting its `.disabled(true)` when the feature lands — see misc/backlog.md.
 
 import SwiftUI
 import AppKit
@@ -149,7 +148,13 @@ struct EditSettingsView: View {
                         .padding(.bottom, -15)  // hardcoded
                         .disabled(!showInvisibles)
                 }
-                .disabled(true)   // not implemented yet
+                .onChange(of: showInvisibles) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: invisiblesMode) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: lineEnding) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: tab) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: space) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: otherWhitespace) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: otherControl) { AppSettings.applyEditSettingsToOpenDocuments() }
             }
             
             GridRow {

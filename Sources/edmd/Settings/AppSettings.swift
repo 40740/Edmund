@@ -454,6 +454,34 @@ enum AppSettings {
     /// document's indent; it never rewrites the global `indentStyle`/`indentWidth`.
     static var detectIndent: Bool { boolDefaultTrue(Key.detectIndent) }
 
+    /// Show invisible characters (whitespace marks) in the editor — default off.
+    static var showInvisibles: Bool { UserDefaults.standard.bool(forKey: Key.showInvisibles) }
+
+    /// When invisibles draw: always, or only within the selection (default).
+    static var invisiblesMode: InvisibleCharacterMode {
+        guard let raw = UserDefaults.standard.string(forKey: Key.invisiblesMode),
+              let mode = InvisibleCharacterMode(rawValue: raw) else { return .uponSelection }
+        return mode
+    }
+
+    // The per-category toggles (default on, gated by `showInvisibles`).
+    static var invisibleLineEnding: Bool { boolDefaultTrue(Key.invisibleLineEnding) }
+    static var invisibleTab: Bool { boolDefaultTrue(Key.invisibleTab) }
+    static var invisibleSpace: Bool { boolDefaultTrue(Key.invisibleSpace) }
+    static var invisibleWhitespace: Bool { boolDefaultTrue(Key.invisibleWhitespace) }
+    static var invisibleControl: Bool { boolDefaultTrue(Key.invisibleControl) }
+
+    /// The invisibles config pushed onto every editor, or nil when off. The mark
+    /// color is `tertiaryLabelColor`, which adapts to light/dark on its own.
+    static var invisiblesConfig: InvisiblesConfig? {
+        guard showInvisibles else { return nil }
+        return InvisiblesConfig(
+            lineEnding: invisibleLineEnding, tab: invisibleTab, space: invisibleSpace,
+            otherWhitespace: invisibleWhitespace, otherControl: invisibleControl,
+            mode: invisiblesMode == .always ? .always : .uponSelection,
+            color: .tertiaryLabelColor)
+    }
+
     /// Pushes every Edit-pane setting into an editor. Called when a document
     /// window is built and again — for every open document — whenever the pane
     /// changes something.
@@ -463,6 +491,8 @@ enum AppSettings {
         editor.indentUsesTabs = indentStyle == .tabs
         editor.indentWidth = indentWidth
         editor.isContinuousSpellCheckingEnabled = spellCheck
+        editor.invisibles = invisiblesConfig
+        editor.refreshInvisibles()
     }
 
     /// Applies the Edit-pane settings to every open document (editor behavior
