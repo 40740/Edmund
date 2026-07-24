@@ -17,6 +17,31 @@ extension EditorTextView {
         indentUsesTabs ? "\t" : String(repeating: " ", count: min(max(indentWidth, 1), 8))
     }
 
+    /// Guesses a document's indent style from its leading whitespace, for the
+    /// Edit ▸ "Detect and learn indent style on document opening" setting.
+    /// Returns nil when nothing is indented (so the current settings stand).
+    /// Tabs vs spaces is decided by the majority of indented lines; the width is
+    /// the smallest space-indent step seen, clamped to 1...8.
+    // ponytail: min-step heuristic, no fenced-code exclusion — good enough for v1.
+    // Upgrade path if it proves eager: histogram the indent deltas so a stray
+    // alignment space doesn't drag the width down, and skip code fences.
+    public static func detectIndent(in text: String) -> (usesTabs: Bool, width: Int)? {
+        var tabLed = 0
+        var spaceCounts: [Int] = []
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            guard let first = line.first, first == " " || first == "\t",
+                  line.contains(where: { !$0.isWhitespace }) else { continue }
+            if first == "\t" {
+                tabLed += 1
+            } else {
+                spaceCounts.append(line.prefix { $0 == " " }.count)
+            }
+        }
+        guard tabLed + spaceCounts.count > 0 else { return nil }
+        if tabLed >= spaceCounts.count { return (true, 4) }   // width unused for tabs
+        return (false, min(max(spaceCounts.min() ?? 4, 1), 8))
+    }
+
     /// Returns true if the line looks like a markdown list item
     /// (optionally indented): `- `, `* `, `+ `, `1. `, etc.
     func isListLine(_ line: String) -> Bool {

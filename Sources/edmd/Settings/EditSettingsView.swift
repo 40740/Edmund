@@ -3,9 +3,8 @@
 //
 // Several controls here are deliberately `.disabled(true)`: their setting is
 // stored and the UI is final, but the feature behind them isn't built yet
-// (invisible characters, indent guides, line numbers, focus mode, indent
-// detection, strict line breaks, hard wrap). Each becomes live by deleting its
-// `.disabled(true)` when the feature lands — see misc/backlog.md.
+// (indent guides, line numbers, focus mode, hard wrap). Each becomes live by
+// deleting its `.disabled(true)` when the feature lands — see misc/backlog.md.
 
 import SwiftUI
 import AppKit
@@ -16,8 +15,6 @@ struct EditSettingsView: View {
     @AppStorage(AppSettings.Key.autoHideToolbar) private var autoHideToolbar = true
     @AppStorage(AppSettings.Key.sourceMode)      private var sourceMode = false
     @AppStorage(AppSettings.Key.showInvisibles) private var showInvisibles = false
-    @AppStorage(AppSettings.Key.invisiblesMode)
-    private var invisiblesMode = AppSettings.InvisibleCharacterMode.uponSelection
     @AppStorage(AppSettings.Key.invisibleLineEnding) private var lineEnding = true
     @AppStorage(AppSettings.Key.invisibleTab)        private var tab = true
     @AppStorage(AppSettings.Key.invisibleSpace)      private var space = true
@@ -97,7 +94,6 @@ struct EditSettingsView: View {
                         Text("spaces")
                     }
                     Toggle("Detect and learn indent style on document opening", isOn: $detectIndent)
-                        .disabled(true)   // not implemented yet
                 }
                 .padding(.top, -6)
                 .onChange(of: indentStyle) { AppSettings.applyEditSettingsToOpenDocuments() }
@@ -130,27 +126,18 @@ struct EditSettingsView: View {
             GridRow {
                 Text("Characters:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        // fixedSize, or the picker's flexible width squeezes the
-                        // label down to "Invisible charac…".
-                        Toggle("Show invisible characters", isOn: $showInvisibles)
-                            .fixedSize()
-                        // When to draw them, once they're on at all.
-                        Picker("", selection: $invisiblesMode) {
-                            ForEach(AppSettings.InvisibleCharacterMode.allCases) {
-                                Text($0.label).tag($0)
-                            }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                        .disabled(!showInvisibles)
-                    }
+                    Toggle("Show invisible characters upon selection", isOn: $showInvisibles)
                     invisibleCharacterGrid
                         .padding(.leading, 20)
                         .padding(.bottom, -15)  // hardcoded
                         .disabled(!showInvisibles)
                 }
-                .disabled(true)   // not implemented yet
+                .onChange(of: showInvisibles) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: lineEnding) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: tab) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: space) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: otherWhitespace) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: otherControl) { AppSettings.applyEditSettingsToOpenDocuments() }
             }
             
             GridRow {
@@ -159,8 +146,9 @@ struct EditSettingsView: View {
                     // Leftmost of the window only — not in print / PDF, for now.
                     Toggle("Show line numbers", isOn: $showLineNumbers)
                         .disabled(true)   // not implemented yet
-                    
+
                     Toggle("Strict line breaks", isOn: $strictLineBreaks)
+                        .onChange(of: strictLineBreaks) { refreshReadViews() }
                     Text("Markdown specs ignore single line breaks in read view. Turn off to make single line breaks visible.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -168,7 +156,6 @@ struct EditSettingsView: View {
                         .frame(maxWidth: 380, alignment: .leading)
                         .padding(.leading, 20)
                 }
-                .disabled(true)   // not implemented yet
             }
             
             GridRow {
@@ -217,6 +204,14 @@ struct EditSettingsView: View {
     private func applySourceMode() {
         for case let document as Document in NSDocumentController.shared.documents {
             document.applySourceMode()
+        }
+    }
+
+    /// Strict line breaks changes Read-mode output, so re-render every open
+    /// document (Read mode reads `AppSettings.strictLineBreaks` on render).
+    private func refreshReadViews() {
+        for case let document as Document in NSDocumentController.shared.documents {
+            document.refreshReadView()
         }
     }
 }

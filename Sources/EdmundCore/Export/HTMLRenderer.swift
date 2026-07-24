@@ -459,7 +459,10 @@ struct HTMLRenderer: MarkupVisitor {
     mutating func visitStrikethrough(_ s: Strikethrough) -> String { "<del>\(renderChildren(of: s))</del>" }
     mutating func visitInlineCode(_ code: InlineCode) -> String { "<code>\(Self.escape(code.code))</code>" }
     mutating func visitLineBreak(_ lineBreak: LineBreak) -> String { "<br>\n" }
-    mutating func visitSoftBreak(_ softBreak: SoftBreak) -> String { "\n" }
+    // Off → each single newline becomes a literal break (Edit ▸ Strict line breaks).
+    mutating func visitSoftBreak(_ softBreak: SoftBreak) -> String {
+        options.strictLineBreaks ? "\n" : "<br>\n"
+    }
 
     mutating func visitLink(_ link: Link) -> String {
         let dest = link.destination ?? ""

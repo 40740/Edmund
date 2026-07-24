@@ -48,21 +48,6 @@ enum AppSettings {
         static let displayOrder: [AppearanceMode] = [.light, .dark, .matchSystem]
     }
 
-    /// When the editor draws invisible characters (spaces, tabs, line endings),
-    /// once `showInvisibles` turns them on at all. Not implemented yet — the
-    /// setting persists so the UI can ship ahead of it.
-    enum InvisibleCharacterMode: String, CaseIterable, Identifiable {
-        case uponSelection
-        case always
-        var id: Self { self }
-        var label: String {
-            switch self {
-            case .uponSelection: return "Upon Selection"
-            case .always: return "Always"
-            }
-        }
-    }
-
     /// What one indent unit is made of. The width (in spaces) is `indentWidth`;
     /// a tab indent is always one tab character regardless of the width.
     enum IndentStyle: String, CaseIterable, Identifiable {
@@ -147,7 +132,6 @@ enum AppSettings {
         static let showToolbar         = "settings.edit.showToolbar"
         static let autoHideToolbar     = "settings.edit.autoHideToolbar"
         static let showInvisibles      = "settings.edit.showInvisibles"
-        static let invisiblesMode      = "settings.edit.invisiblesMode"
         static let invisibleLineEnding = "settings.edit.invisibleLineEnding"
         static let invisibleTab        = "settings.edit.invisibleTab"
         static let invisibleSpace      = "settings.edit.invisibleSpace"
@@ -444,6 +428,37 @@ enum AppSettings {
     static var continueLists: Bool { boolDefaultTrue(Key.continueLists) }
     static var spellCheck: Bool { UserDefaults.standard.bool(forKey: Key.spellCheck) }
 
+    /// Strict line breaks (default on): when off, Read mode / export render each
+    /// single source newline as a literal `<br>`. Read at render time (passed
+    /// into `ReadRenderOptions`), not pushed onto the editor.
+    static var strictLineBreaks: Bool { boolDefaultTrue(Key.strictLineBreaks) }
+
+    /// Detect and learn a document's indent style when it opens (default on).
+    /// Read once at open time in `Document.showWindows`, overriding this
+    /// document's indent; it never rewrites the global `indentStyle`/`indentWidth`.
+    static var detectIndent: Bool { boolDefaultTrue(Key.detectIndent) }
+
+    /// Show invisible characters (whitespace marks) within the selection —
+    /// default off.
+    static var showInvisibles: Bool { UserDefaults.standard.bool(forKey: Key.showInvisibles) }
+
+    // The per-category toggles (default on, gated by `showInvisibles`).
+    static var invisibleLineEnding: Bool { boolDefaultTrue(Key.invisibleLineEnding) }
+    static var invisibleTab: Bool { boolDefaultTrue(Key.invisibleTab) }
+    static var invisibleSpace: Bool { boolDefaultTrue(Key.invisibleSpace) }
+    static var invisibleWhitespace: Bool { boolDefaultTrue(Key.invisibleWhitespace) }
+    static var invisibleControl: Bool { boolDefaultTrue(Key.invisibleControl) }
+
+    /// The invisibles config pushed onto every editor, or nil when off. The mark
+    /// color is `tertiaryLabelColor`, which adapts to light/dark on its own.
+    static var invisiblesConfig: InvisiblesConfig? {
+        guard showInvisibles else { return nil }
+        return InvisiblesConfig(
+            lineEnding: invisibleLineEnding, tab: invisibleTab, space: invisibleSpace,
+            otherWhitespace: invisibleWhitespace, otherControl: invisibleControl,
+            color: .tertiaryLabelColor)
+    }
+
     /// Pushes every Edit-pane setting into an editor. Called when a document
     /// window is built and again — for every open document — whenever the pane
     /// changes something.
@@ -453,6 +468,8 @@ enum AppSettings {
         editor.indentUsesTabs = indentStyle == .tabs
         editor.indentWidth = indentWidth
         editor.isContinuousSpellCheckingEnabled = spellCheck
+        editor.invisibles = invisiblesConfig
+        editor.refreshInvisibles()
     }
 
     /// Applies the Edit-pane settings to every open document (editor behavior
