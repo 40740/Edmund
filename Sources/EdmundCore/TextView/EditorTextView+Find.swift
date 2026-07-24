@@ -53,46 +53,70 @@ extension EditorTextView {
     // MARK: - Highlight drawing
 
     /// Paints a grey background behind every match (CotEditor-style), plus a
-    /// yellow→grey settle animation on the match just navigated to. Draw-only,
-    /// on the background pass so scrolling repaints exposed matches for free and
-    /// bounded to the laid-out viewport, so many scattered hits don't force
-    /// whole-document layout on every frame.
+    /// yellow "pop" box on the match just navigated to: a rounded rect a touch
+    /// larger than the text that swells slightly and fades out. Draw-only, on the
+    /// background pass (behind the glyphs, so the text stays legible through the
+    /// pop) and bounded to the laid-out viewport so many scattered hits don't
+    /// force whole-document layout on every frame.
     public override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         guard findActive, !findMatches.isEmpty, let tlm = textLayoutManager else { return }
 
         let visible = viewportCharRange(tlm)
-        let rest = NSColor.unemphasizedSelectedTextBackgroundColor   // grey for unfocused hits
-        // The emphasised hit starts at find-yellow and blends to grey as the pop
-        // settles. sRGB-convert both first: catalog colours won't blend directly.
-        let hot = NSColor.findHighlightColor.usingColorSpace(.sRGB)
-        let cool = rest.usingColorSpace(.sRGB)
-        let emphasised = (hot != nil && cool != nil)
-            ? (hot!.blended(withFraction: emphasisProgress, of: cool!) ?? rest) : rest
         // Layout-fragment frames are in text-container space; the view offsets
         // them by textContainerOrigin (which also carries the content-width
         // centering). Translate to draw in view coordinates.
         let origin = textContainerOrigin
 
+        // Grey resting background for every visible match.
+        NSColor.unemphasizedSelectedTextBackgroundColor.setFill()
         for match in findMatches {
             if let visible, NSIntersectionRange(visible, match).length == 0 { continue }
             guard let tr = blockTextRange(match, tlm) else { continue }
-            let isEmphasised = emphasisRange.map { NSEqualRanges($0, match) } ?? false
-            (isEmphasised ? emphasised : rest).setFill()
             tlm.enumerateTextSegments(in: tr, type: .highlight, options: []) { _, frame, _, _ in
                 let r = frame.offsetBy(dx: origin.x, dy: origin.y)
                 if r.intersects(rect) { r.fill() }
                 return true
             }
         }
+
+        // Pop box over the emphasised match: holds at full yellow, then swells
+        // outward and fades out. `emphasisProgress` runs 0…1 over the whole
+        // duration; the first `holdFraction` of it is the steady hold.
+        guard let em = emphasisRange, emphasisProgress < 1,
+              let tr = blockTextRange(em, tlm) else { return }
+        let holdFraction = CGFloat(Self.emphasisHold / Self.emphasisDuration)
+        let fade = max(0, (emphasisProgress - holdFraction) / (1 - holdFraction))
+        let grow = 2 + fade * 4                       // 2 → 6pt beyond the text box
+        let alpha = 1 - fade                          // fade to transparent
+
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.35 * alpha)   // fades with the box
+        shadow.shadowOffset = NSSize(width: 0, height: -1.5)                   // flipped view: downward
+        shadow.shadowBlurRadius = 4
+        shadow.set()
+        NSColor.findHighlightColor.withAlphaComponent(alpha).setFill()
+        tlm.enumerateTextSegments(in: tr, type: .highlight, options: []) { _, frame, _, _ in
+            let box = frame.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -grow, dy: -grow)
+            if box.intersects(rect) {
+                NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4).fill()
+            }
+            return true
+        }
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     // MARK: - Pop animation
 
-    private static let emphasisDuration: CFTimeInterval = 0.45
+    /// Full yellow is held for `emphasisHold`, then swells + fades over
+    /// `emphasisFade`.
+    private static let emphasisHold: CFTimeInterval = 1.0
+    private static let emphasisFade: CFTimeInterval = 0.2
+    private static var emphasisDuration: CFTimeInterval { emphasisHold + emphasisFade }
 
-    /// Starts (or restarts) the yellow→grey settle on `range`, driven by a
-    /// display link so it stays smooth without a manual timer.
+    /// Starts (or restarts) the pop on `range`, driven by a display link so it
+    /// stays smooth without a manual timer.
     private func emphasize(_ range: NSRange) {
         emphasisLink?.invalidate()
         emphasisRange = range
