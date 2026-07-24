@@ -31,6 +31,7 @@ extension EditorTextView {
         findMatches = []
         currentMatchIndex = nil
         findActive = false
+        findDimActive = false
         needsDisplay = true
     }
 
@@ -59,26 +60,52 @@ extension EditorTextView {
         guard findActive, !findMatches.isEmpty, let tlm = textLayoutManager else { return }
 
         let visible = viewportCharRange(tlm)
-        let current = NSColor.findHighlightColor
-        // Non-current matches are dimmer, and dimmer still in light mode where
-        // the yellow reads stronger against the white page.
-        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        let other = current.withAlphaComponent(dark ? 0.55 : 0.3)
+        // All matches read equal weight; the "current" one is distinguished by
+        // the viewport revealing it, not by colour. Emphasis now comes from the
+        // dimmed document behind them (see `draw(_:)`).
+        NSColor.findHighlightColor.setFill()
         // Layout-fragment frames are in text-container space; the view offsets
         // them by textContainerOrigin (which also carries the content-width
         // centering). Translate to draw in view coordinates.
         let origin = textContainerOrigin
 
-        for (i, match) in findMatches.enumerated() {
+        for match in findMatches {
             if let visible, NSIntersectionRange(visible, match).length == 0 { continue }
             guard let tr = blockTextRange(match, tlm) else { continue }
-            (i == currentMatchIndex ? current : other).setFill()
             tlm.enumerateTextSegments(in: tr, type: .highlight, options: []) { _, frame, _, _ in
                 let r = frame.offsetBy(dx: origin.x, dy: origin.y)
                 if r.intersects(rect) { r.fill() }
                 return true
             }
         }
+    }
+
+    /// Paints the Notes-style dim veil *over* the glyphs while the find bar holds
+    /// focus, punching a hole around every match so the highlighted hits stay
+    /// bright and the rest of the page recedes. Draw-only, no storage touch.
+    /// Cleared when focus returns to the editor (`findDimActive`).
+    public override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard findActive, findDimActive, let tlm = textLayoutManager else { return }
+
+        // Full dirty area, minus a rect per visible match → even-odd fill leaves
+        // the matches undimmed.
+        let veil = NSBezierPath(rect: dirtyRect)
+        let visible = viewportCharRange(tlm)
+        let origin = textContainerOrigin
+        for match in findMatches {
+            if let visible, NSIntersectionRange(visible, match).length == 0 { continue }
+            guard let tr = blockTextRange(match, tlm) else { continue }
+            tlm.enumerateTextSegments(in: tr, type: .highlight, options: []) { _, frame, _, _ in
+                let r = frame.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -1.5, dy: -1.5)
+                if r.intersects(dirtyRect) { veil.appendRect(r) }
+                return true
+            }
+        }
+        veil.windingRule = .evenOdd
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        NSColor.black.withAlphaComponent(dark ? 0.45 : 0.12).setFill()
+        veil.fill()
     }
 
     /// The character range currently laid out in the viewport, or nil if
