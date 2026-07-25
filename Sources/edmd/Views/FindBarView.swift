@@ -68,29 +68,93 @@ final class CountingSearchField: NSSearchField {
         sfCell.searchButtonCell = blank
     }
 
-    /// Draws the magnifier (and the ▾ search-menu affordance, when there is a
-    /// menu) centred on the button rect, matching the stock glyph's geometry.
+    // Ink geometry of the stock glyph, measured off a screenshot of the native
+    // search field (device pixels ÷ 2), stated as an offset from the button
+    // rect's leading edge. The magnifier and the ▾ are both centred on the
+    // composite, so centring each on the button rect keeps their relationship
+    // while lifting the whole glyph onto the field's centre.
+    private static let magnifierInk = (x: CGFloat(1.5), size: NSSize(width: 12.5, height: 12.5))
+    private static let chevronInk = (x: CGFloat(14.0), size: NSSize(width: 6.1, height: 4.3))
+
+    /// Draws the magnifier — and the ▾ search-menu affordance, when there is a
+    /// menu — replicating the stock glyph, but centred on the button rect
+    /// instead of sitting low in it.
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        guard let sfCell = cell as? NSSearchFieldCell, let magnifier = Self.magnifier else { return }
+        guard let sfCell = cell as? NSSearchFieldCell else { return }
         let button = sfCell.searchButtonRect(forBounds: bounds)
-        var x = button.minX + 2
-        func place(_ image: NSImage) {
-            let s = image.size
-            tint(image).draw(in: NSRect(x: x, y: button.midY - s.height / 2,
-                                        width: s.width, height: s.height))
-            x += s.width
+        if let magnifier = Self.magnifier {
+            draw(magnifier, inkAt: Self.magnifierInk.x, size: Self.magnifierInk.size, in: button)
         }
-        place(magnifier)
-        if searchMenuTemplate != nil, let chevron = Self.menuChevron { place(chevron) }
+        if searchMenuTemplate != nil, let chevron = Self.menuChevron {
+            draw(chevron, inkAt: Self.chevronInk.x, size: Self.chevronInk.size, in: button)
+        }
     }
 
-    private static let magnifier = NSImage(systemSymbolName: "magnifyingglass",
-                                           accessibilityDescription: "Search")?
-        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .regular))
-    private static let menuChevron = NSImage(systemSymbolName: "chevron.down",
-                                             accessibilityDescription: "Search options")?
-        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 7, weight: .semibold))
+    /// Scales and offsets `glyph` so its *ink* — not its padded image bounds —
+    /// lands `x` points in from the button rect's leading edge, `size` big, and
+    /// centred on the rect. SF Symbol images carry internal padding that varies
+    /// with the symbol, so placing them by image bounds would miss the stock
+    /// geometry; going through the ink makes the measured numbers exact.
+    private func draw(_ glyph: (image: NSImage, ink: NSRect), inkAt x: CGFloat,
+                      size: NSSize, in button: NSRect) {
+        guard glyph.ink.width > 0, glyph.ink.height > 0 else { return }
+        let sx = size.width / glyph.ink.width, sy = size.height / glyph.ink.height
+        tint(glyph.image).draw(in: NSRect(
+            x: button.minX + x - glyph.ink.minX * sx,
+            y: button.midY - size.height / 2 - glyph.ink.minY * sy,
+            width: glyph.image.size.width * sx, height: glyph.image.size.height * sy))
+    }
+
+    // Point sizes chosen so the ink is already near its target size and the
+    // rescale above stays ≈1 — scaling far from 1 would thicken or thin the
+    // strokes away from the stock weight.
+    private static let magnifier = glyph("magnifyingglass", pointSize: 13, weight: .light)
+    private static let menuChevron = glyph("chevron.down", pointSize: 9, weight: .regular)
+
+    private static func glyph(_ name: String, pointSize: CGFloat,
+                              weight: NSFont.Weight) -> (image: NSImage, ink: NSRect)? {
+        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight))
+        else { return nil }
+        return (image, inkBounds(image))
+    }
+
+    /// Tight bounding box of an image's non-transparent pixels, in image points.
+    private static func inkBounds(_ image: NSImage) -> NSRect {
+        let scale = 2   // measure at 2× so half-point ink edges are visible
+        let w = Int(image.size.width.rounded(.up)) * scale
+        let h = Int(image.size.height.rounded(.up)) * scale
+        guard w > 0, h > 0,
+              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                         isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0) else { return .zero }
+        // Must be set before the context is made — it defines the context's
+        // coordinate space, so a late assignment draws into the wrong scale.
+        rep.size = image.size
+        guard let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return .zero }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        image.draw(in: NSRect(origin: .zero, size: image.size))
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let data = rep.bitmapData else { return .zero }
+        let bytesPerRow = rep.bytesPerRow, perPixel = rep.samplesPerPixel
+        var minX = w, minY = h, maxX = -1, maxY = -1
+        for y in 0..<h {
+            for x in 0..<w where data[y * bytesPerRow + x * perPixel + 3] > 12 {
+                minX = min(minX, x); maxX = max(maxX, x)
+                minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= minX else { return .zero }
+        // Bitmap rows run top-down; NSImage coordinates run bottom-up.
+        return NSRect(x: CGFloat(minX) / CGFloat(scale),
+                      y: CGFloat(h - 1 - maxY) / CGFloat(scale),
+                      width: CGFloat(maxX - minX + 1) / CGFloat(scale),
+                      height: CGFloat(maxY - minY + 1) / CGFloat(scale))
+    }
 
     /// Template images render flat black when drawn by hand; tint per draw so the
     /// glyph follows light/dark.
@@ -239,13 +303,10 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         // A 2×2 grid: column 0 holds the two fields (stretch to fill), column 1
         // the two right-hand clusters. Row 1 (replace) is hidden in find-only.
 
-        // Top cluster: nav — spacer — Done (find-only), Replace. The spacer
-        // pushes Replace to the trailing edge (aligned with Done below), with
-        // nav on the leading edge. doneTop detaches when the replace row appears.
-        let topSpacer = NSView()
-        topSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        topSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let topRight = NSStackView(views: [nav, topSpacer, doneTop, replaceToggle])
+        // Top cluster: nav, Done (find-only), Replace — evenly spaced, leading,
+        // so nav shares its left edge with Replace|All below. doneTop detaches
+        // when the replace row appears.
+        let topRight = NSStackView(views: [nav, doneTop, replaceToggle])
         topRight.orientation = .horizontal
         topRight.spacing = 8
         topRight.alignment = .centerY
@@ -265,7 +326,7 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         grid.rowSpacing = 3          // tight gap between the find and replace rows
         grid.column(at: 0).xPlacement = .fill        // fields stretch to fill
         grid.column(at: 1).xPlacement = .leading      // col1 hugs content (driven by the wider cluster)
-        grid.cell(atColumnIndex: 1, rowIndex: 0).xPlacement = .fill   // top cluster fills col1 so its spacer expands
+        grid.cell(atColumnIndex: 1, rowIndex: 0).xPlacement = .leading
         grid.row(at: 0).yPlacement = .center
         grid.row(at: 1).yPlacement = .center
 
