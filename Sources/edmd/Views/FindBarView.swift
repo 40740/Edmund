@@ -2,6 +2,23 @@ import AppKit
 
 // MARK: - Search field with an inline match count
 
+/// Suppresses the stock magnifier ▾ glyph so the field can draw it centred
+/// itself — see `CountingSearchField.draw(_:)`.
+///
+/// AppKit draws the glyph ~3.75pt below the field's centre (the image is 21×15,
+/// the button rect the field's full 22pt height) and there is no built-in way to
+/// move it: `searchButtonRect(forBounds:)` is only a sizing probe (it's called
+/// with a 40000×40000 bounds), `drawInterior(withFrame:in:)` is bypassed by the
+/// search field's private draw path, and the cell ignores a replacement image
+/// (the Big Sur `NSSearchField` regression, FB8913004). `imageRect(forBounds:)`
+/// *is* honoured, but the drawing is clipped to a fixed band, so shifting or
+/// growing the rect only chops the top off the glyph. Zeroing it draws nothing,
+/// which is the one thing we can use. The cell still handles the click, so the
+/// search-options menu keeps working.
+private final class BlankSearchButtonCell: NSButtonCell {
+    override func imageRect(forBounds rect: NSRect) -> NSRect { .zero }
+}
+
 /// Reserves room on the right of the search text for the count label so the
 /// typed text never runs under it.
 private final class CountingSearchFieldCell: NSSearchFieldCell {
@@ -33,6 +50,57 @@ final class CountingSearchField: NSSearchField {
         countLabel.textColor = .secondaryLabelColor
         countLabel.isHidden = true
         addSubview(countLabel)
+        recentreSearchButton()
+    }
+
+    /// Blank the search button cell, keeping its target/action so the
+    /// search-options menu still opens; `draw(_:)` renders the glyph instead.
+    private func recentreSearchButton() {
+        guard let sfCell = cell as? NSSearchFieldCell,
+              let old = sfCell.searchButtonCell else { return }
+        let blank = BlankSearchButtonCell()
+        blank.title = ""              // NSButtonCell defaults to drawing "Button"
+        blank.imagePosition = .imageOnly
+        blank.isBordered = old.isBordered
+        blank.isTransparent = old.isTransparent
+        blank.target = old.target
+        blank.action = old.action
+        sfCell.searchButtonCell = blank
+    }
+
+    /// Draws the magnifier (and the ▾ search-menu affordance, when there is a
+    /// menu) centred on the button rect, matching the stock glyph's geometry.
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let sfCell = cell as? NSSearchFieldCell, let magnifier = Self.magnifier else { return }
+        let button = sfCell.searchButtonRect(forBounds: bounds)
+        var x = button.minX + 2
+        func place(_ image: NSImage) {
+            let s = image.size
+            tint(image).draw(in: NSRect(x: x, y: button.midY - s.height / 2,
+                                        width: s.width, height: s.height))
+            x += s.width
+        }
+        place(magnifier)
+        if searchMenuTemplate != nil, let chevron = Self.menuChevron { place(chevron) }
+    }
+
+    private static let magnifier = NSImage(systemSymbolName: "magnifyingglass",
+                                           accessibilityDescription: "Search")?
+        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .regular))
+    private static let menuChevron = NSImage(systemSymbolName: "chevron.down",
+                                             accessibilityDescription: "Search options")?
+        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 7, weight: .semibold))
+
+    /// Template images render flat black when drawn by hand; tint per draw so the
+    /// glyph follows light/dark.
+    private func tint(_ image: NSImage) -> NSImage {
+        NSImage(size: image.size, flipped: false) { rect in
+            image.draw(in: rect)
+            NSColor.secondaryLabelColor.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -116,9 +184,11 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
     }
 
     /// The bar's height for the active replace state (drives the content inset).
+    /// `fittingSize` already carries the grid's top/bottom insets, so no padding
+    /// is added here — adding more would stretch the grid and unbalance the rows.
     var preferredHeight: CGFloat {
         layoutSubtreeIfNeeded()
-        return fittingSize.height + 12
+        return fittingSize.height
     }
 
     override init(frame frameRect: NSRect) {
@@ -192,7 +262,7 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
             [replaceField, bottomRightStack],
         ])
         grid.columnSpacing = 8
-        grid.rowSpacing = 5
+        grid.rowSpacing = 3          // tight gap between the find and replace rows
         grid.column(at: 0).xPlacement = .fill        // fields stretch to fill
         grid.column(at: 1).xPlacement = .leading      // col1 hugs content (driven by the wider cluster)
         grid.cell(atColumnIndex: 1, rowIndex: 0).xPlacement = .fill   // top cluster fills col1 so its spacer expands

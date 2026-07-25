@@ -181,6 +181,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General/Advanced views) |
 | Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (§7) |
 | Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey`. `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure. CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline + signing + `RELEASE_TOKEN`: §13. |
+| Find & Replace | `EdmundCore/Find/FindEngine.swift` (pure search), `TextView/EditorTextView+Find.swift` (match state, highlight drawing, pop animation, `EditorFindHandling`), `edmd/Views/FindBarView.swift` (the bar), `edmd/App/FindController.swift` (mediator); Edit ▸ Find menu in `main.swift` |
 | Status bar | `edmd/Views/StatusBarView.swift` |
 | Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing), `Package.swift`, `Info.plist`, `Resources/` |
 
@@ -235,6 +236,32 @@ Notable subsystems:
   **Export as PDF… / Print… (⌘P)** run the same HTML through
   `WKWebView.printOperation` (`MarkdownPrinter`; vector text, math is
   high-DPI PNG). Full spec: `docs/architecture/reader-and-export.md`.
+- **Find & Replace** (in-document, ⌘F / ⌥⌘F / ⌘G / ⇧⌘G): **not**
+  `NSTextFinder` — it renders the system bar rather than the Notes look, and
+  its highlighting drives `NSLayoutManager`, which the TextKit 2 tripwire
+  (§2) forbids. Instead: `FindEngine` is a pure `NSString.range(of:)` scan
+  (case-sensitive / whole-word options, no regex) over `rawSource`; because
+  of the identity invariant, search index == raw index == display index, so
+  there is **no offset mapping**. Highlighting is **draw-only** — a
+  `drawBackground(in:)` override fills rects from
+  `enumerateTextSegments(in:type:.highlight)`, offset by
+  `textContainerOrigin` — so it never writes attributes into storage and
+  can't perturb recompose. Navigation never moves the caret (that would
+  trigger the active-block-renders-raw recompose); it scrolls via
+  `revealFindMatch`, which leaves an already-visible match alone and
+  otherwise puts the hit's line at the top. Every match gets a grey resting
+  background; the one just navigated to also gets a Preview-style "pop" — a
+  drop-shadowed rounded yellow box that springs in from a larger scale with
+  an `easeOutBack` overshoot, holds, then fades, driven by a `CADisplayLink`
+  (constants at the top of `+Find.swift`). Replace / Replace All are the
+  only paths that touch text and go through the sanctioned edit cycle (§4),
+  Replace All rebuilding the source back-to-front so it lands as one undo
+  step. EdmundCore stays unaware of the controller via the
+  `EditorFindHandling` protocol — the same decoupling as
+  `contextFontMenuProvider`. The bar itself is an `NSGridView` (2×2) so the
+  two fields share a left edge and the `‹ ›` / `Replace|All` clusters share
+  theirs; find-only is one row and toggling Replace reveals the second and
+  moves **Done** down onto it.
 - **Mode-switch viewport sync** (Edit ↔ Read, line-accurate both ways):
   read HTML blocks carry `id="edmund-l<startLine>"` anchors; scroll maps as
   (anchor line, fraction-into-block) via API-injected `evaluateJavaScript`
@@ -436,6 +463,25 @@ Notable subsystems:
   `window.setFrame(_:)` **after the toolbar is installed** (the frame is
   only final then), so frame-in == frame-out (`windowDidResize` ↔
   `makeWindowControllers` in `Document.swift`).
+- **`NSSearchField`'s magnifier glyph can't be repositioned — draw your
+  own.** AppKit draws it ~3.75pt below the field's vertical centre (a 21×15
+  image in a rect the field's full 22pt height). Every built-in hook is a
+  dead end, and each was measured, not assumed:
+  `searchButtonRect(forBounds:)` is only a *sizing probe* (AppKit calls it
+  with a 40000×40000 bounds, never to position); the button cell's
+  `drawInterior(withFrame:in:)` is bypassed by the search field's private
+  draw path; the cell ignores a replacement image entirely (the Big Sur
+  regression, FB8913004), so re-padding the image does nothing; and the
+  glyph is not a subview, so there is nothing to move in `layout()`.
+  `imageRect(forBounds:)` *is* honoured, but drawing is clipped to a fixed
+  band, so shifting or growing the rect just chops the top off the glyph.
+  What works (`FindBarView.swift`): swap in a button cell whose
+  `imageRect` returns `.zero` — it draws nothing but still handles the
+  click, so the search-options menu keeps working — and draw the
+  magnifier + ▾ yourself in the field's `draw(_:)`, centred on
+  `searchButtonRect(forBounds: bounds)` (that call *is* correct for real
+  bounds). Template images drawn by hand render flat black, so tint per
+  draw or the glyph won't follow light/dark.
 
 ---
 
