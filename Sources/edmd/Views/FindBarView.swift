@@ -86,9 +86,8 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
     // render). find-only shows the top one; replace shows the bottom one.
     private let doneTop = NSButton(title: "Done", target: nil, action: nil)
     private let doneBottom = NSButton(title: "Done", target: nil, action: nil)
-    /// Row-0 trailing cell: Done (find-only) + the Replace checkbox.
-    private let trailing0 = NSStackView()
-
+    /// Row-1 right cluster: Replace|All — spacer — Done.
+    private let bottomRightStack = NSStackView()
     private var grid: NSGridView!
 
     // Event callbacks, wired by the controller.
@@ -105,19 +104,20 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
     var wholeWord = false { didSet { syncOptionMenu() } }
 
     var showsReplaceRow: Bool {
-        get { replaceToggle.state == .on }
+        get { !grid.row(at: 1).isHidden }
         set {
             replaceToggle.state = newValue ? .on : .off
-            grid.row(at: 1).isHidden = !newValue   // hides replace field + group + doneBottom
-            doneTop.isHidden = newValue            // Done only on the visible row
+            grid.row(at: 1).isHidden = !newValue   // hides the replace field + right cluster
+            doneTop.isHidden = newValue            // Done lives on the visible row only
             needsLayout = true
+            invalidateIntrinsicContentSize()
         }
     }
 
     /// The bar's height for the active replace state (drives the content inset).
     var preferredHeight: CGFloat {
-        grid.layoutSubtreeIfNeeded()
-        return grid.fittingSize.height + 12
+        layoutSubtreeIfNeeded()
+        return fittingSize.height + 12
     }
 
     override init(frame frameRect: NSRect) {
@@ -164,23 +164,34 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         replaceToggle.target = self
         replaceToggle.action = #selector(replaceToggled)
 
-        trailing0.orientation = .horizontal
-        trailing0.spacing = 8
-        trailing0.setViews([doneTop, replaceToggle], in: .leading)
+        // MARK: - Grid layout
+        // A 2×2 grid: column 0 holds the two fields (stretch to fill), column 1
+        // the two right-hand clusters. Row 1 (replace) is hidden in find-only.
 
-        // ‹›/Replace|All share col1's left edge; ☑Replace/Done share col2 (trailing,
-        // far right) — the reference grid. Done lands under the Replace checkbox
-        // with a small gap after Replace|All, driven by the column widths.
+        // Top cluster: nav, Done (find-only), Replace — leading, no spacer.
+        // doneTop detaches when the replace row appears.
+        let topRight = NSStackView(views: [nav, doneTop, replaceToggle])
+        topRight.orientation = .horizontal
+        topRight.spacing = 8
+        topRight.alignment = .centerY
+
+        // Bottom cluster: Replace|All, Done — leading, no spacer, so Replace|All
+        // shares the nav's left edge.
+        bottomRightStack.orientation = .horizontal
+        bottomRightStack.spacing = 8
+        bottomRightStack.alignment = .centerY
+        bottomRightStack.setViews([replaceGroup, doneBottom], in: .leading)
+
         grid = NSGridView(views: [
-            [searchField, nav, trailing0],
-            [replaceField, replaceGroup, doneBottom],
+            [searchField, topRight],
+            [replaceField, bottomRightStack],
         ])
         grid.columnSpacing = 8
         grid.rowSpacing = 5
-        grid.column(at: 0).xPlacement = .fill        // fields absorb slack
-        grid.column(at: 1).xPlacement = .leading      // ‹›/Replace|All share a left edge
-        grid.column(at: 2).xPlacement = .trailing
-        for r in 0..<grid.numberOfRows { grid.row(at: r).yPlacement = .center }
+        grid.column(at: 0).xPlacement = .fill        // fields stretch to fill
+        grid.column(at: 1).xPlacement = .leading      // both clusters leading; col1 hugs content
+        grid.row(at: 0).yPlacement = .center
+        grid.row(at: 1).yPlacement = .center
 
         grid.translatesAutoresizingMaskIntoConstraints = false
         addSubview(grid)
@@ -188,7 +199,11 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
             grid.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             grid.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             grid.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            grid.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
         ])
+
+        searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        replaceField.setContentHuggingPriority(.defaultLow, for: .horizontal)
     }
 
     private func optionsMenu() -> NSMenu {

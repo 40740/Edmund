@@ -11,6 +11,14 @@ import AppKit
     func editorHideFind()
 }
 
+private extension NSRect {
+    /// Scales the rect about its own centre.
+    func scaled(by s: CGFloat) -> NSRect {
+        NSRect(x: midX - width * s / 2, y: midY - height * s / 2,
+               width: width * s, height: height * s)
+    }
+}
+
 extension EditorTextView {
 
     // MARK: - Match state
@@ -80,15 +88,18 @@ extension EditorTextView {
             }
         }
 
-        // Pop box over the emphasised match: holds at full yellow, then swells
-        // outward and fades out. `emphasisProgress` runs 0…1 over the whole
-        // duration; the first `holdFraction` of it is the steady hold.
+        // Pop box over the emphasised match (Preview-style): springs in from a
+        // larger scale with a bouncy overshoot, holds, then fades out. The box
+        // hugs the match text, so it's naturally variable-length.
         guard let em = emphasisRange, emphasisProgress < 1,
               let tr = blockTextRange(em, tlm) else { return }
-        let holdFraction = CGFloat(Self.emphasisHold / Self.emphasisDuration)
-        let fade = max(0, (emphasisProgress - holdFraction) / (1 - holdFraction))
-        let grow = 2 + fade * 4                       // 2 → 6pt beyond the text box
-        let alpha = 1 - fade                          // fade to transparent
+        let elapsed = emphasisProgress * Self.emphasisDuration
+        let scale = elapsed < Self.emphasisSpring
+            ? Self.startScale + (1 - Self.startScale) * easeOutBack(elapsed / Self.emphasisSpring)
+            : 1
+        let alpha = elapsed < Self.emphasisHold
+            ? 1
+            : max(0, 1 - (elapsed - Self.emphasisHold) / Self.emphasisFade)
 
         NSGraphicsContext.saveGraphicsState()
         let shadow = NSShadow()
@@ -98,7 +109,9 @@ extension EditorTextView {
         shadow.set()
         NSColor.findHighlightColor.withAlphaComponent(alpha).setFill()
         tlm.enumerateTextSegments(in: tr, type: .highlight, options: []) { _, frame, _, _ in
-            let box = frame.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -grow, dy: -grow)
+            // Base box hugs the text (2pt padding); scale it about its centre.
+            let base = frame.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -2, dy: -2)
+            let box = base.scaled(by: scale)
             if box.intersects(rect) {
                 NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4).fill()
             }
@@ -107,12 +120,22 @@ extension EditorTextView {
         NSGraphicsContext.restoreGraphicsState()
     }
 
+    /// Overshooting ease (0→1, briefly passing 1) — the source of the bounce.
+    private func easeOutBack(_ t: CGFloat) -> CGFloat {
+        let c1: CGFloat = 1.70158, c3 = c1 + 1
+        let u = t - 1
+        return 1 + c3 * u * u * u + c1 * u * u
+    }
+
     // MARK: - Pop animation
 
-    /// Full yellow is held for `emphasisHold`, then swells + fades over
-    /// `emphasisFade`.
-    private static let emphasisHold: CFTimeInterval = 1.0
-    private static let emphasisFade: CFTimeInterval = 0.2
+    /// The box springs in over `emphasisSpring` (from `startScale` down to 1,
+    /// overshooting for the bounce), stays full until `emphasisHold`, then fades
+    /// over `emphasisFade`. `emphasisSpring` must be ≤ `emphasisHold`.
+    private static let emphasisSpring: CFTimeInterval = 0.35
+    private static let emphasisHold: CFTimeInterval = 0.6
+    private static let emphasisFade: CFTimeInterval = 0.1
+    private static let startScale: CGFloat = 1.6
     private static var emphasisDuration: CFTimeInterval { emphasisHold + emphasisFade }
 
     /// Starts (or restarts) the pop on `range`, driven by a display link so it
