@@ -52,14 +52,19 @@ final class FindController: NSObject, EditorFindHandling {
 
     func editorShowFind(replace: Bool) {
         guard let editor else { return }
-        if !isShowing {
+        let firstShow = !isShowing
+        if firstShow {
             savedTopInset = scrollView?.contentInsets.top ?? 0
             scrollView?.automaticallyAdjustsContentInsets = false
             isShowing = true
-            bar.isHidden = false
         }
         bar.showsReplaceRow = replace
         layoutBar()
+        // Finish the bar's internal layout *before* revealing it, otherwise the
+        // first painted frame is pre-layout and controls (the search field's
+        // magnifier) visibly settle a pass later.
+        bar.layoutSubtreeIfNeeded()
+        if firstShow { bar.isHidden = false }
 
         // Seed from the current selection when it's a single line of text.
         let sel = editor.selectedRange()
@@ -119,14 +124,15 @@ final class FindController: NSObject, EditorFindHandling {
         matches = FindEngine.matches(of: needle, in: editor.rawSource,
                                      caseSensitive: bar.caseSensitive,
                                      wholeWord: bar.wholeWord)
-        bar.setCount(matches.count)
 
         guard !matches.isEmpty else {
+            bar.setCount(current: nil, total: 0)
             editor.setFindMatches([], current: nil)
             return
         }
         let caret = editor.selectedRange().location
         let current = matches.firstIndex { $0.location >= caret } ?? 0
+        bar.setCount(current: current, total: matches.count)
         editor.setFindMatches(matches, current: current)
         if resetToFirst { editor.revealFindMatch(current) }
     }
@@ -135,6 +141,7 @@ final class FindController: NSObject, EditorFindHandling {
         guard let editor, !matches.isEmpty,
               let current = editor.currentMatchIndex else { return }
         let next = (current + delta + matches.count) % matches.count
+        bar.setCount(current: next, total: matches.count)
         editor.setFindMatches(matches, current: next)
         editor.revealFindMatch(next)
     }

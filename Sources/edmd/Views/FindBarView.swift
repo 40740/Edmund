@@ -23,8 +23,9 @@ final class CountingSearchField: NSSearchField {
         set { }
     }
 
-    /// nil or an empty query hides the count.
-    var matchCount: Int? { didSet { updateCount() } }
+    /// Current match (0-based) and total; shown as "k of n". nil total or an
+    /// empty query hides the count.
+    var matchInfo: (current: Int?, total: Int)? { didSet { updateCount() } }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -36,8 +37,8 @@ final class CountingSearchField: NSSearchField {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     private func updateCount() {
-        if let c = matchCount, !stringValue.isEmpty {
-            countLabel.stringValue = "\(c)"
+        if let info = matchInfo, info.total > 0, !stringValue.isEmpty {
+            countLabel.stringValue = info.current.map { "\($0 + 1) of \(info.total)" } ?? "\(info.total)"
             countLabel.sizeToFit()
             countLabel.isHidden = false
             (cell as? CountingSearchFieldCell)?.countWidth = countLabel.frame.width + 10
@@ -168,9 +169,13 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         // A 2×2 grid: column 0 holds the two fields (stretch to fill), column 1
         // the two right-hand clusters. Row 1 (replace) is hidden in find-only.
 
-        // Top cluster: nav, Done (find-only), Replace — leading, no spacer.
-        // doneTop detaches when the replace row appears.
-        let topRight = NSStackView(views: [nav, doneTop, replaceToggle])
+        // Top cluster: nav — spacer — Done (find-only), Replace. The spacer
+        // pushes Replace to the trailing edge (aligned with Done below), with
+        // nav on the leading edge. doneTop detaches when the replace row appears.
+        let topSpacer = NSView()
+        topSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        topSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let topRight = NSStackView(views: [nav, topSpacer, doneTop, replaceToggle])
         topRight.orientation = .horizontal
         topRight.spacing = 8
         topRight.alignment = .centerY
@@ -189,7 +194,8 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         grid.columnSpacing = 8
         grid.rowSpacing = 5
         grid.column(at: 0).xPlacement = .fill        // fields stretch to fill
-        grid.column(at: 1).xPlacement = .leading      // both clusters leading; col1 hugs content
+        grid.column(at: 1).xPlacement = .leading      // col1 hugs content (driven by the wider cluster)
+        grid.cell(atColumnIndex: 1, rowIndex: 0).xPlacement = .fill   // top cluster fills col1 so its spacer expands
         grid.row(at: 0).yPlacement = .center
         grid.row(at: 1).yPlacement = .center
 
@@ -224,7 +230,9 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
 
     // MARK: - Display
 
-    func setCount(_ count: Int) { searchField.matchCount = count }
+    func setCount(current: Int?, total: Int) {
+        searchField.matchInfo = (current, total)
+    }
 
     // MARK: - Search-field Return → find next
 
