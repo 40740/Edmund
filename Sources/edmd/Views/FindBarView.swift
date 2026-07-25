@@ -1,9 +1,7 @@
 import AppKit
 
-/// How far the find bar's fields inset their leading content: the search
-/// field's magnifier glyph and the replace field's text both start here, so the
-/// two rows line up. AppKit's own insets differ per control (3.5pt for the
-/// search button, 12pt for a rounded-bezel text field), so both are overridden.
+/// How far the search field insets its magnifier glyph from its leading edge —
+/// AppKit's own inset is a tighter 3.5pt.
 private let fieldContentInset: CGFloat = 6
 
 // MARK: - Search field with an inline match count
@@ -23,29 +21,6 @@ private let fieldContentInset: CGFloat = 6
 /// search-options menu keeps working.
 private final class BlankSearchButtonCell: NSButtonCell {
     override func imageRect(forBounds rect: NSRect) -> NSRect { .zero }
-}
-
-/// A text field whose text starts at `fieldContentInset`, lining the replace
-/// row up with the search field's magnifier.
-final class PaddedTextField: NSTextField {
-    override class var cellClass: AnyClass? {
-        get { PaddedTextFieldCell.self }
-        set { }
-    }
-}
-
-private final class PaddedTextFieldCell: NSTextFieldCell {
-    /// AppKit insets the drawn text this much further inside `drawingRect`
-    /// (measured), so the rect must start that much before the inset we want.
-    private static let textInsetInsideDrawingRect: CGFloat = 3
-
-    override func drawingRect(forBounds rect: NSRect) -> NSRect {
-        var r = super.drawingRect(forBounds: rect)
-        let shift = rect.minX + fieldContentInset - Self.textInsetInsideDrawingRect - r.minX
-        r.origin.x += shift
-        r.size.width -= shift
-        return r
-    }
 }
 
 /// Reserves room on the right of the search text for the count label so the
@@ -237,7 +212,7 @@ final class CountingSearchField: NSSearchField {
 final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
 
     let searchField = CountingSearchField()
-    let replaceField = PaddedTextField()
+    let replaceField = NSTextField()
 
     private let nav = NSSegmentedControl(
         images: [NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Previous")!,
