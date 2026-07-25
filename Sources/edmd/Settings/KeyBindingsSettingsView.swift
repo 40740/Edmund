@@ -54,7 +54,9 @@ struct KeyBindingsSettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 580)
+        // Every settings pane is 600 wide, so switching tabs only ever resizes
+        // the window vertically.
+        .frame(width: 600)
     }
 
     /// The column titles, laid out to the same widths as the lists below.
