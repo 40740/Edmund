@@ -54,6 +54,12 @@ public extension NSAttributedString.Key {
     /// The second row draws after that fill, so nothing overpaints the
     /// label. Value: the non-empty display language `String`.
     static let codeBlockLabelAnchor = NSAttributedString.Key("MarkdownEditor.codeBlockLabelAnchor")
+    /// A nested list item's indent-guide columns — one x per *ancestor* level,
+    /// measured from the text container's left edge (the same space the
+    /// paragraph's head indents live in). Value: `[CGFloat]`, absent at depth 0.
+    /// Written whether or not the setting is on, so toggling the guides needs a
+    /// re-vend (`refreshOverdraw`) rather than a whole-document restyle.
+    static let listGuides = NSAttributedString.Key("MarkdownEditor.listGuides")
 }
 
 /// Value object describing what to draw behind a decorated paragraph.
@@ -268,6 +274,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// real glyphs after `super.draw` — see EditorTextView+Invisibles.
     let invisibles: InvisiblesConfig?
 
+    /// Indent-guide columns for a nested list item, container-relative; empty
+    /// when the item is top-level or the setting is off. Drawn under the text.
+    let listGuides: [CGFloat]
+
     init(textElement: NSTextElement, range: NSTextRange?,
          decorations: [BlockDecoration],
          overlays: [(offset: Int, overlay: FragmentOverlay)],
@@ -276,7 +286,9 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
          codeBlockLabel: String? = nil,
          codeBlockLabelAnchor: String? = nil,
          codeBlockLabelFont: NSFont = .monospacedSystemFont(ofSize: 10, weight: .regular),
-         invisibles: InvisiblesConfig? = nil) {
+         invisibles: InvisiblesConfig? = nil,
+         listGuides: [CGFloat] = []) {
+        self.listGuides = listGuides
         self.decorations = decorations
         self.overlays = overlays
         self.antialias = antialias
@@ -389,6 +401,11 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             bounds = bounds.union(CGRect(x: containerLeft - 4, y: 0,
                                          width: containerWidth + 8, height: frame.height))
         }
+        // Guides sit left of the item's text, outside the text-hugging frame.
+        if !listGuides.isEmpty {
+            bounds = bounds.union(CGRect(x: containerLeft, y: 0,
+                                         width: containerWidth, height: frame.height))
+        }
         for (offset, overlay) in overlays {
             if let rect = overlayRect(anchorOffset: offset, overlay: overlay) {
                 bounds = bounds.union(rect.insetBy(dx: -2, dy: -2))
@@ -410,6 +427,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
     override func draw(at point: CGPoint, in context: CGContext) {
         context.saveGState()
+        drawListGuides(at: point, in: context)
         // Decorations are stacked outermost-first. Each box stops short of the
         // fragment bottom by the padding of the boxes drawn before it, so an
         // outer box's bottom padding stays visible *below* an inner nested box
@@ -575,6 +593,60 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         return line.typographicBounds.minY + line.glyphOrigin.y - font.ascender
     }
 
+    /// The gray for editor chrome drawn as thin lines (table borders, list
+    /// indent guides). In dark mode `separatorColor` is ~10% ink and all but
+    /// vanishes, so use the shared marker gray there; light mode keeps
+    /// `separatorColor`. Read mode's `--table-border` matches.
+    private var chromeLineColor: NSColor {
+        NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? EditorTextView.darkRuleGray : NSColor.separatorColor
+    }
+
+    /// Vertical hairlines marking a list item's indent columns, drawn under the
+    /// text. Offsets are container-relative, so they land on the same columns as
+    /// the markers no matter how this item's own first line is indented (an
+    /// ordered or active marker shifts `point.x`, which is the *text* start —
+    /// hence `containerLeft` rather than `point.x` alone). They are measured
+    /// from the container's text origin, which sits `lineFragmentPadding` in
+    /// from its left edge — the same origin the paragraph's head indents use.
+    ///
+    /// All but the last offset are the item's ancestor columns, spanning its
+    /// whole height: consecutive list items tile with no gap (list paragraphs
+    /// carry no paragraph spacing), so the per-fragment fills read as one
+    /// continuous line down a nested run. Height is `decorationDrawHeight`, not
+    /// the raw frame, so a list at the end of the document doesn't paint a stub
+    /// over the absorbed trailing empty line.
+    ///
+    /// The last offset is the item's *own* column, drawn only from its second
+    /// line down — a wrapped continuation line then stays visibly tied to its
+    /// own bullet, while the first line leaves room for the marker itself.
+    private func drawListGuides(at point: CGPoint, in context: CGContext) {
+        guard !listGuides.isEmpty else { return }
+        // Filled at exactly one device pixel rather than stroked, for the same
+        // reason as the table's column borders — see `.tableRow`.
+        let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
+        let hairline = 1 / scale
+        let padding = textLayoutManager?.textContainer?.lineFragmentPadding ?? 0
+        let originX = point.x + containerLeft + padding
+        let height = decorationDrawHeight
+        context.setFillColor(chromeLineColor.cgColor)
+
+        func fill(_ offset: CGFloat, from top: CGFloat) {
+            guard height > top else { return }
+            let lineX = (((originX + offset) * scale).rounded()) / scale
+            context.fill(CGRect(x: lineX, y: point.y + top,
+                                width: hairline, height: height - top))
+        }
+
+        for offset in listGuides.dropLast() { fill(offset, from: 0) }
+        // Second *real* line: a trailing zero-length line is the document's
+        // final empty line absorbed into this fragment, not a wrapped line.
+        if let wrapped = textLineFragments.filter({ $0.characterRange.length > 0 })
+            .dropFirst().first, let own = listGuides.last {
+            fill(own, from: wrapped.typographicBounds.minY)
+        }
+    }
+
     private func drawDecoration(_ decoration: BlockDecoration, at point: CGPoint,
                                 in context: CGContext, bottomInset: CGFloat = 0,
                                 topInset: CGFloat = 0) {
@@ -636,13 +708,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator, let bottomBorder):
             // Offsets are text-relative; the fragment's origin is the text start.
-            // In dark mode `separatorColor` is ~10% ink and the grid all but
-            // vanishes, so use the shared marker gray there; light mode keeps
-            // separatorColor. Read mode's --table-border matches.
-            let darkChrome = NSAppearance.currentDrawing()
-                .bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            let borderColor = (darkChrome ? EditorTextView.darkRuleGray
-                                          : NSColor.separatorColor)
+            let borderColor = chromeLineColor
             context.setStrokeColor(borderColor.cgColor)
             context.setLineWidth(1)
             // Column borders are FILLED at exactly one device pixel rather than
@@ -726,8 +792,13 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
         // line always also carries the box decoration, so it needs no extra
         // clause here.)
         let invisibles = self.invisibles
+        // Read only when the setting is on, so a list-heavy document keeps the
+        // plain fast path with guides off (the default).
+        let listGuides = showListIndentGuides
+            ? (str.attribute(.listGuides, at: 0, effectiveRange: nil) as? [CGFloat] ?? [])
+            : []
         guard !decorations.isEmpty || !overlays.isEmpty || !cellWraps.isEmpty || !textAntialias
-                || (invisibles?.drawsAnything ?? false)
+                || (invisibles?.drawsAnything ?? false) || !listGuides.isEmpty
         else {
             return NSTextLayoutFragment(textElement: textElement,
                                         range: textElement.elementRange)
@@ -741,7 +812,8 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                            codeBlockLabel: codeBlockLabelValue,
                                            codeBlockLabelAnchor: codeBlockLabelAnchorValue,
                                            codeBlockLabelFont: codeBlockLabelFont,
-                                           invisibles: invisibles)
+                                           invisibles: invisibles,
+                                           listGuides: listGuides)
     }
 }
 

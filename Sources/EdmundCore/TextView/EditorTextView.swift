@@ -235,9 +235,16 @@ public class EditorTextView: NSTextView {
     /// default). Editor-only; Read mode never shows these. `nonisolated(unsafe)`
     /// like `textAntialias` because the (nonisolated) layout-fragment delegate
     /// reads it at vend time; always set from the main actor. After changing it,
-    /// call `refreshInvisibles()` — it alters no attributes, so a restyle won't
+    /// call `refreshOverdraw()` — it alters no attributes, so a restyle won't
     /// re-vend the fragments. See EditorTextView+Invisibles.
     nonisolated(unsafe) public var invisibles: InvisiblesConfig?
+
+    /// Draw the vertical indent guides on nested list items — default off. The
+    /// guide columns are baked into the text by the list renderer regardless
+    /// (`.listGuides`); this only gates the drawing, so flipping it needs a
+    /// `refreshOverdraw()` and never a restyle. `nonisolated(unsafe)` like
+    /// `invisibles`, and for the same reason: the vend delegate reads it.
+    nonisolated(unsafe) public var showListIndentGuides = false
 
     // MARK: - Derived Visual Properties
 

@@ -42,6 +42,25 @@ extension EditorTextView {
         return cols / unit
     }
 
+    /// The indent-guide columns for an item at `depth`, outermost first: one
+    /// per *ancestor* level, plus — last — the item's **own** column. Each
+    /// lands on the center of that level's marker box (a `bodyFont.pointSize`
+    /// wide slot starting at its `markerStart`), so a guide runs down the
+    /// column that level's bullet sits in.
+    ///
+    /// The two groups are drawn differently (see `drawListGuides`): the
+    /// ancestor guides span the item's whole height, while the own-column
+    /// guide is drawn only beside the item's wrapped continuation lines — its
+    /// first line holds the marker itself, which would collide.
+    ///
+    /// Offsets are measured from the text container's text origin, the same
+    /// space `listParagraphStyle`'s head indents use.
+    func listGuideOffsets(depth: Int, slotWidth: CGFloat) -> [CGFloat] {
+        (0...depth).map {
+            listPadding + CGFloat($0) * slotWidth + bodyFont.pointSize / 2
+        }
+    }
+
     // MARK: Marker Icons
 
     /// Dark-mode ink for markers, rules and table borders: the gray the

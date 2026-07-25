@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - App Intents ("Open in Edmund", "New Edmund Document") for Shortcuts / Spotlight (metadata generation requires an Xcode-project build; see build-app.sh)
 - Quick Look preview extension: renders Markdown as rich text, following the system light/dark appearance
 - AppleScript code-fence syntax highlighting
+- List indent guides: vertical lines marking each nesting level of a list (Settings ▸ Edit, off by default)
 
 
 ## [0.2.1] - 2026-07-17

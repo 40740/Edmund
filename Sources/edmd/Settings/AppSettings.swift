@@ -132,6 +132,8 @@ enum AppSettings {
         static let showToolbar         = "settings.edit.showToolbar"
         static let autoHideToolbar     = "settings.edit.autoHideToolbar"
         static let showInvisibles      = "settings.edit.showInvisibles"
+        // Parked with the rest of the Always mode (see `showInvisibles` below):
+        // static let invisiblesMode  = "settings.edit.invisiblesMode"
         static let invisibleLineEnding = "settings.edit.invisibleLineEnding"
         static let invisibleTab        = "settings.edit.invisibleTab"
         static let invisibleSpace      = "settings.edit.invisibleSpace"
@@ -440,6 +442,29 @@ enum AppSettings {
 
     /// Show invisible characters (whitespace marks) within the selection —
     /// default off.
+    ///
+    /// Invisibles once had an Always / Upon Selection mode picker; it was cut
+    /// (commit 6652972) because nobody reached for Always. Parked here, with the
+    /// matching pieces in `EditSettingsView` and `InvisiblesConfig`, in case the
+    /// choice comes back:
+    ///
+    ///     enum InvisibleCharacterMode: String, CaseIterable, Identifiable {
+    ///         case uponSelection
+    ///         case always
+    ///         var id: Self { self }
+    ///         var label: String {
+    ///             switch self {
+    ///             case .uponSelection: return "Upon Selection"
+    ///             case .always: return "Always"
+    ///             }
+    ///         }
+    ///     }
+    ///
+    ///     static var invisiblesMode: InvisibleCharacterMode {
+    ///         guard let raw = UserDefaults.standard.string(forKey: Key.invisiblesMode),
+    ///               let mode = InvisibleCharacterMode(rawValue: raw) else { return .uponSelection }
+    ///         return mode
+    ///     }
     static var showInvisibles: Bool { UserDefaults.standard.bool(forKey: Key.showInvisibles) }
 
     // The per-category toggles (default on, gated by `showInvisibles`).
@@ -456,7 +481,13 @@ enum AppSettings {
         return InvisiblesConfig(
             lineEnding: invisibleLineEnding, tab: invisibleTab, space: invisibleSpace,
             otherWhitespace: invisibleWhitespace, otherControl: invisibleControl,
+            // mode: invisiblesMode == .always ? .always : .uponSelection,
             color: .tertiaryLabelColor)
+    }
+
+    /// Draw the vertical guides on nested list items — default off.
+    static var showListIndentGuides: Bool {
+        UserDefaults.standard.bool(forKey: Key.showListIndentGuides)
     }
 
     /// Pushes every Edit-pane setting into an editor. Called when a document
@@ -469,7 +500,8 @@ enum AppSettings {
         editor.indentWidth = indentWidth
         editor.isContinuousSpellCheckingEnabled = spellCheck
         editor.invisibles = invisiblesConfig
-        editor.refreshInvisibles()
+        editor.showListIndentGuides = showListIndentGuides
+        editor.refreshOverdraw()
     }
 
     /// Applies the Edit-pane settings to every open document (editor behavior
