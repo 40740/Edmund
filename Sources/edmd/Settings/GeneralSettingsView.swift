@@ -35,12 +35,6 @@ struct GeneralSettingsView: View {
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("Enable Auto Save with Versions", isOn: $autoSave)
-                    Text("A system feature that automatically overwrites your files while editing. Even if turned off, Edmund creates a backup in case it unexpectedly quits.")
-                        .foregroundStyle(.secondary)
-                        .controlSize(.small)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(width: 380, alignment: .leading)
-                        .padding(.leading, 20)
                     Button("Clear Version History…") { showingVersionHistory = true }
                         .padding(.leading, 20)
                 }
