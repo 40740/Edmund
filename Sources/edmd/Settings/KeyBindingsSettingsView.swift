@@ -11,40 +11,36 @@ import SwiftUI
 import AppKit
 
 struct KeyBindingsSettingsView: View {
-    @State private var selectedGroup: String = KeyBindingCatalog.shared.groups.first ?? ""
+    @State private var selectedGroup: String?
     @State private var error: String?
     /// Bumped after every accepted edit to re-read shortcuts out of the store.
     @State private var revision = 0
 
+    private static let menuColumnWidth: CGFloat = 150
+    private static let keyColumnWidth: CGFloat = 90
+
     private var groups: [String] { KeyBindingCatalog.shared.groups }
+
+    private var rows: [KeyBindingCatalog.Entry] {
+        KeyBindingCatalog.shared.entries(inGroup: selectedGroup ?? "")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("To change a shortcut, click the key column, then type the new keys.")
 
-            HStack(spacing: 0) {
-                List(groups, id: \.self, selection: $selectedGroup) { group in
-                    Text(group).tag(group)
-                }
-                .listStyle(.plain)
-                .frame(width: 140)
-
+            // A hand-built header over two plain Lists rather than SwiftUI
+            // `Table`s: Table draws a separator under every row, which this pane
+            // (like CotEditor's) doesn't want, and there's no modifier to turn
+            // them off.
+            VStack(spacing: 0) {
+                header
                 Divider()
-
-                Table(KeyBindingCatalog.shared.entries(inGroup: selectedGroup)) {
-                    TableColumn("Command") { entry in
-                        Text(entry.title)
-                    }
-                    TableColumn("Key") { entry in
-                        ShortcutField(shortcut: shortcut(for: entry),
-                                      onCommit: { commit($0, to: entry) })
-                    }
-                    .width(90)
-                }
-                .id(revision)
+                lists
             }
             .border(Color(nsColor: .separatorColor))
             .frame(height: 300)
+            .onAppear { if selectedGroup == nil { selectedGroup = groups.first } }
 
             HStack {
                 Button("Restore Defaults", action: restoreDefaults)
@@ -59,6 +55,54 @@ struct KeyBindingsSettingsView: View {
         }
         .padding(20)
         .frame(width: 580)
+    }
+
+    /// The column titles, laid out to the same widths as the lists below.
+    private var header: some View {
+        HStack(spacing: 0) {
+            Text("Menu")
+                .frame(width: Self.menuColumnWidth, alignment: .leading)
+            Divider()
+            Text("Command")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 12)
+            Divider()
+            Text("Key")
+                .frame(width: Self.keyColumnWidth, alignment: .leading)
+                .padding(.leading, 8)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 28)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private var lists: some View {
+        HStack(spacing: 0) {
+            List(groups, id: \.self, selection: $selectedGroup) { group in
+                Text(group)
+                    .listRowSeparator(.hidden)
+            }
+            .listStyle(.plain)
+            .frame(width: Self.menuColumnWidth)
+
+            Divider()
+
+            List(rows) { entry in
+                HStack(spacing: 0) {
+                    Text(entry.title)
+                    Spacer(minLength: 8)
+                    ShortcutField(shortcut: shortcut(for: entry),
+                                  onCommit: { commit($0, to: entry) })
+                        .frame(width: Self.keyColumnWidth)
+                }
+                .listRowSeparator(.hidden)
+            }
+            .listStyle(.plain)
+            // ponytail: re-identifying the list is the blunt way to show an
+            // edited shortcut — it also resets the scroll position. Worth
+            // replacing if the command lists ever get long enough to scroll far.
+            .id(revision)
+        }
     }
 
     private func shortcut(for entry: KeyBindingCatalog.Entry) -> Shortcut? {
