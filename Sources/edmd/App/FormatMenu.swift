@@ -9,12 +9,13 @@ import EdmundCore
 // route through the responder chain to the focused editor — exactly like the
 // undo/redo items in `setupMenuBar`.
 //
-// Groundwork for user-configurable shortcuts: every command carries a stable
-// `id` and a default `Shortcut`. A later pass can resolve a per-`id` override
-// from UserDefaults before building the item; nothing is persisted yet.
+// User-configurable shortcuts: every command carries a stable `id`, a `group`
+// (the menu it appears under) and a default `Shortcut`. `makeItem()` resolves a
+// per-`id` override from `KeyBindingStore` and registers the built item in
+// `KeyBindingCatalog`, which is what Settings ▸ Key Bindings lists and edits.
 
 /// A key equivalent: the (lowercased) key plus its modifier flags.
-struct Shortcut {
+struct Shortcut: Equatable {
     let key: String
     let modifiers: NSEvent.ModifierFlags
 
@@ -26,17 +27,23 @@ struct Shortcut {
 /// One actionable menu command.
 struct MenuCommand {
     let id: String
+    /// The menu this command lives under, as Settings ▸ Key Bindings groups it.
+    var group: String = "Format"
     let title: String
     let action: Selector
+    /// The out-of-the-box shortcut. The user's override, if any, wins in `makeItem()`.
     var shortcut: Shortcut? = nil
     var tag: Int = 0
     var representedObject: Any? = nil
 
-    func makeItem() -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: shortcut?.key ?? "")
-        item.keyEquivalentModifierMask = shortcut?.modifiers ?? []
+    @MainActor func makeItem() -> NSMenuItem {
+        let effective = KeyBindingStore.effective(id: id, default: shortcut)
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: effective?.key ?? "")
+        item.keyEquivalentModifierMask = effective?.modifiers ?? []
         item.tag = tag
         item.representedObject = representedObject
+        KeyBindingCatalog.shared.register(id: id, group: group, title: title,
+                                          defaultShortcut: shortcut, item: item)
         // nil target → responder chain (focused EditorTextView / Document).
         return item
     }
@@ -74,7 +81,7 @@ enum FormatMenu {
     /// The "Toggle View Mode" item (⌘E) for the View menu — bracketed by
     /// dividers by the caller.
     static func viewModeToggleItem() -> NSMenuItem {
-        MenuCommand(id: "view.toggleMode", title: "Toggle View Mode",
+        MenuCommand(id: "view.toggleMode", group: "View", title: "Toggle View Mode",
                     action: #selector(Document.toggleViewMode(_:)),
                     shortcut: .cmd("e")).makeItem()
     }
