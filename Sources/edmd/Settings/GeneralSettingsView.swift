@@ -11,6 +11,7 @@ struct GeneralSettingsView: View {
     @AppStorage(AppSettings.Key.autoSaveWithVersions) private var autoSave = true
     @AppStorage(AppSettings.Key.conflictResolution) private var conflict = AppSettings.ConflictResolution.ask
     @State private var showingWarnings = false
+    @State private var showingVersionHistory = false
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
@@ -40,6 +41,8 @@ struct GeneralSettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(width: 380, alignment: .leading)
                         .padding(.leading, 20)
+                    Button("Clear Version History…") { showingVersionHistory = true }
+                        .padding(.leading, 20)
                 }
             }
 
@@ -66,6 +69,7 @@ struct GeneralSettingsView: View {
         }
         .settingsPanePadding()
         .sheet(isPresented: $showingWarnings) { ManageWarningsView() }
+        .sheet(isPresented: $showingVersionHistory) { VersionHistoryView() }
     }
 }
 
