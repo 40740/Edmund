@@ -221,6 +221,8 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
     private let doneBottom = NSButton(title: "Done", target: nil, action: nil)
     /// Row-1 right cluster: Replace|All — spacer — Done.
     private let bottomRightStack = NSStackView()
+    /// Row-0 slack, live only in replace mode — see `showsReplaceRow`.
+    private let topSpacer = NSView()
     private var grid: NSGridView!
 
     // Event callbacks, wired by the controller.
@@ -242,6 +244,11 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
             replaceToggle.state = newValue ? .on : .off
             grid.row(at: 1).isHidden = !newValue   // hides the replace field + right cluster
             doneTop.isHidden = newValue            // Done lives on the visible row only
+            // With Done gone the top row has slack: let the spacer take it so
+            // Replace lands on the trailing edge, above Done. In find-only there
+            // is nothing to absorb, so the cell hugs its content instead.
+            topSpacer.isHidden = !newValue
+            grid.cell(atColumnIndex: 1, rowIndex: 0).xPlacement = newValue ? .fill : .leading
             needsLayout = true
             invalidateIntrinsicContentSize()
         }
@@ -303,10 +310,14 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         // A 2×2 grid: column 0 holds the two fields (stretch to fill), column 1
         // the two right-hand clusters. Row 1 (replace) is hidden in find-only.
 
-        // Top cluster: nav, Done (find-only), Replace — evenly spaced, leading,
-        // so nav shares its left edge with Replace|All below. doneTop detaches
-        // when the replace row appears.
-        let topRight = NSStackView(views: [nav, doneTop, replaceToggle])
+        // Top cluster: nav, spacer, Done (find-only), Replace. nav is leading, so
+        // it shares its left edge with Replace|All below. The spacer is hidden in
+        // find-only — there the three controls are evenly spaced — and shown once
+        // doneTop detaches for the replace row, pushing Replace out to the
+        // trailing edge above Done.
+        topSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        topSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let topRight = NSStackView(views: [nav, topSpacer, doneTop, replaceToggle])
         topRight.orientation = .horizontal
         topRight.spacing = 8
         topRight.alignment = .centerY
@@ -326,7 +337,6 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         grid.rowSpacing = 3          // tight gap between the find and replace rows
         grid.column(at: 0).xPlacement = .fill        // fields stretch to fill
         grid.column(at: 1).xPlacement = .leading      // col1 hugs content (driven by the wider cluster)
-        grid.cell(atColumnIndex: 1, rowIndex: 0).xPlacement = .leading
         grid.row(at: 0).yPlacement = .center
         grid.row(at: 1).yPlacement = .center
 
