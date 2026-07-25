@@ -15,6 +15,9 @@ struct EditSettingsView: View {
     @AppStorage(AppSettings.Key.autoHideToolbar) private var autoHideToolbar = true
     @AppStorage(AppSettings.Key.sourceMode)      private var sourceMode = false
     @AppStorage(AppSettings.Key.showInvisibles) private var showInvisibles = false
+    // Parked with the rest of the Always mode — see the "Characters:" row.
+    // @AppStorage(AppSettings.Key.invisiblesMode)
+    // private var invisiblesMode = AppSettings.InvisibleCharacterMode.uponSelection
     @AppStorage(AppSettings.Key.invisibleLineEnding) private var lineEnding = true
     @AppStorage(AppSettings.Key.invisibleTab)        private var tab = true
     @AppStorage(AppSettings.Key.invisibleSpace)      private var space = true
@@ -127,12 +130,33 @@ struct EditSettingsView: View {
                 Text("Characters:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Show invisible characters upon selection", isOn: $showInvisibles)
+                    // The mode picker this toggle replaced (commit 6652972),
+                    // parked in case Always comes back. Restoring it also needs
+                    // AppSettings.InvisibleCharacterMode, its key/accessor, and
+                    // InvisiblesConfig.Mode — all commented at their sites.
+                    //
+                    // HStack {
+                    //     // fixedSize, or the picker's flexible width squeezes the
+                    //     // label down to "Invisible charac…".
+                    //     Toggle("Show invisible characters", isOn: $showInvisibles)
+                    //         .fixedSize()
+                    //     // When to draw them, once they're on at all.
+                    //     Picker("", selection: $invisiblesMode) {
+                    //         ForEach(AppSettings.InvisibleCharacterMode.allCases) {
+                    //             Text($0.label).tag($0)
+                    //         }
+                    //     }
+                    //     .labelsHidden()
+                    //     .fixedSize()
+                    //     .disabled(!showInvisibles)
+                    // }
                     invisibleCharacterGrid
                         .padding(.leading, 20)
                         .padding(.bottom, -15)  // hardcoded
                         .disabled(!showInvisibles)
                 }
                 .onChange(of: showInvisibles) { AppSettings.applyEditSettingsToOpenDocuments() }
+                // .onChange(of: invisiblesMode) { AppSettings.applyEditSettingsToOpenDocuments() }
                 .onChange(of: lineEnding) { AppSettings.applyEditSettingsToOpenDocuments() }
                 .onChange(of: tab) { AppSettings.applyEditSettingsToOpenDocuments() }
                 .onChange(of: space) { AppSettings.applyEditSettingsToOpenDocuments() }

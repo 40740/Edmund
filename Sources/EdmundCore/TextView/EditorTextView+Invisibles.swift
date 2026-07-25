@@ -10,11 +10,19 @@ import AppKit
 /// What the app pushes onto `EditorTextView.invisibles`. `nil` there means the
 /// feature is off (the default). Built from Settings ▸ Edit.
 public struct InvisiblesConfig: Equatable {
+    // Marks used to have an Always / Upon Selection mode; it was cut (commit
+    // 6652972) and is parked here in case it returns. Restoring it means
+    // un-commenting this enum, the `mode` property and init parameter, and the
+    // two gates in `drawInvisibles` — plus the app-side pieces commented in
+    // AppSettings / EditSettingsView.
+    // public enum Mode: Equatable { case always, uponSelection }
+
     public var lineEnding: Bool
     public var tab: Bool
     public var space: Bool
     public var otherWhitespace: Bool
     public var otherControl: Bool
+    // public var mode: Mode
     /// The faint mark color, resolved by the app from the active appearance
     /// (the fragment has no theme access, so it's handed in like the other
     /// vend-time values).
@@ -22,12 +30,14 @@ public struct InvisiblesConfig: Equatable {
 
     public init(lineEnding: Bool = true, tab: Bool = true, space: Bool = true,
                 otherWhitespace: Bool = true, otherControl: Bool = true,
+                /* mode: Mode = .uponSelection, */
                 color: NSColor = .tertiaryLabelColor) {
         self.lineEnding = lineEnding
         self.tab = tab
         self.space = space
         self.otherWhitespace = otherWhitespace
         self.otherControl = otherControl
+        // self.mode = mode
         self.color = color
     }
 
@@ -108,6 +118,13 @@ extension DecoratedTextLayoutFragment {
         // Mark only characters inside the live selection. Nothing selected →
         // nothing to draw. Selection is read from the fragment's own layout
         // manager — no extra plumbing.
+        //
+        // With the parked Always mode this was gated instead:
+        //     let onlyInSelection = config.mode == .uponSelection
+        //     let selectionRanges: [NSTextRange] = onlyInSelection
+        //         ? (textLayoutManager?.textSelections.flatMap { $0.textRanges } ?? [])
+        //         : []
+        //     if onlyInSelection && selectionRanges.isEmpty { return }
         let selectionRanges = textLayoutManager?.textSelections.flatMap { $0.textRanges } ?? []
         if selectionRanges.isEmpty { return }
         let elementStart = textElement?.elementRange?.location
@@ -131,6 +148,8 @@ extension DecoratedTextLayoutFragment {
                 defer { i += 1 }
                 guard let category = InvisibleCategory.of(full.character(at: i)),
                       config.draws(category) else { continue }
+                // With the parked Always mode this whole guard sat inside
+                // `if onlyInSelection { … }`.
                 guard let tlm = textLayoutManager, let base = elementStart,
                       let loc = tlm.location(base, offsetBy: i),
                       selectionRanges.contains(where: { $0.contains(loc) })
