@@ -1,5 +1,11 @@
 import AppKit
 
+/// How far the find bar's fields inset their leading content: the search
+/// field's magnifier glyph and the replace field's text both start here, so the
+/// two rows line up. AppKit's own insets differ per control (3.5pt for the
+/// search button, 12pt for a rounded-bezel text field), so both are overridden.
+private let fieldContentInset: CGFloat = 6
+
 // MARK: - Search field with an inline match count
 
 /// Suppresses the stock magnifier ▾ glyph so the field can draw it centred
@@ -17,6 +23,29 @@ import AppKit
 /// search-options menu keeps working.
 private final class BlankSearchButtonCell: NSButtonCell {
     override func imageRect(forBounds rect: NSRect) -> NSRect { .zero }
+}
+
+/// A text field whose text starts at `fieldContentInset`, lining the replace
+/// row up with the search field's magnifier.
+final class PaddedTextField: NSTextField {
+    override class var cellClass: AnyClass? {
+        get { PaddedTextFieldCell.self }
+        set { }
+    }
+}
+
+private final class PaddedTextFieldCell: NSTextFieldCell {
+    /// AppKit insets the drawn text this much further inside `drawingRect`
+    /// (measured), so the rect must start that much before the inset we want.
+    private static let textInsetInsideDrawingRect: CGFloat = 3
+
+    override func drawingRect(forBounds rect: NSRect) -> NSRect {
+        var r = super.drawingRect(forBounds: rect)
+        let shift = rect.minX + fieldContentInset - Self.textInsetInsideDrawingRect - r.minX
+        r.origin.x += shift
+        r.size.width -= shift
+        return r
+    }
 }
 
 /// Reserves room on the right of the search text for the count label so the
@@ -68,13 +97,14 @@ final class CountingSearchField: NSSearchField {
         sfCell.searchButtonCell = blank
     }
 
-    // Ink geometry of the stock glyph, measured off a screenshot of the native
-    // search field (device pixels ÷ 2), stated as an offset from the button
-    // rect's leading edge. The magnifier and the ▾ are both centred on the
-    // composite, so centring each on the button rect keeps their relationship
-    // while lifting the whole glyph onto the field's centre.
-    private static let magnifierInk = (x: CGFloat(1.5), size: NSSize(width: 12.5, height: 12.5))
-    private static let chevronInk = (x: CGFloat(14.0), size: NSSize(width: 6.1, height: 4.3))
+    // Ink sizes of the stock glyph, measured off a screenshot of the native
+    // search field (device pixels ÷ 2). The magnifier and the ▾ are both centred
+    // on the composite, so centring each on the button rect keeps their
+    // relationship while lifting the whole glyph onto the field's centre. Their
+    // leading edge is `fieldContentInset` rather than AppKit's own 3.5pt.
+    private static let magnifierInkSize = NSSize(width: 12.5, height: 12.5)
+    private static let chevronInkSize = NSSize(width: 6.1, height: 4.3)
+    private static let chevronGap: CGFloat = 0.25   // measured, magnifier ink → ▾ ink
 
     /// Draws the magnifier — and the ▾ search-menu affordance, when there is a
     /// menu — replicating the stock glyph, but centred on the button rect
@@ -84,24 +114,26 @@ final class CountingSearchField: NSSearchField {
         guard let sfCell = cell as? NSSearchFieldCell else { return }
         let button = sfCell.searchButtonRect(forBounds: bounds)
         if let magnifier = Self.magnifier {
-            draw(magnifier, inkAt: Self.magnifierInk.x, size: Self.magnifierInk.size, in: button)
+            draw(magnifier, inkAt: fieldContentInset, size: Self.magnifierInkSize, in: button)
         }
         if searchMenuTemplate != nil, let chevron = Self.menuChevron {
-            draw(chevron, inkAt: Self.chevronInk.x, size: Self.chevronInk.size, in: button)
+            draw(chevron, inkAt: fieldContentInset + Self.magnifierInkSize.width + Self.chevronGap,
+                 size: Self.chevronInkSize, in: button)
         }
     }
 
     /// Scales and offsets `glyph` so its *ink* — not its padded image bounds —
-    /// lands `x` points in from the button rect's leading edge, `size` big, and
-    /// centred on the rect. SF Symbol images carry internal padding that varies
-    /// with the symbol, so placing them by image bounds would miss the stock
-    /// geometry; going through the ink makes the measured numbers exact.
+    /// lands `x` points in from the *field's* leading edge, `size` big, and
+    /// centred vertically on the button rect. SF Symbol images carry internal
+    /// padding that varies with the symbol, so placing them by image bounds
+    /// would miss the stock geometry; going through the ink makes the measured
+    /// numbers exact.
     private func draw(_ glyph: (image: NSImage, ink: NSRect), inkAt x: CGFloat,
                       size: NSSize, in button: NSRect) {
         guard glyph.ink.width > 0, glyph.ink.height > 0 else { return }
         let sx = size.width / glyph.ink.width, sy = size.height / glyph.ink.height
         tint(glyph.image).draw(in: NSRect(
-            x: button.minX + x - glyph.ink.minX * sx,
+            x: bounds.minX + x - glyph.ink.minX * sx,
             y: button.midY - size.height / 2 - glyph.ink.minY * sy,
             width: glyph.image.size.width * sx, height: glyph.image.size.height * sy))
     }
@@ -205,7 +237,7 @@ final class CountingSearchField: NSSearchField {
 final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
 
     let searchField = CountingSearchField()
-    let replaceField = NSTextField()
+    let replaceField = PaddedTextField()
 
     private let nav = NSSegmentedControl(
         images: [NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Previous")!,
