@@ -77,6 +77,17 @@ extension EditorTextView {
         result.addAttribute(.paragraphStyle,
                             value: listParagraphStyle(firstLineIndent: firstLineIndent, contentIndent: contentIndent),
                             range: NSRange(location: 0, length: result.length))
+        // Indent-guide columns, written whether or not the setting is on: the
+        // fragment gates the drawing, so toggling guides needs a re-vend rather
+        // than a restyle of every list item in the document.
+        // ponytail: only the item's own paragraph carries them — a lazy
+        // continuation paragraph inside the item isn't a `.listItem` span and
+        // has no depth to derive. Add if the dashes it leaves ever bother anyone.
+        let guides = listGuideOffsets(depth: depth, slotWidth: slotWidth)
+        if !guides.isEmpty {
+            result.addAttribute(.listGuides, value: guides,
+                                range: NSRange(location: 0, length: result.length))
+        }
         // Active bullet: widen the marker's trailing space so the content
         // lands at contentIndent even though the "-" sits on the dot column.
         if activeBulletSpaceKern > 0, span.contentRange.location > 0,

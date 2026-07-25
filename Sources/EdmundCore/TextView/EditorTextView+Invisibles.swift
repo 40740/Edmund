@@ -96,11 +96,12 @@ public enum InvisibleCategory: Equatable {
 }
 
 extension EditorTextView {
-    /// Re-vends the visible fragments after `invisibles` changed. Invisibles
-    /// alter no styled attributes, so a restyle wouldn't re-consult the layout
-    /// delegate; invalidating layout forces the plain ↔ decorated swap and a
-    /// redraw. Call after every `invisibles` assignment.
-    @MainActor public func refreshInvisibles() {
+    /// Re-vends the visible fragments after a draw-only setting changed
+    /// (`invisibles`, `showListIndentGuides`). These alter no styled
+    /// attributes, so a restyle wouldn't re-consult the layout delegate;
+    /// invalidating layout forces the plain ↔ decorated swap and a redraw.
+    /// Call after every such assignment.
+    @MainActor public func refreshOverdraw() {
         if let tlm = textLayoutManager {
             tlm.invalidateLayout(for: tlm.documentRange)
         }

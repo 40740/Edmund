@@ -485,6 +485,11 @@ enum AppSettings {
             color: .tertiaryLabelColor)
     }
 
+    /// Draw the vertical guides on nested list items — default off.
+    static var showListIndentGuides: Bool {
+        UserDefaults.standard.bool(forKey: Key.showListIndentGuides)
+    }
+
     /// Pushes every Edit-pane setting into an editor. Called when a document
     /// window is built and again — for every open document — whenever the pane
     /// changes something.
@@ -495,7 +500,8 @@ enum AppSettings {
         editor.indentWidth = indentWidth
         editor.isContinuousSpellCheckingEnabled = spellCheck
         editor.invisibles = invisiblesConfig
-        editor.refreshInvisibles()
+        editor.showListIndentGuides = showListIndentGuides
+        editor.refreshOverdraw()
     }
 
     /// Applies the Edit-pane settings to every open document (editor behavior

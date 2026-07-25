@@ -3,7 +3,7 @@
 //
 // Several controls here are deliberately `.disabled(true)`: their setting is
 // stored and the UI is final, but the feature behind them isn't built yet
-// (indent guides, line numbers, focus mode, hard wrap). Each becomes live by
+// (line numbers, focus mode, hard wrap). Each becomes live by
 // deleting its `.disabled(true)` when the feature lands — see misc/backlog.md.
 
 import SwiftUI
@@ -117,7 +117,7 @@ struct EditSettingsView: View {
                 Text("Lists:")
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Show list indent guides", isOn: $showListIndentGuides)
-                        .disabled(true)   // not implemented yet
+                        .onChange(of: showListIndentGuides) { AppSettings.applyEditSettingsToOpenDocuments() }
                     Toggle("Automatically continue lists", isOn: $continueLists)
                         .onChange(of: continueLists) { AppSettings.applyEditSettingsToOpenDocuments() }
                 }
