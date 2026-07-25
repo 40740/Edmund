@@ -83,11 +83,9 @@ extension EditorTextView {
         // ponytail: only the item's own paragraph carries them — a lazy
         // continuation paragraph inside the item isn't a `.listItem` span and
         // has no depth to derive. Add if the dashes it leaves ever bother anyone.
-        let guides = listGuideOffsets(depth: depth, slotWidth: slotWidth)
-        if !guides.isEmpty {
-            result.addAttribute(.listGuides, value: guides,
-                                range: NSRange(location: 0, length: result.length))
-        }
+        result.addAttribute(.listGuides,
+                            value: listGuideOffsets(depth: depth, slotWidth: slotWidth),
+                            range: NSRange(location: 0, length: result.length))
         // Active bullet: widen the marker's trailing space so the content
         // lands at contentIndent even though the "-" sits on the dot column.
         if activeBulletSpaceKern > 0, span.contentRange.location > 0,

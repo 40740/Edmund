@@ -42,16 +42,21 @@ extension EditorTextView {
         return cols / unit
     }
 
-    /// The indent-guide columns for an item at `depth`: one per *ancestor*
-    /// level, so a top-level item gets none and the guide only ever appears
-    /// beside an ancestor's descendants (Obsidian's model). Each lands on the
-    /// center of that ancestor's marker box — a `bodyFont.pointSize`-wide slot
-    /// starting at its `markerStart` — so the guide runs down the column the
-    /// ancestor's bullet sits in. Measured from the text container's left edge,
-    /// the same space `listParagraphStyle`'s head indents use.
+    /// The indent-guide columns for an item at `depth`, outermost first: one
+    /// per *ancestor* level, plus — last — the item's **own** column. Each
+    /// lands on the center of that level's marker box (a `bodyFont.pointSize`
+    /// wide slot starting at its `markerStart`), so a guide runs down the
+    /// column that level's bullet sits in.
+    ///
+    /// The two groups are drawn differently (see `drawListGuides`): the
+    /// ancestor guides span the item's whole height, while the own-column
+    /// guide is drawn only beside the item's wrapped continuation lines — its
+    /// first line holds the marker itself, which would collide.
+    ///
+    /// Offsets are measured from the text container's text origin, the same
+    /// space `listParagraphStyle`'s head indents use.
     func listGuideOffsets(depth: Int, slotWidth: CGFloat) -> [CGFloat] {
-        guard depth > 0 else { return [] }
-        return (0..<depth).map {
+        (0...depth).map {
             listPadding + CGFloat($0) * slotWidth + bodyFont.pointSize / 2
         }
     }

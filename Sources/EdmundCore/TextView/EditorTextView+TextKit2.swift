@@ -602,29 +602,48 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             ? EditorTextView.darkRuleGray : NSColor.separatorColor
     }
 
-    /// Vertical hairlines marking a nested list item's ancestor columns, drawn
-    /// under the text. Offsets are container-relative, so they land on the same
-    /// columns as the ancestors' markers no matter how this item's own first
-    /// line is indented (an ordered or active marker shifts `point.x`, which is
-    /// the *text* start — hence `containerLeft` rather than `point.x` alone).
+    /// Vertical hairlines marking a list item's indent columns, drawn under the
+    /// text. Offsets are container-relative, so they land on the same columns as
+    /// the markers no matter how this item's own first line is indented (an
+    /// ordered or active marker shifts `point.x`, which is the *text* start —
+    /// hence `containerLeft` rather than `point.x` alone). They are measured
+    /// from the container's text origin, which sits `lineFragmentPadding` in
+    /// from its left edge — the same origin the paragraph's head indents use.
     ///
-    /// Consecutive list items tile with no gap (list paragraphs carry no
-    /// paragraph spacing), so per-fragment fills read as one continuous line
-    /// down a nested run. Height is `decorationDrawHeight`, not the raw frame,
-    /// so a list at the end of the document doesn't paint a stub over the
-    /// absorbed trailing empty line.
+    /// All but the last offset are the item's ancestor columns, spanning its
+    /// whole height: consecutive list items tile with no gap (list paragraphs
+    /// carry no paragraph spacing), so the per-fragment fills read as one
+    /// continuous line down a nested run. Height is `decorationDrawHeight`, not
+    /// the raw frame, so a list at the end of the document doesn't paint a stub
+    /// over the absorbed trailing empty line.
+    ///
+    /// The last offset is the item's *own* column, drawn only from its second
+    /// line down — a wrapped continuation line then stays visibly tied to its
+    /// own bullet, while the first line leaves room for the marker itself.
     private func drawListGuides(at point: CGPoint, in context: CGContext) {
         guard !listGuides.isEmpty else { return }
         // Filled at exactly one device pixel rather than stroked, for the same
         // reason as the table's column borders — see `.tableRow`.
         let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
         let hairline = 1 / scale
-        let originX = point.x + containerLeft
+        let padding = textLayoutManager?.textContainer?.lineFragmentPadding ?? 0
+        let originX = point.x + containerLeft + padding
         let height = decorationDrawHeight
         context.setFillColor(chromeLineColor.cgColor)
-        for offset in listGuides {
+
+        func fill(_ offset: CGFloat, from top: CGFloat) {
+            guard height > top else { return }
             let lineX = (((originX + offset) * scale).rounded()) / scale
-            context.fill(CGRect(x: lineX, y: point.y, width: hairline, height: height))
+            context.fill(CGRect(x: lineX, y: point.y + top,
+                                width: hairline, height: height - top))
+        }
+
+        for offset in listGuides.dropLast() { fill(offset, from: 0) }
+        // Second *real* line: a trailing zero-length line is the document's
+        // final empty line absorbed into this fragment, not a wrapped line.
+        if let wrapped = textLineFragments.filter({ $0.characterRange.length > 0 })
+            .dropFirst().first, let own = listGuides.last {
+            fill(own, from: wrapped.typographicBounds.minY)
         }
     }
 
