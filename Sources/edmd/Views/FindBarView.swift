@@ -80,6 +80,10 @@ final class CountingSearchField: NSSearchField {
     private static let magnifierInkSize = NSSize(width: 12.5, height: 12.5)
     private static let chevronInkSize = NSSize(width: 6.1, height: 4.3)
     private static let chevronGap: CGFloat = 0.25   // measured, magnifier ink → ▾ ink
+    /// Raises the glyph off the button rect's dead centre, which reads slightly
+    /// low next to the text's x-height. Subtracted, because the field's
+    /// coordinate space is flipped — smaller y is higher.
+    private static let glyphLift: CGFloat = 0.5
 
     /// Draws the magnifier — and the ▾ search-menu affordance, when there is a
     /// menu — replicating the stock glyph, but centred on the button rect
@@ -109,7 +113,7 @@ final class CountingSearchField: NSSearchField {
         let sx = size.width / glyph.ink.width, sy = size.height / glyph.ink.height
         tint(glyph.image).draw(in: NSRect(
             x: bounds.minX + x - glyph.ink.minX * sx,
-            y: button.midY - size.height / 2 - glyph.ink.minY * sy,
+            y: button.midY - size.height / 2 - glyph.ink.minY * sy - Self.glyphLift,
             width: glyph.image.size.width * sx, height: glyph.image.size.height * sy))
     }
 
