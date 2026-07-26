@@ -204,6 +204,68 @@ final class CountingSearchField: NSSearchField {
     }
 }
 
+// MARK: - Segmented control whose segments are individually Tab-reachable
+
+/// AppKit already focuses segments one at a time — it draws the focus ring
+/// around a single segment and moves it with ← / → — but Tab always leaves the
+/// whole control, so a trailing segment (`›`, `All`) can never be reached by
+/// Tab. This translates Tab into AppKit's own arrow handling until the last
+/// segment, then releases it to the key-view loop.
+///
+/// The focused segment has no public accessor, so it is mirrored here: seeded
+/// on focus, advanced when we forward an arrow, and kept in sync by watching
+/// the user's own ← / → presses.
+private final class SegmentTabbingControl: NSSegmentedControl {
+    private var focusedSegment = 0
+
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        // AppKit enters on the leading segment going forwards and the *trailing*
+        // one coming back via Shift-Tab; seed the mirror to match, or the first
+        // Shift-Tab inside the control leaves it a segment early.
+        if accepted { focusedSegment = enteringBackwards ? segmentCount - 1 : 0 }
+        return accepted
+    }
+
+    private var enteringBackwards: Bool {
+        guard let event = NSApp.currentEvent, event.type == .keyDown else { return false }
+        return Int(event.keyCode) == 48 && event.modifierFlags.contains(.shift)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        let shift = event.modifierFlags.contains(.shift)
+        switch Int(event.keyCode) {
+        case 48:                                    // Tab / Shift-Tab
+            let step = shift ? -1 : 1
+            let next = focusedSegment + step
+            if (0..<segmentCount).contains(next) {
+                focusedSegment = next
+                super.keyDown(with: arrowEvent(right: !shift, like: event))
+            } else if shift {
+                window?.selectPreviousKeyView(self)
+            } else {
+                window?.selectNextKeyView(self)
+            }
+        case 123, 124:                              // ← / → — mirror AppKit's move
+            focusedSegment = max(0, min(segmentCount - 1,
+                                        focusedSegment + (event.keyCode == 124 ? 1 : -1)))
+            super.keyDown(with: event)
+        default:
+            super.keyDown(with: event)
+        }
+    }
+
+    private func arrowEvent(right: Bool, like event: NSEvent) -> NSEvent {
+        let key = right ? NSRightArrowFunctionKey : NSLeftArrowFunctionKey
+        let chars = String(UnicodeScalar(key)!)
+        return NSEvent.keyEvent(with: .keyDown, location: event.locationInWindow,
+                                modifierFlags: [], timestamp: event.timestamp,
+                                windowNumber: event.windowNumber, context: nil,
+                                characters: chars, charactersIgnoringModifiers: chars,
+                                isARepeat: false, keyCode: right ? 124 : 123) ?? event
+    }
+}
+
 // MARK: - Find bar
 
 /// The in-document find/replace bar, styled after Apple Notes. Laid out on an
@@ -218,12 +280,12 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
     let searchField = CountingSearchField()
     let replaceField = NSTextField()
 
-    private let nav = NSSegmentedControl(
+    private let nav = SegmentTabbingControl(
         images: [NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Previous")!,
                  NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Next")!],
         trackingMode: .momentary, target: nil, action: nil)
     private let replaceToggle = NSButton(checkboxWithTitle: "Replace", target: nil, action: nil)
-    private let replaceGroup = NSSegmentedControl(
+    private let replaceGroup = SegmentTabbingControl(
         labels: ["Replace", "All"], trackingMode: .momentary, target: nil, action: nil)
     // Two Done buttons — one per row — toggled by visibility. Simpler and more
     // robust than moving a single button between grid cells (which failed to
