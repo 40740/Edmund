@@ -98,7 +98,7 @@ The list is by no means exhaustive, and neither was it meant to be. I just wante
 - Claude, [caveman](https://github.com/JuliusBrussee/caveman), and [ponytail](https://github.com/DietrichGebert/ponytail) for the engineering. 
 <!-- - [RaTeX], [beautiful-mermaid], [Shiki] for extension functionalities -->
 
-More importantly, though, many thanks to our contributors: 
+Most importantly, many thanks to our contributors: 
 
 <a href="https://github.com/I7T5/Edmund/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=I7T5/Edmund" />
