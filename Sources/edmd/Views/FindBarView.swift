@@ -307,6 +307,8 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
     var onReplace: (() -> Void)?
     var onReplaceAll: (() -> Void)?
     var onOptionsChanged: (() -> Void)?
+    /// ⌘F / ⌥⌘F pressed while the bar has focus; the flag is `replace`.
+    var onToggleFindBar: ((Bool) -> Void)?
 
     var caseSensitive = false { didSet { syncOptionMenu() } }
     var wholeWord = false { didSet { syncOptionMenu() } }
@@ -478,13 +480,34 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         searchField.matchInfo = (current, total)
     }
 
-    // MARK: - Search-field Return → find next
+    // MARK: - Search-field Return → find next / ⇧Return → find previous
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         guard control === searchField else { return false }
-        if selector == #selector(NSResponder.insertNewline(_:)) { onNext?(); return true }
-        return false
+        // ⇧Return arrives as either selector depending on the field's state, and
+        // only the originating event carries the modifier.
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertLineBreak(_:)):
+            let backwards = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
+            if backwards { onPrevious?() } else { onNext?() }
+            return true
+        default:
+            return false
+        }
     }
+
+    // MARK: - Find commands while the bar has focus
+    //
+    // The Edit ▸ Find items target the first responder, and route to
+    // `EditorTextView`. With focus inside the bar the editor is not in the
+    // responder chain — the bar is — so ⌘F / ⌥⌘F / ⌘G / ⇧⌘G would grey out
+    // exactly while you're typing a query. Same selectors here pick them up.
+
+    @objc func showFindBar(_ sender: Any?) { onToggleFindBar?(false) }
+    @objc func showFindReplaceBar(_ sender: Any?) { onToggleFindBar?(true) }
+    @objc func findNext(_ sender: Any?) { onNext?() }
+    @objc func findPrevious(_ sender: Any?) { onPrevious?() }
+    @objc func hideFindBar(_ sender: Any?) { onDone?() }
 
     // MARK: - Actions
 

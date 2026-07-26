@@ -5,7 +5,9 @@ import AppKit
 /// unaware of the concrete controller — same decoupling as
 /// `contextFontMenuProvider`.
 @MainActor public protocol EditorFindHandling: AnyObject {
-    func editorShowFind(replace: Bool)
+    /// ⌘F / ⌥⌘F. Both *toggle*: the requested bar opens, or closes if it is
+    /// already the one showing.
+    func editorToggleFind(replace: Bool)
     func editorFindNext()
     func editorFindPrevious()
     func editorHideFind()
@@ -180,8 +182,8 @@ extension EditorTextView {
     // Only implemented here, so in Reading mode (webview is first responder)
     // these gray out automatically — no explicit validation needed.
 
-    @objc public func showFindBar(_ sender: Any?)      { findHandler?.editorShowFind(replace: false) }
-    @objc public func showFindReplaceBar(_ sender: Any?) { findHandler?.editorShowFind(replace: true) }
+    @objc public func showFindBar(_ sender: Any?)      { findHandler?.editorToggleFind(replace: false) }
+    @objc public func showFindReplaceBar(_ sender: Any?) { findHandler?.editorToggleFind(replace: true) }
     @objc public func findNext(_ sender: Any?)         { findHandler?.editorFindNext() }
     @objc public func findPrevious(_ sender: Any?)     { findHandler?.editorFindPrevious() }
     @objc public func hideFindBar(_ sender: Any?)      { findHandler?.editorHideFind() }

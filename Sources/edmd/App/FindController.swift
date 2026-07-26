@@ -41,6 +41,7 @@ final class FindController: NSObject, EditorFindHandling {
         bar.onToggleReplace = { [weak self] _ in self?.layoutBar() }
         bar.onReplace = { [weak self] in self?.replaceCurrent() }
         bar.onReplaceAll = { [weak self] in self?.replaceAll() }
+        bar.onToggleFindBar = { [weak self] replace in self?.editorToggleFind(replace: replace) }
 
         // Live edits while the bar is open: re-run so the count/highlights track.
         NotificationCenter.default.addObserver(
@@ -50,7 +51,18 @@ final class FindController: NSObject, EditorFindHandling {
 
     // MARK: - EditorFindHandling
 
-    func editorShowFind(replace: Bool) {
+    /// ⌘F and ⌥⌘F both toggle. Pressing the shortcut for the bar that is already
+    /// up closes it; pressing the other one switches to it, so ⌘F from the
+    /// replace bar drops the replace row rather than closing outright.
+    func editorToggleFind(replace: Bool) {
+        if isShowing && bar.showsReplaceRow == replace {
+            editorHideFind()
+        } else {
+            editorShowFind(replace: replace)
+        }
+    }
+
+    private func editorShowFind(replace: Bool) {
         guard let editor else { return }
         let firstShow = !isShowing
         if firstShow {
