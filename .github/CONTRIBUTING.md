@@ -2,6 +2,10 @@
 
 Thanks for considering contributing to Edmund :)
 
+> [!NOTE]
+> ‼️ PRs will be mostly reviewed by AI, but I'm open to discussions. Read more below.  
+> My role in Edmund is closer to team lead and product designer than software engineer. As I am not a pro Swift dev, Claude gets to handle almost all the specific engineering. I do extensively steer design decisions and fine tune, and I hope this is evident already in both the code and the app. 
+
 ## Getting started
 
 There are several ways to contribute: 
@@ -37,6 +41,12 @@ A partial repetition of the README pitch with more technical details:
   - E.g. Shiki over Highlighter.js. Both great projects!
 - **Accessibility and international support**
   - Coming soon!
+
+## After you submit a PR
+
+Usually, upon receiving a PR, l’ll ask Claude to evaluate the code and address potential issues if I sense any. I’ll then review the evaluation, give my two cents, and ask Claude to auto-generate a checklist to complete before I’ll merge the PR and why. 
+
+Discussions are always welcome. I will say though I can be annoyingly nitpicky when it comes to substantial PRs. Smaller changes solving one or a few related specific problems should theoretically take less going-back-and-forth. (Which, I don't mind the back-and-forth if you don't.) 
 
 ## References
 
