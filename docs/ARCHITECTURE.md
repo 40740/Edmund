@@ -539,6 +539,13 @@ only with reason):
    get renamed to `worktree-*`. `.worktrees/` is gitignored. Distinct from
    `.claude/worktrees/`, which Claude Code's own EnterWorktree tool manages
    automatically for agent isolation — don't hand-edit that one.
+7. **Reviewing someone else's PR uses `/edmund-pr-review <number>`**
+   (`.claude/skills/edmund-pr-review/`). It gathers the PR, checks it against
+   the invariants and the TextKit 2 estimate rule, verifies the claim the merge
+   rests on instead of relaying it, asks the maintainer for the calls that are
+   theirs, and emits a merge checklist. Shipping your *own* change is `/ship`
+   (`.claude/commands/ship.md`) — different job.
+
 If you (the agent) improve this workflow or discover a better verification
 trick, update this section.
 
