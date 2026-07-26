@@ -3,7 +3,7 @@
 //
 // Several controls here are deliberately `.disabled(true)`: their setting is
 // stored and the UI is final, but the feature behind them isn't built yet
-// (line numbers, focus mode, hard wrap). Each becomes live by
+// (focus mode, hard wrap). Each becomes live by
 // deleting its `.disabled(true)` when the feature lands — see misc/backlog.md.
 
 import SwiftUI
@@ -169,7 +169,7 @@ struct EditSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     // Leftmost of the window only — not in print / PDF, for now.
                     Toggle("Show line numbers", isOn: $showLineNumbers)
-                        .disabled(true)   // not implemented yet
+                        .onChange(of: showLineNumbers) { AppSettings.applyEditSettingsToOpenDocuments() }
 
                     Toggle("Strict line breaks", isOn: $strictLineBreaks)
                         .onChange(of: strictLineBreaks) { refreshReadViews() }

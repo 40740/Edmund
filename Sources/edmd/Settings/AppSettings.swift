@@ -490,6 +490,11 @@ enum AppSettings {
         UserDefaults.standard.bool(forKey: Key.showListIndentGuides)
     }
 
+    /// Show the source-line gutter at the window's left edge — default off.
+    static var showLineNumbers: Bool {
+        UserDefaults.standard.bool(forKey: Key.showLineNumbers)
+    }
+
     /// Pushes every Edit-pane setting into an editor. Called when a document
     /// window is built and again — for every open document — whenever the pane
     /// changes something.
@@ -501,6 +506,7 @@ enum AppSettings {
         editor.isContinuousSpellCheckingEnabled = spellCheck
         editor.invisibles = invisiblesConfig
         editor.showListIndentGuides = showListIndentGuides
+        editor.showLineNumbers = showLineNumbers
         editor.refreshOverdraw()
     }
 
