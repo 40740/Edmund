@@ -114,6 +114,11 @@ final class LineNumberRulerView: NSRulerView {
 
     init(scrollView: NSScrollView, editor: EditorTextView) {
         super.init(scrollView: scrollView, orientation: .verticalRuler)
+        // Against the macOS 14 SDK `clipsToBounds` defaults to false, and the
+        // rect handed to `drawHashMarksAndLabels` is wider than the gutter — so
+        // without this the background fill paints over the whole scroll view and
+        // the document goes blank.
+        clipsToBounds = true
         clientView = editor
         ruleThickness = Self.thickness(digits: Self.minimumDigits,
                                        font: editor.theme.monospaceFont())
@@ -153,6 +158,14 @@ final class LineNumberRulerView: NSRulerView {
             .font: font, .foregroundColor: editor.syntaxDimColor
         ]
 
+        // `draw(at:)` takes the top of the line box, not the baseline — and
+        // NSStringDrawing lays out a box taller than ascender + descender (20 pt
+        // for the 14 pt mono here). Derive the drop from the height it actually
+        // uses, or every number sits a few points low against its line.
+        let digit = NSAttributedString(string: "0", attributes: attributes)
+        let topToBaseline = digit.size().height + font.descender
+        let digitWidth = digit.size().width
+
         let needed = Self.thickness(digits: Self.digitCount(editor.lineStarts.count),
                                     font: font)
         if abs(needed - ruleThickness) > 0.5 {
@@ -167,11 +180,15 @@ final class LineNumberRulerView: NSRulerView {
         // offset from the text view's by both views' geometry.
         let containerOriginY = editor.textContainerOrigin.y
         let rulerOffsetY = convert(NSPoint.zero, from: editor).y + containerOriginY
-        let visible = editor.visibleRect
-        let top = max(0, visible.minY - containerOriginY)
-        let bottom = visible.maxY - containerOriginY
+        let bottom = editor.visibleRect.maxY - containerOriginY
 
-        guard let start = tlm.textLayoutFragment(for: CGPoint(x: 0, y: top)) else { return }
+        // Walk the viewport the text view has *already* laid out. Forcing
+        // layout here instead (`.ensuresLayout`, or enumerating from the
+        // document start) re-enters the viewport layout controller mid-draw,
+        // which blanks the text view — and on a large document it would lay out
+        // the whole thing, the trap `lineRect(forCharacterAt:)` documents.
+        guard let viewport = tlm.textViewportLayoutController.viewportRange
+        else { return }
         // Lines shorter than this are hidden by rendering (a table's separator
         // row, some delimiters — 0.01 pt `hiddenFont`). They still hold a line
         // number, but drawing it would stack it on the neighbor's, so the
@@ -179,8 +196,8 @@ final class LineNumberRulerView: NSRulerView {
         let minimumDrawnHeight = editor.bodyFont.pointSize / 2
         var lastDrawnLine = 0
 
-        tlm.enumerateTextLayoutFragments(from: start.rangeInElement.location,
-                                         options: [.ensuresLayout]) { fragment in
+        tlm.enumerateTextLayoutFragments(from: viewport.location,
+                                         options: []) { fragment in
             let frame = fragment.layoutFragmentFrame
             guard frame.minY <= bottom else { return false }
             guard let firstLine = fragment.textLineFragments.first else { return true }
@@ -197,9 +214,12 @@ final class LineNumberRulerView: NSRulerView {
 
             let baseline = frame.minY + firstLine.typographicBounds.minY
                 + firstLine.glyphOrigin.y
+            // Every digit is the same width in a monospace face, so the label's
+            // right edge follows from its length — no need to measure each one.
             let label = NSAttributedString(string: "\(line)", attributes: attributes)
-            label.draw(at: NSPoint(x: self.ruleThickness - Self.padding - label.size().width,
-                                   y: rulerOffsetY + baseline - font.ascender))
+            let width = digitWidth * CGFloat(label.length)
+            label.draw(at: NSPoint(x: self.ruleThickness - Self.padding - width,
+                                   y: rulerOffsetY + baseline - topToBaseline))
             return true
         }
     }

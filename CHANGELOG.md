@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Quick Look preview extension: renders Markdown as rich text, following the system light/dark appearance
 - AppleScript code-fence syntax highlighting
 - List indent guides: vertical lines marking each nesting level of a list (Settings ▸ Edit, off by default)
+- Line numbers: a source-line gutter along the left edge of the window (Settings ▸ Edit, off by default)
 
 
 ## [0.2.1] - 2026-07-17

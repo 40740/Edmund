@@ -74,6 +74,26 @@ struct LineNumbersTests {
         #expect(editor.lineStarts == [0, 4, 8, 14, 19])
     }
 
+    @Test("Toggling the setting installs and removes the gutter")
+    func gutterInstallRemove() {
+        // What the Settings toggle drives. The editor configures itself before
+        // Document adds it to a scroll view, so the install has to survive
+        // being asked for while there is no scroll view yet.
+        let editor = makeEditor()
+        editor.showLineNumbers = true
+        #expect(editor.lineNumberRuler == nil)   // nothing to install onto
+
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 300))
+        scrollView.documentView = editor         // → viewDidMoveToSuperview
+        #expect(editor.lineNumberRuler != nil)
+        #expect(scrollView.verticalRulerView === editor.lineNumberRuler)
+        #expect(scrollView.rulersVisible)
+
+        editor.showLineNumbers = false
+        #expect(editor.lineNumberRuler == nil)
+        #expect(!scrollView.rulersVisible)
+    }
+
     @Test("The gutter never narrows below three digits")
     func gutterFloor() {
         let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
