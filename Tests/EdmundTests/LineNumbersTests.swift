@@ -115,39 +115,58 @@ struct LineNumbersTests {
         #expect(!scrollView.rulersVisible)
     }
 
-    @Test("Only the caret's line is inked as body text")
-    func currentLineInk() {
+    @Test("The caret's line is inked as body text")
+    func caretLineInk() {
         let editor = makeEditor()
         editor.loadContent("alpha\nbeta\ngamma\n")
         editor.setSelectedRange(NSRange(location: 7, length: 0))   // inside "beta"
 
         let style = editor.lineNumberStyle
-        #expect(style.currentLine == 2)
-        let current = style.attributed(2)[.foregroundColor] as? NSColor
-        let other = style.attributed(3)[.foregroundColor] as? NSColor
-        #expect(current == editor.foregroundColor)
-        #expect(other == editor.lineNumberColor)
+        #expect(style.selectedLines == [2...2])
+        #expect(style.attributed(2)[.foregroundColor] as? NSColor == editor.foregroundColor)
+        #expect(style.attributed(3)[.foregroundColor] as? NSColor == editor.lineNumberColor)
         // The numbers sit below the syntax dim tier, not in it.
         #expect(editor.lineNumberColor != editor.syntaxDimColor)
     }
 
-    @Test("The margin keeps room for the numbers at any content width")
-    func insetFloorSurvivesWideCap() {
-        // The TODO case: a content-width cap wide enough that the centered
-        // margin would collapse to contentBaseInset and squeeze the numbers out.
+    @Test("Every line the selection touches is inked as body text")
+    func selectedLinesInk() {
+        let editor = makeEditor()
+        editor.loadContent("alpha\nbeta\ngamma\ndelta\n")
+        // From inside "alpha" through inside "gamma": lines 1-3.
+        editor.setSelectedRange(NSRange(location: 2, length: 12))
+
+        let style = editor.lineNumberStyle
+        #expect(style.selectedLines == [1...3])
+        for line in 1...3 {
+            #expect(style.attributed(line)[.foregroundColor] as? NSColor
+                    == editor.foregroundColor)
+        }
+        #expect(style.attributed(4)[.foregroundColor] as? NSColor == editor.lineNumberColor)
+    }
+
+    @Test("A selection ending at a line start doesn't claim that line")
+    func selectionStopsAtLineStart() {
+        let editor = makeEditor()
+        editor.loadContent("alpha\nbeta\ngamma\n")
+        // "alpha\n" exactly — line 2 is untouched, even though the upper bound
+        // is line 2's first offset.
+        editor.setSelectedRange(NSRange(location: 0, length: 6))
+        #expect(editor.lineNumberStyle.selectedLines == [1...1])
+    }
+
+    @Test("The reading column keeps the whole cap; the numbers give way")
+    func columnStretchesOverNumbers() {
+        // The margin is never reserved for the numbers — at a cap wide enough to
+        // collapse it, the column still stretches and the numbers step aside.
         let editor = makeEditor()
         editor.loadContent((1...1200).map { "line \($0)" }.joined(separator: "\n"))
         editor.maxContentWidthPoints = .greatestFiniteMagnitude
         editor.showLineNumbers = true
         editor.updateContentInset()
 
-        let required = editor.lineNumbersRequiredInset
-        #expect(required > EditorTextView.contentBaseInset)
-        #expect(editor.textContainerInset.width >= required - 0.5)
-
-        // The window-edge placement reserves its own strip, so it needs no floor.
-        editor.lineNumbersByWindowEdge = true
-        #expect(editor.lineNumbersRequiredInset == 0)
+        #expect(editor.textContainerInset.width == EditorTextView.contentBaseInset)
+        #expect(editor.lineNumbersRequiredInset > editor.textContainerInset.width)
     }
 
     @Test("The gutter never narrows below three digits")

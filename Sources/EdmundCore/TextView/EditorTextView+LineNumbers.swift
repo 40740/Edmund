@@ -83,12 +83,13 @@ extension EditorTextView {
     /// How the numbers are inked, plus the two metrics both placements need.
     struct LineNumberStyle {
         let attributes: [NSAttributedString.Key: Any]
-        /// The caret's own line is inked as body text, so it reads as a position
-        /// rather than as chrome.
+        /// Lines the selection touches are inked as body text, so they read as a
+        /// position rather than as chrome.
         let currentAttributes: [NSAttributedString.Key: Any]
-        /// 1-indexed line holding the caret (the selection's start, when there
-        /// is a range).
-        let currentLine: Int
+        /// 1-indexed line spans the selection covers — the caret's own line when
+        /// there is no range. Kept as ranges, not a set: selecting a million-line
+        /// document shouldn't build a million-element set on every redraw.
+        let selectedLines: [ClosedRange<Int>]
         /// Distance from the top `draw(at:)` expects down to the baseline.
         /// `draw(at:)` takes the top of the line box, and NSStringDrawing lays
         /// out a box taller than ascender + descender (20 pt for the 14 pt mono
@@ -99,9 +100,9 @@ extension EditorTextView {
         /// lets the numbers be right-aligned without measuring each one.
         let digitWidth: CGFloat
 
-        /// Body ink for the caret's line, chrome ink for the rest.
+        /// Body ink for the selected lines, chrome ink for the rest.
         func attributed(_ line: Int) -> [NSAttributedString.Key: Any] {
-            line == currentLine ? currentAttributes : attributes
+            selectedLines.contains { $0.contains(line) } ? currentAttributes : attributes
         }
     }
 
@@ -114,9 +115,22 @@ extension EditorTextView {
         return LineNumberStyle(
             attributes: attributes,
             currentAttributes: [.font: font, .foregroundColor: foregroundColor],
-            currentLine: line(forOffset: selectedRange().location),
+            selectedLines: selectedLineSpans,
             topToBaseline: digit.size().height + font.descender,
             digitWidth: digit.size().width)
+    }
+
+    /// The 1-indexed line spans the selection covers, one per selected range
+    /// (NSTextView allows several).
+    var selectedLineSpans: [ClosedRange<Int>] {
+        selectedRanges.map { value in
+            let range = value.rangeValue
+            let first = line(forOffset: range.location)
+            // A selection ending exactly at a line start stops short of that
+            // line, so measure the last character it actually covers.
+            let last = range.length > 0 ? line(forOffset: range.upperBound - 1) : first
+            return first...max(first, last)
+        }
     }
 
     /// Repaints the numbers after the caret may have changed line. Only the
@@ -181,20 +195,17 @@ extension EditorTextView {
     static let lineNumberPadding: CGFloat = 8
 
     /// Left inset the in-margin numbers need to fit: the document's widest
-    /// number, the character of air after it, the padding before the text, and
-    /// as much again outside so they don't sit flush against the window.
+    /// number, the character of air after it, and the padding before the text.
     ///
-    /// `updateContentInset` takes this as a floor, which is what keeps the
-    /// numbers alive when the content-width cap is wide enough that the centered
-    /// margin would otherwise collapse to `contentBaseInset`. At ordinary window
-    /// sizes the centered inset is far larger, so this changes nothing and the
-    /// column still doesn't move when the numbers come on.
+    /// Deliberately *not* a floor under `updateContentInset`. Reserving it would
+    /// stop the reading column from stretching to the full content-width cap,
+    /// and the cap winning is the point — so when the margin can't hold the
+    /// numbers they step aside instead.
     var lineNumbersRequiredInset: CGFloat {
-        guard showLineNumbers, !lineNumbersByWindowEdge else { return 0 }
         let digits = LineNumberRulerView.digitCount(lineStarts.count)
         let padding = textContainer?.lineFragmentPadding ?? 0
         return lineNumberStyle.digitWidth * CGFloat(digits + 1)
-            + 2 * Self.lineNumberPadding - padding
+            + Self.lineNumberPadding - padding
     }
 
     // MARK: In-margin numbers (the default placement)
@@ -209,18 +220,13 @@ extension EditorTextView {
         let padding = textContainer?.lineFragmentPadding ?? 0
         let rightEdge = origin.x + padding - Self.lineNumberPadding
 
-        // The inset normally already reserves room (`lineNumbersRequiredInset`).
-        // It can fall behind by one digit when an edit pushes the document past
-        // 9, 99, 999… lines, since nothing re-runs the inset on every keystroke —
-        // so re-run it here, and skip this frame rather than print over the text.
+        // Nothing reserves this margin — the content-width cap owns it, so the
+        // column always stretches to the full cap and the numbers give way when
+        // what's left can't hold them.
         // ponytail: all of them, never just the ones that fit, so the column
-        // can't go ragged with `9` drawn and `100` missing.
-        guard origin.x >= lineNumbersRequiredInset - 0.5 else {
-            RunLoop.main.perform { [weak self] in
-                MainActor.assumeIsolated { self?.updateContentInset() }
-            }
-            return
-        }
+        // can't go ragged with `9` drawn and `100` missing. The window-edge
+        // gutter is the placement for "always visible".
+        guard origin.x >= lineNumbersRequiredInset else { return }
 
         enumerateVisibleLineNumbers { line, baseline in
             let label = NSAttributedString(string: "\(line)", attributes: style.attributed(line))
@@ -255,9 +261,6 @@ extension EditorTextView {
             scrollView.verticalRulerView = nil
             lineNumberRuler = nil
         }
-        // The in-margin placement puts a floor under the inset; switching
-        // placement (or the numbers off) lifts it again.
-        updateContentInset()
         needsDisplay = true
     }
 

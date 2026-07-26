@@ -31,12 +31,8 @@ extension EditorTextView {
     /// time, so a column narrower than an already-rendered image needs those
     /// blocks restyled to shrink it.
     public func updateContentInset() {
-        // Line numbers drawn in the margin need a floor under the inset, or a
-        // wide enough content-width cap collapses the margin to `contentBaseInset`
-        // and squeezes them out. Zero unless that placement is on.
-        let target = max(Self.horizontalInset(viewWidth: bounds.width,
-                                              maxContentWidth: maxContentWidthPoints),
-                         lineNumbersRequiredInset)
+        let target = Self.horizontalInset(viewWidth: bounds.width,
+                                          maxContentWidth: maxContentWidthPoints)
         guard abs(textContainerInset.width - target) > 0.5 else { return }
         textContainerInset = NSSize(width: target, height: textContainerInset.height)
 
