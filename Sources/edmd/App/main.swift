@@ -297,6 +297,64 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         findMenuItem.title = "Find"
         editMenu.addItem(findMenuItem)
 
+        // The standard text submenus, same first-responder routing as Find.
+        // NSTextView supplies the actions *and* the checkmark state for the
+        // toggles (our validateMenuItem override falls through to super for
+        // anything that isn't a formatting command).
+        //
+        // In Reading mode the editing commands gray out — measured: all of
+        // Transformations, plus Show Spelling and Check Document Now. The two
+        // spell-checking toggles and Start Speaking stay live, because the web
+        // view answers those selectors itself; both are harmless there (they
+        // act on the rendered view, not the source).
+        //
+        // Substitutions is deliberately absent: smart quotes/dashes, text
+        // replacement and autocorrect are switched off in
+        // `EditorTextView.commonInit()` on purpose — they rewrite typed Markdown
+        // and the completion machinery can strand marked text, breaking the
+        // storage == rawSource invariant. Same reason "Correct Spelling
+        // Automatically" is left out of Spelling and Grammar below.
+        let spellingMenu = NSMenu(title: "Spelling and Grammar")
+        spellingMenu.addItem(withTitle: "Show Spelling and Grammar",
+                             action: #selector(NSText.showGuessPanel(_:)),
+                             keyEquivalent: ":")
+        spellingMenu.addItem(withTitle: "Check Document Now",
+                             action: #selector(NSText.checkSpelling(_:)),
+                             keyEquivalent: ";")
+        spellingMenu.addItem(.separator())
+        spellingMenu.addItem(withTitle: "Check Spelling While Typing",
+                             action: #selector(NSTextView.toggleContinuousSpellChecking(_:)),
+                             keyEquivalent: "")
+        spellingMenu.addItem(withTitle: "Check Grammar With Spelling",
+                             action: #selector(NSTextView.toggleGrammarChecking(_:)),
+                             keyEquivalent: "")
+        let spellingItem = NSMenuItem()
+        spellingItem.title = "Spelling and Grammar"
+        spellingItem.submenu = spellingMenu
+        editMenu.addItem(spellingItem)
+
+        let transformMenu = NSMenu(title: "Transformations")
+        transformMenu.addItem(withTitle: "Make Upper Case",
+                              action: #selector(NSResponder.uppercaseWord(_:)), keyEquivalent: "")
+        transformMenu.addItem(withTitle: "Make Lower Case",
+                              action: #selector(NSResponder.lowercaseWord(_:)), keyEquivalent: "")
+        transformMenu.addItem(withTitle: "Capitalize",
+                              action: #selector(NSResponder.capitalizeWord(_:)), keyEquivalent: "")
+        let transformItem = NSMenuItem()
+        transformItem.title = "Transformations"
+        transformItem.submenu = transformMenu
+        editMenu.addItem(transformItem)
+
+        let speechMenu = NSMenu(title: "Speech")
+        speechMenu.addItem(withTitle: "Start Speaking",
+                           action: #selector(NSTextView.startSpeaking(_:)), keyEquivalent: "")
+        speechMenu.addItem(withTitle: "Stop Speaking",
+                           action: #selector(NSTextView.stopSpeaking(_:)), keyEquivalent: "")
+        let speechItem = NSMenuItem()
+        speechItem.title = "Speech"
+        speechItem.submenu = speechMenu
+        editMenu.addItem(speechItem)
+
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 

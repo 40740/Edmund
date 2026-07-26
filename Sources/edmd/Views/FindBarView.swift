@@ -296,6 +296,12 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
     private let bottomRightStack = NSStackView()
     /// Row-0 slack, live only in replace mode — see `showsReplaceRow`.
     private let topSpacer = NSView()
+    /// Hairline along the bottom edge, matching the toolbar's separator so the
+    /// bar reads as window chrome. A subview, not a `draw(_:)` override:
+    /// `NSVisualEffectView` renders its material through layers and never calls
+    /// through to a custom `draw`. Pinned to the bottom, so it follows whichever
+    /// row is last — find-only or the revealed replace row.
+    private let bottomBorder = NSView()
     private var grid: NSGridView!
 
     // Event callbacks, wired by the controller.
@@ -327,6 +333,15 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
             refreshKeyViewLoop()
             needsLayout = true
             invalidateIntrinsicContentSize()
+        }
+    }
+
+    /// Keeps the hairline's colour correct across a light/dark switch — a
+    /// `cgColor` snapshot doesn't follow the appearance on its own.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            bottomBorder.layer?.backgroundColor = NSColor.separatorColor.cgColor
         }
     }
 
@@ -444,6 +459,17 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         grid.column(at: 1).xPlacement = .leading      // col1 hugs content (driven by the wider cluster)
         grid.row(at: 0).yPlacement = .center
         grid.row(at: 1).yPlacement = .center
+
+        bottomBorder.wantsLayer = true
+        bottomBorder.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        bottomBorder.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(bottomBorder)
+        NSLayoutConstraint.activate([
+            bottomBorder.leadingAnchor.constraint(equalTo: leadingAnchor),
+            bottomBorder.trailingAnchor.constraint(equalTo: trailingAnchor),
+            bottomBorder.bottomAnchor.constraint(equalTo: bottomAnchor),
+            bottomBorder.heightAnchor.constraint(equalToConstant: 1 / (NSScreen.main?.backingScaleFactor ?? 2)),
+        ])
 
         grid.translatesAutoresizingMaskIntoConstraints = false
         addSubview(grid)
