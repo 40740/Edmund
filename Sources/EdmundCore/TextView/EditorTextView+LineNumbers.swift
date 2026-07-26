@@ -72,9 +72,23 @@ extension EditorTextView {
 
     // MARK: Shared drawing pieces
 
+    /// Ink for the line numbers: a step dimmer than `syntaxDimColor`, the same
+    /// relationship the rules have to the markers (see `darkRuleGray`). Numbers
+    /// are chrome behind chrome — always on screen, never read in sequence — so
+    /// they sit below the dim tier rather than in it.
+    var lineNumberColor: NSColor {
+        isDarkAppearance ? Self.darkRuleGray : .quaternaryLabelColor
+    }
+
     /// How the numbers are inked, plus the two metrics both placements need.
     struct LineNumberStyle {
         let attributes: [NSAttributedString.Key: Any]
+        /// The caret's own line is inked as body text, so it reads as a position
+        /// rather than as chrome.
+        let currentAttributes: [NSAttributedString.Key: Any]
+        /// 1-indexed line holding the caret (the selection's start, when there
+        /// is a range).
+        let currentLine: Int
         /// Distance from the top `draw(at:)` expects down to the baseline.
         /// `draw(at:)` takes the top of the line box, and NSStringDrawing lays
         /// out a box taller than ascender + descender (20 pt for the 14 pt mono
@@ -84,17 +98,40 @@ extension EditorTextView {
         /// A monospace face gives every digit the same advance, which is what
         /// lets the numbers be right-aligned without measuring each one.
         let digitWidth: CGFloat
+
+        /// Body ink for the caret's line, chrome ink for the rest.
+        func attributed(_ line: Int) -> [NSAttributedString.Key: Any] {
+            line == currentLine ? currentAttributes : attributes
+        }
     }
 
     var lineNumberStyle: LineNumberStyle {
         let font = theme.monospaceFont()
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: font, .foregroundColor: syntaxDimColor
+            .font: font, .foregroundColor: lineNumberColor
         ]
         let digit = NSAttributedString(string: "0", attributes: attributes)
-        return LineNumberStyle(attributes: attributes,
-                               topToBaseline: digit.size().height + font.descender,
-                               digitWidth: digit.size().width)
+        return LineNumberStyle(
+            attributes: attributes,
+            currentAttributes: [.font: font, .foregroundColor: foregroundColor],
+            currentLine: line(forOffset: selectedRange().location),
+            topToBaseline: digit.size().height + font.descender,
+            digitWidth: digit.size().width)
+    }
+
+    /// Repaints the numbers after the caret may have changed line. Only the
+    /// current line's ink changes, but which line that is isn't known until the
+    /// draw, so mark the whole strip the numbers occupy — never the text.
+    func invalidateLineNumbers() {
+        guard showLineNumbers else { return }
+        if let lineNumberRuler {
+            lineNumberRuler.needsDisplay = true
+        } else {
+            let visible = visibleRect
+            setNeedsDisplay(NSRect(x: 0, y: visible.minY,
+                                   width: textContainerOrigin.x,
+                                   height: visible.height))
+        }
     }
 
     /// Calls `body` once per visible source line, with its 1-indexed number and
@@ -143,6 +180,23 @@ extension EditorTextView {
     /// Space between the numbers and what they sit beside.
     static let lineNumberPadding: CGFloat = 8
 
+    /// Left inset the in-margin numbers need to fit: the document's widest
+    /// number, the character of air after it, the padding before the text, and
+    /// as much again outside so they don't sit flush against the window.
+    ///
+    /// `updateContentInset` takes this as a floor, which is what keeps the
+    /// numbers alive when the content-width cap is wide enough that the centered
+    /// margin would otherwise collapse to `contentBaseInset`. At ordinary window
+    /// sizes the centered inset is far larger, so this changes nothing and the
+    /// column still doesn't move when the numbers come on.
+    var lineNumbersRequiredInset: CGFloat {
+        guard showLineNumbers, !lineNumbersByWindowEdge else { return 0 }
+        let digits = LineNumberRulerView.digitCount(lineStarts.count)
+        let padding = textContainer?.lineFragmentPadding ?? 0
+        return lineNumberStyle.digitWidth * CGFloat(digits + 1)
+            + 2 * Self.lineNumberPadding - padding
+    }
+
     // MARK: In-margin numbers (the default placement)
 
     /// Draws the numbers in the reading column's left margin, right-aligned just
@@ -155,18 +209,23 @@ extension EditorTextView {
         let padding = textContainer?.lineFragmentPadding ?? 0
         let rightEdge = origin.x + padding - Self.lineNumberPadding
 
-        // ponytail: a window narrow enough to squeeze the margin out drops the
-        // numbers rather than printing them over the text — all of them, judged
-        // by the document's widest, so they never go ragged (the 3-digit ones
-        // vanishing while the 1-digit ones stay). Reach for the window-edge
-        // gutter instead if they must always be visible.
-        let widest = style.digitWidth
-            * CGFloat(LineNumberRulerView.digitCount(lineStarts.count))
-        guard rightEdge - widest >= 0 else { return }
+        // The inset normally already reserves room (`lineNumbersRequiredInset`).
+        // It can fall behind by one digit when an edit pushes the document past
+        // 9, 99, 999… lines, since nothing re-runs the inset on every keystroke —
+        // so re-run it here, and skip this frame rather than print over the text.
+        // ponytail: all of them, never just the ones that fit, so the column
+        // can't go ragged with `9` drawn and `100` missing.
+        guard origin.x >= lineNumbersRequiredInset - 0.5 else {
+            RunLoop.main.perform { [weak self] in
+                MainActor.assumeIsolated { self?.updateContentInset() }
+            }
+            return
+        }
 
         enumerateVisibleLineNumbers { line, baseline in
-            let label = NSAttributedString(string: "\(line)", attributes: style.attributes)
-            let x = rightEdge - style.digitWidth * CGFloat(label.length)
+            let label = NSAttributedString(string: "\(line)", attributes: style.attributed(line))
+            // dev: Add one-char space between content and line number
+            let x = rightEdge - style.digitWidth * CGFloat(label.length + 1)
             let y = origin.y + baseline - style.topToBaseline
             guard rect.intersects(NSRect(x: x, y: y, width: rightEdge - x,
                                          height: style.topToBaseline)) else { return }
@@ -196,6 +255,9 @@ extension EditorTextView {
             scrollView.verticalRulerView = nil
             lineNumberRuler = nil
         }
+        // The in-margin placement puts a floor under the inset; switching
+        // placement (or the numbers off) lifts it again.
+        updateContentInset()
         needsDisplay = true
     }
 
@@ -275,7 +337,8 @@ final class LineNumberRulerView: NSRulerView {
         let rightEdge = ruleThickness - EditorTextView.lineNumberPadding
 
         editor.enumerateVisibleLineNumbers { line, baseline in
-            let label = NSAttributedString(string: "\(line)", attributes: style.attributes)
+            let label = NSAttributedString(string: "\(line)",
+                                           attributes: style.attributed(line))
             label.draw(at: NSPoint(x: rightEdge - style.digitWidth * CGFloat(label.length),
                                    y: rulerOffsetY + baseline - style.topToBaseline))
         }

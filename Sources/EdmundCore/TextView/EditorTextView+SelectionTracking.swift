@@ -7,6 +7,10 @@ extension EditorTextView {
 
     @objc func selectionDidChange(_ notification: Notification) {
         traceEdit("selectionDidChange")
+        // Before the guards below: the caret's own line number is inked as body
+        // text, so it has to repaint on every caret move, including the ones
+        // that bail out of restyling. Marks only the numbers' strip.
+        invalidateLineNumbers()
         // A selection change landing mid-recompose is the drift signature
         // (issue #156); the stack names the AppKit path that moved the caret.
         if isUpdating { traceSelectionOrigin() }
