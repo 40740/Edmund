@@ -482,6 +482,23 @@ Notable subsystems:
   `searchButtonRect(forBounds: bounds)` (that call *is* correct for real
   bounds). Template images drawn by hand render flat black, so tint per
   draw or the glyph won't follow light/dark.
+- **Place a hand-drawn SF Symbol by its *ink*, not its image bounds.** Symbol
+  images carry internal padding that varies per symbol, so drawing one at its
+  image rect lands it a couple of points off whatever you measured. Render the
+  symbol once, scan its alpha for a tight bounding box, then scale/offset so the
+  *ink* hits the measured target (`CountingSearchField.inkBounds`). Two traps:
+  `NSBitmapImageRep.size` must be assigned **before** the `NSGraphicsContext` is
+  made — it defines the context's coordinate space, and a late assignment
+  measures at the wrong scale; and a text field's coordinate space is **flipped**,
+  so a positive y offset moves a glyph *down*. Both were found by sweeping the
+  constant and measuring, which is the only way to settle a sign question here.
+- **Visual work is measured, not eyeballed — and the measuring rig is
+  reusable.** Aligning chrome takes a dozen launch/state/capture/measure cycles;
+  `.claude/skills/edmund-live-repro-and-diagnostics/scripts/ui-harness.sh` and
+  `ui-measure.py` are that loop, already encoding the flaky bits (AX-driven
+  clicks, appearance forced per-launch via `-settings.appearance.mode`, capture
+  by window id without stealing focus). Extend them for new surfaces rather than
+  rebuilding one-off shell; they are permanent fixtures, not scratch files.
 
 ---
 
@@ -557,9 +574,17 @@ only with reason):
 
 1. **`swift test` is green** (all pass). Add tests for new behavior / bug
    repros.
-2. **Visual changes are eyeballed** — build the app and `screencapture` the
-   result (§8), or render offscreen to a PNG. Don't trust headless layout
-   alone for anything that draws.
+2. **Visual changes are measured, not eyeballed** — build the app and
+   `screencapture` the result (§8), or render offscreen to a PNG. Don't trust
+   headless layout alone for anything that draws. For anything phrased as
+   *align / centre / balance the padding / match the native control*, report
+   **numbers** (device px and points, 2:1 on Retina), not an impression —
+   "the glyph's centre is 137.5, the field's is 137.5" settles what "looks
+   right" cannot. Drive the app with the reusable harness rather than fresh
+   one-off shell: `ui-harness.sh` + `ui-measure.py` in
+   `.claude/skills/edmund-live-repro-and-diagnostics/scripts/`. **Keep and
+   extend those tools** — they're checked-in fixtures, and the setup cost is
+   otherwise paid again every visual task.
 3. **Frequent, small, logical commits** — one feature/fix each. Don't
    discard uncommited changes.
 4. **Don't autopush, PR, or merge unless asked.** Branch off `main` (don't
