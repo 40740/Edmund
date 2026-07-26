@@ -260,8 +260,38 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
             // is nothing to absorb, so the cell hugs its content instead.
             topSpacer.isHidden = !newValue
             grid.cell(atColumnIndex: 1, rowIndex: 0).xPlacement = newValue ? .fill : .leading
+            refreshKeyViewLoop()
             needsLayout = true
             invalidateIntrinsicContentSize()
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // AppKit rebuilds the window's key-view loop from view geometry whenever
+        // the view tree changes, wiping any `nextKeyView` we set — Tab then fell
+        // straight out of the bar. Opt the window out so our chain survives.
+        window?.autorecalculatesKeyViewLoop = false
+        refreshKeyViewLoop()
+    }
+
+    /// Chains the bar's controls into a closed Tab loop in visual order, so Tab
+    /// walks the bar instead of escaping to the editor. Rebuilt whenever the
+    /// replace row appears or hides, because that changes both the membership
+    /// (the replace row joins) and which **Done** is live.
+    ///
+    /// The loop is declared in full, including the buttons: AppKit skips links
+    /// whose view can't become a key view, so with macOS "Keyboard navigation"
+    /// off — the default — Tab moves between the two text fields only, and the
+    /// same chain lights up the buttons for users who switch it on. Nothing here
+    /// can force that; a control's `refusesFirstResponder` doesn't override the
+    /// system setting.
+    private func refreshKeyViewLoop() {
+        let chain: [NSView] = showsReplaceRow
+            ? [searchField, nav, replaceToggle, replaceField, replaceGroup, doneBottom]
+            : [searchField, nav, doneTop, replaceToggle]
+        for (view, next) in zip(chain, chain.dropFirst() + [chain[0]]) {
+            view.nextKeyView = next
         }
     }
 
