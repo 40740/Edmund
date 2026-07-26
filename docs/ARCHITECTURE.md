@@ -193,6 +193,8 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General/Advanced views) |
 | Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (§7) |
 | Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey`. `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure. CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline + signing + `RELEASE_TOKEN`: §13. |
+| Find & Replace | `EdmundCore/Find/FindEngine.swift` (pure search), `TextView/EditorTextView+Find.swift` (match state, highlight drawing, pop animation, `EditorFindHandling`), `edmd/Views/FindBarView.swift` (the bar), `edmd/App/FindController.swift` (mediator); Edit ▸ Find menu in `main.swift` |
+| Standard text menus | `edmd/App/main.swift` — Edit ▸ Spelling and Grammar, Transformations, Speech; stock `NSTextView` actions routed to the first responder. **Substitutions is deliberately excluded** (§8) |
 | Status bar | `edmd/Views/StatusBarView.swift` |
 | Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing), `Package.swift`, `Info.plist`, `Resources/` |
 
@@ -247,6 +249,48 @@ Notable subsystems:
   **Export as PDF… / Print… (⌘P)** run the same HTML through
   `WKWebView.printOperation` (`MarkdownPrinter`; vector text, math is
   high-DPI PNG). Full spec: `docs/architecture/reader-and-export.md`.
+- **Find & Replace** (in-document, ⌘F / ⌥⌘F / ⌘G / ⇧⌘G): **not**
+  `NSTextFinder` — it renders the system bar rather than the Notes look, and
+  its highlighting drives `NSLayoutManager`, which the TextKit 2 tripwire
+  (§2) forbids. Instead: `FindEngine` is a pure `NSString.range(of:)` scan
+  (case-sensitive / whole-word options, no regex) over `rawSource`; because
+  of the identity invariant, search index == raw index == display index, so
+  there is **no offset mapping**. Highlighting is **draw-only** — a
+  `drawBackground(in:)` override fills rects from
+  `enumerateTextSegments(in:type:.highlight)`, offset by
+  `textContainerOrigin` — so it never writes attributes into storage and
+  can't perturb recompose. Navigation never moves the caret (that would
+  trigger the active-block-renders-raw recompose); it scrolls via
+  `revealFindMatch`, which leaves an already-visible match alone and
+  otherwise puts the hit's line at the top. Every match gets a grey resting
+  background; the one just navigated to also gets a Preview-style "pop" — a
+  drop-shadowed rounded yellow box that springs in from a larger scale with
+  an `easeOutBack` overshoot, holds, then fades, driven by a `CADisplayLink`
+  (constants at the top of `+Find.swift`). Replace / Replace All are the
+  only paths that touch text and go through the sanctioned edit cycle (§4),
+  Replace All rebuilding the source back-to-front so it lands as one undo
+  step. EdmundCore stays unaware of the controller via the
+  `EditorFindHandling` protocol — the same decoupling as
+  `contextFontMenuProvider`. The bar itself is an `NSGridView` (2×2) so the
+  two fields share a left edge and the `‹ ›` / `Replace|All` clusters share
+  theirs; find-only is one row and toggling Replace reveals the second and
+  moves **Done** down onto it, with a hairline along the bar's bottom edge
+  (whichever row is last) matching the toolbar separator.
+  **Keyboard model.** ⌘F and ⌥⌘F each *toggle their own* bar — the shortcut
+  for the bar already showing closes it, the other switches to it, so ⌘F from
+  the replace bar drops the replace row rather than closing outright:
+
+  | from | ⌘F | ⌥⌘F |
+  | --- | --- | --- |
+  | closed | find | replace |
+  | find | closed | replace |
+  | replace | find | closed |
+
+  Return / ⇧Return in the search field step to the next / previous match, as
+  do ⌘G / ⇧⌘G. Tab walks the bar in visual order and wraps — including
+  *inside* the segmented controls, so `‹`, `›`, `Replace` and `All` are each
+  individually reachable — and ⇧Tab walks it in reverse. Both behaviours
+  needed AppKit worked around; see §8.
 - **Mode-switch viewport sync** (Edit ↔ Read, line-accurate both ways):
   read HTML blocks carry `id="edmund-l<startLine>"` anchors; scroll maps as
   (anchor line, fraction-into-block) via API-injected `evaluateJavaScript`
@@ -448,6 +492,75 @@ Notable subsystems:
   `window.setFrame(_:)` **after the toolbar is installed** (the frame is
   only final then), so frame-in == frame-out (`windowDidResize` ↔
   `makeWindowControllers` in `Document.swift`).
+- **`NSSearchField`'s magnifier glyph can't be repositioned — draw your
+  own.** AppKit draws it ~3.75pt below the field's vertical centre (a 21×15
+  image in a rect the field's full 22pt height). Every built-in hook is a
+  dead end, and each was measured, not assumed:
+  `searchButtonRect(forBounds:)` is only a *sizing probe* (AppKit calls it
+  with a 40000×40000 bounds, never to position); the button cell's
+  `drawInterior(withFrame:in:)` is bypassed by the search field's private
+  draw path; the cell ignores a replacement image entirely (the Big Sur
+  regression, FB8913004), so re-padding the image does nothing; and the
+  glyph is not a subview, so there is nothing to move in `layout()`.
+  `imageRect(forBounds:)` *is* honoured, but drawing is clipped to a fixed
+  band, so shifting or growing the rect just chops the top off the glyph.
+  What works (`FindBarView.swift`): swap in a button cell whose
+  `imageRect` returns `.zero` — it draws nothing but still handles the
+  click, so the search-options menu keeps working — and draw the
+  magnifier + ▾ yourself in the field's `draw(_:)`, centred on
+  `searchButtonRect(forBounds: bounds)` (that call *is* correct for real
+  bounds). Template images drawn by hand render flat black, so tint per
+  draw or the glyph won't follow light/dark.
+- **Place a hand-drawn SF Symbol by its *ink*, not its image bounds.** Symbol
+  images carry internal padding that varies per symbol, so drawing one at its
+  image rect lands it a couple of points off whatever you measured. Render the
+  symbol once, scan its alpha for a tight bounding box, then scale/offset so the
+  *ink* hits the measured target (`CountingSearchField.inkBounds`). Two traps:
+  `NSBitmapImageRep.size` must be assigned **before** the `NSGraphicsContext` is
+  made — it defines the context's coordinate space, and a late assignment
+  measures at the wrong scale; and a text field's coordinate space is **flipped**,
+  so a positive y offset moves a glyph *down*. Both were found by sweeping the
+  constant and measuring, which is the only way to settle a sign question here.
+- **A first-responder menu command dies wherever the target isn't in the
+  responder chain.** The Edit ▸ Find items route to `EditorTextView`, so with
+  focus inside the find bar the editor is *not* in the chain — the bar is —
+  and ⌘F / ⌥⌘F / ⌘G / ⇧⌘G greyed out exactly while you were typing a query.
+  Fix: implement the same selectors on the focused view too (`FindBarView`
+  forwards them). Applies to any overlay that takes focus.
+- **AppKit rebuilds the window's key-view loop and wipes your `nextKeyView`.**
+  A hand-built Tab chain silently reverts whenever the view tree changes;
+  `window.autorecalculatesKeyViewLoop = false` is what makes it stick. Views
+  that can't become key views are skipped automatically, so declaring the
+  whole chain (buttons included) is safe — but buttons only join when macOS
+  *Keyboard navigation* is on, which nothing in-app can override.
+- **Tab never enters an `NSSegmentedControl`.** AppKit focuses segments
+  individually — the focus ring sits on one segment and ← / → move it — but
+  Tab always leaves the whole control, so a trailing segment (`›`, `All`) is
+  unreachable by Tab alone. `SegmentTabbingControl` translates Tab into that
+  arrow handling until the last segment, then releases it to the key-view
+  loop. The focused index has no public accessor, so it's mirrored, and the
+  mirror must be seeded by *entry direction* — AppKit enters on the leading
+  segment forwards and the trailing one via ⇧Tab.
+- **`NSVisualEffectView` ignores `draw(_:)`.** It renders its material through
+  layers and never calls a custom draw, so a border painted there is simply
+  invisible (measured: nothing appeared). Use a pinned subview with a layer
+  background, and refresh its `cgColor` on
+  `viewDidChangeEffectiveAppearance` — a colour snapshot won't follow the
+  appearance by itself.
+- **Edit ▸ Substitutions is deliberately absent.** Smart quotes/dashes, text
+  replacement and autocorrect are switched off in
+  `EditorTextView.commonInit()` on purpose: they rewrite typed Markdown, and
+  the completion machinery can strand marked text and break
+  storage == rawSource (delete-drift investigation). Don't add the standard
+  Substitutions menu back — it re-exposes exactly those toggles. Same reason
+  "Correct Spelling Automatically" is left out of Spelling and Grammar.
+- **Visual work is measured, not eyeballed — and the measuring rig is
+  reusable.** Aligning chrome takes a dozen launch/state/capture/measure cycles;
+  `.claude/skills/edmund-live-repro-and-diagnostics/scripts/ui-harness.sh` and
+  `ui-measure.py` are that loop, already encoding the flaky bits (AX-driven
+  clicks, appearance forced per-launch via `-settings.appearance.mode`, capture
+  by window id without stealing focus). Extend them for new surfaces rather than
+  rebuilding one-off shell; they are permanent fixtures, not scratch files.
 
 ---
 
@@ -523,9 +636,17 @@ only with reason):
 
 1. **`swift test` is green** (all pass). Add tests for new behavior / bug
    repros.
-2. **Visual changes are eyeballed** — build the app and `screencapture` the
-   result (§8), or render offscreen to a PNG. Don't trust headless layout
-   alone for anything that draws.
+2. **Visual changes are measured, not eyeballed** — build the app and
+   `screencapture` the result (§8), or render offscreen to a PNG. Don't trust
+   headless layout alone for anything that draws. For anything phrased as
+   *align / centre / balance the padding / match the native control*, report
+   **numbers** (device px and points, 2:1 on Retina), not an impression —
+   "the glyph's centre is 137.5, the field's is 137.5" settles what "looks
+   right" cannot. Drive the app with the reusable harness rather than fresh
+   one-off shell: `ui-harness.sh` + `ui-measure.py` in
+   `.claude/skills/edmund-live-repro-and-diagnostics/scripts/`. **Keep and
+   extend those tools** — they're checked-in fixtures, and the setup cost is
+   otherwise paid again every visual task.
 3. **Frequent, small, logical commits** — one feature/fix each. Don't
    discard uncommited changes.
 4. **Don't autopush, PR, or merge unless asked.** Branch off `main` (don't

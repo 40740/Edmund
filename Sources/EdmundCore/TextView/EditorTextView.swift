@@ -32,6 +32,28 @@ public class EditorTextView: NSTextView {
     /// Set by Document.makeWindowControllers(). Not available in unit tests.
     public weak var document: NSDocument?
 
+    // MARK: - Find
+
+    /// Character ranges of the current search's matches, in raw/display index
+    /// space (identity). Drawn as highlights by `drawBackground(in:)` while
+    /// `findActive`. Never written into storage — draw-only, to hold the
+    /// storage == rawSource invariant. See EditorTextView+Find.
+    public var findMatches: [NSRange] = []
+    /// Index into `findMatches` of the current match (drawn stronger), or nil.
+    public var currentMatchIndex: Int?
+    /// True while the find bar is open; gates highlight drawing.
+    public var findActive = false
+    /// The match currently being emphasised (the newly-navigated hit), and how
+    /// far its yellow→grey settle animation has progressed (0…1). Drives the
+    /// CotEditor-style pop; nil when nothing is animating. See EditorTextView+Find.
+    var emphasisRange: NSRange?
+    var emphasisProgress: CGFloat = 0
+    var emphasisLink: CADisplayLink?
+    /// Routes menu/keyboard find commands to the app-side find controller.
+    /// Weak; mirrors the module decoupling of `contextFontMenuProvider` so
+    /// EdmundCore need not know about edmd's FindController.
+    public weak var findHandler: EditorFindHandling?
+
     // MARK: - State (internal for @testable import)
 
     public var rawSource: String = ""

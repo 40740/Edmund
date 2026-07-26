@@ -25,6 +25,7 @@ class Document: NSDocument, HeadingNavigable {
     /// editor out for a `ReadModeWebView` (created lazily on first read).
     private var scrollView: NSScrollView!
     private var containerView: NSView!
+    private var findController: FindController!
     private var readView: ReadModeWebView?
 
     /// Editor character offset captured when entering Read mode (the topmost
@@ -183,6 +184,9 @@ class Document: NSDocument, HeadingNavigable {
         containerView.addSubview(statusBar)   // overlay, on top of the text
 
         window.contentView = containerView
+
+        findController = FindController(editor: editor, scrollView: scrollView,
+                                       container: containerView, statusBar: statusBar)
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(editorDidChange(_:)),
