@@ -387,6 +387,12 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// when the item is top-level or the setting is off. Drawn under the text.
     let listGuides: [CGFloat]
 
+    /// The editor that vended this fragment, for the settings its draw reads
+    /// *live* rather than capturing (`focusMode`). Weak — the layout manager
+    /// outlives no editor, but a fragment must never keep one alive.
+    /// See EditorTextView+FocusMode.
+    weak var owner: EditorTextView?
+
     init(textElement: NSTextElement, range: NSTextRange?,
          decorations: [BlockDecoration],
          overlays: [(offset: Int, overlay: FragmentOverlay)],
@@ -396,8 +402,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
          codeBlockLabelAnchor: String? = nil,
          codeBlockLabelFont: NSFont = .monospacedSystemFont(ofSize: 10, weight: .regular),
          invisibles: InvisiblesConfig? = nil,
-         listGuides: [CGFloat] = []) {
+         listGuides: [CGFloat] = [],
+         owner: EditorTextView? = nil) {
         self.listGuides = listGuides
+        self.owner = owner
         self.decorations = decorations
         self.overlays = overlays
         self.antialias = antialias
@@ -535,6 +543,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     }
 
     override func draw(at point: CGPoint, in context: CGContext) {
+        // Focus mode fades this whole fragment — text, boxes, bars, overlays —
+        // as one group. See EditorTextView+FocusMode.
+        let dimming = beginFocusDim(in: context)
+        defer { endFocusDim(dimming, in: context) }
         context.saveGState()
         drawListGuides(at: point, in: context)
         // Decorations are stacked outermost-first. Each box stops short of the
@@ -906,8 +918,16 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
         let listGuides = showListIndentGuides
             ? (str.attribute(.listGuides, at: 0, effectiveRange: nil) as? [CGFloat] ?? [])
             : []
+        // Focus mode dims from inside the fragment's own draw, so while it is on
+        // every paragraph needs the custom fragment — a plain one has no draw to
+        // hook. (Vending one costs nothing here: with no decorations, overlays
+        // or cell wraps its init does no work.) Only this plain ↔ decorated
+        // swap needs the re-vend a `refreshOverdraw()` forces; whether a
+        // decorated fragment actually dims is read live from `owner`, so
+        // turning the mode *off* takes effect on the next redraw.
+        let focusMode = self.focusMode
         guard !decorations.isEmpty || !overlays.isEmpty || !cellWraps.isEmpty || !textAntialias
-                || (invisibles?.drawsAnything ?? false) || !listGuides.isEmpty
+                || (invisibles?.drawsAnything ?? false) || !listGuides.isEmpty || focusMode
         else {
             return NSTextLayoutFragment(textElement: textElement,
                                         range: textElement.elementRange)
@@ -922,7 +942,8 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                            codeBlockLabelAnchor: codeBlockLabelAnchorValue,
                                            codeBlockLabelFont: codeBlockLabelFont,
                                            invisibles: invisibles,
-                                           listGuides: listGuides)
+                                           listGuides: listGuides,
+                                           owner: self)
     }
 }
 

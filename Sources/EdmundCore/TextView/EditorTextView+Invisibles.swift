@@ -105,6 +105,19 @@ extension EditorTextView {
         if let tlm = textLayoutManager {
             tlm.invalidateLayout(for: tlm.documentRange)
         }
+        // Invalidating layout is not enough on its own: the layout manager
+        // keeps its fragments and hands the cached ones back, so a paragraph
+        // that was vended plain stays plain and the new overdraw never appears
+        // (measured — a live toggle drew nothing until the next edit). Only the
+        // content storage re-offering its elements re-vends them, and an
+        // attributes-only edit is the cheapest way to ask for that: no text
+        // changes, no restyle, no undo entry — the same call every `setAttributes`
+        // already makes (EditorTextStorage).
+        if let storage = textStorage, storage.length > 0 {
+            storage.edited(.editedAttributes,
+                           range: NSRange(location: 0, length: storage.length),
+                           changeInLength: 0)
+        }
         needsDisplay = true
     }
 }

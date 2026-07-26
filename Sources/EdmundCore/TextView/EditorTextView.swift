@@ -289,6 +289,13 @@ public class EditorTextView: NSTextView {
     /// `invisibles`, and for the same reason: the vend delegate reads it.
     nonisolated(unsafe) public var showListIndentGuides = false
 
+    /// Dim everything but the lines the selection touches — default off. Purely
+    /// a draw-time fade (no attribute changes), so flipping it needs a
+    /// `refreshOverdraw()` and never a restyle. `nonisolated(unsafe)` like
+    /// `invisibles`, and for the same reason: the vend delegate reads it.
+    /// See EditorTextView+FocusMode.
+    nonisolated(unsafe) public var focusMode = false
+
     /// Show source line numbers — default off. They sit in the reading column's
     /// own margin unless `lineNumbersByWindowEdge` moves them out to a gutter.
     /// See EditorTextView+LineNumbers.
