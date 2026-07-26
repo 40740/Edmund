@@ -74,13 +74,26 @@ struct LineNumbersTests {
         #expect(editor.lineStarts == [0, 4, 8, 14, 19])
     }
 
-    @Test("Toggling the setting installs and removes the gutter")
+    @Test("The default placement reserves nothing")
+    func besideContentInstallsNoRuler() {
+        // Numbers beside the text live in the column's own margin, drawn on the
+        // background pass — so no ruler, and the text view keeps its full width.
+        let editor = makeEditor()
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 300))
+        scrollView.documentView = editor
+        editor.showLineNumbers = true
+        #expect(editor.lineNumberRuler == nil)
+        #expect(!scrollView.rulersVisible)
+    }
+
+    @Test("The window-edge sub-setting installs and removes the gutter")
     func gutterInstallRemove() {
-        // What the Settings toggle drives. The editor configures itself before
+        // What the Settings toggles drive. The editor configures itself before
         // Document adds it to a scroll view, so the install has to survive
         // being asked for while there is no scroll view yet.
         let editor = makeEditor()
         editor.showLineNumbers = true
+        editor.lineNumbersByWindowEdge = true
         #expect(editor.lineNumberRuler == nil)   // nothing to install onto
 
         let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 300))
@@ -89,6 +102,14 @@ struct LineNumbersTests {
         #expect(scrollView.verticalRulerView === editor.lineNumberRuler)
         #expect(scrollView.rulersVisible)
 
+        // Back to the default placement: the gutter goes, the numbers stay on.
+        editor.lineNumbersByWindowEdge = false
+        #expect(editor.lineNumberRuler == nil)
+        #expect(!scrollView.rulersVisible)
+        #expect(editor.showLineNumbers)
+
+        // And turning the numbers off entirely with the gutter armed keeps it off.
+        editor.lineNumbersByWindowEdge = true
         editor.showLineNumbers = false
         #expect(editor.lineNumberRuler == nil)
         #expect(!scrollView.rulersVisible)

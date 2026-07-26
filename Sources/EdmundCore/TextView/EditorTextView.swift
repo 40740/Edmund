@@ -289,9 +289,8 @@ public class EditorTextView: NSTextView {
     /// `invisibles`, and for the same reason: the vend delegate reads it.
     nonisolated(unsafe) public var showListIndentGuides = false
 
-    /// Show source line numbers in a gutter at the window's left edge — default
-    /// off. Installs/removes an NSRulerView on the enclosing scroll view, so it
-    /// is a no-op until the view has one; `viewDidMoveToSuperview` replays it.
+    /// Show source line numbers — default off. They sit in the reading column's
+    /// own margin unless `lineNumbersByWindowEdge` moves them out to a gutter.
     /// See EditorTextView+LineNumbers.
     public var showLineNumbers = false {
         didSet {
@@ -300,7 +299,18 @@ public class EditorTextView: NSTextView {
         }
     }
 
-    /// The installed gutter, or nil when line numbers are off.
+    /// Put the line numbers in a gutter at the window's leading edge instead of
+    /// beside the text — default off. Installs/removes an NSRulerView on the
+    /// enclosing scroll view, so it is a no-op until the view has one;
+    /// `viewDidMoveToSuperview` replays it.
+    public var lineNumbersByWindowEdge = false {
+        didSet {
+            guard oldValue != lineNumbersByWindowEdge else { return }
+            updateLineNumberRuler()
+        }
+    }
+
+    /// The installed gutter, or nil unless the numbers are on *and* by the edge.
     var lineNumberRuler: LineNumberRulerView?
 
     /// UTF-16 offsets of each line's first character; see `lineStarts`.

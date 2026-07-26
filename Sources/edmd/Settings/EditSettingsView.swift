@@ -25,6 +25,8 @@ struct EditSettingsView: View {
     @AppStorage(AppSettings.Key.invisibleControl)    private var otherControl = true
     @AppStorage(AppSettings.Key.showListIndentGuides) private var showListIndentGuides = false
     @AppStorage(AppSettings.Key.showLineNumbers)      private var showLineNumbers = false
+    @AppStorage(AppSettings.Key.lineNumbersByWindowEdge)
+    private var lineNumbersByWindowEdge = false
     @AppStorage(AppSettings.Key.highlightCurrentLine) private var highlightCurrentLine = false
     @AppStorage(AppSettings.Key.indentStyle)
     private var indentStyle = AppSettings.IndentStyle.spaces
@@ -167,9 +169,16 @@ struct EditSettingsView: View {
             GridRow {
                 Text("Lines:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    // Leftmost of the window only — not in print / PDF, for now.
+                    // Not in print / PDF, for now.
                     Toggle("Show line numbers", isOn: $showLineNumbers)
                         .onChange(of: showLineNumbers) { AppSettings.applyEditSettingsToOpenDocuments() }
+                    // Off: the numbers sit in the reading column's own margin.
+                    // On: they move out to a gutter at the window's leading edge,
+                    // which reserves width and so re-centers the column.
+                    Toggle("Show line numbers by window edge", isOn: $lineNumbersByWindowEdge)
+                        .padding(.leading, 20)
+                        .disabled(!showLineNumbers)
+                        .onChange(of: lineNumbersByWindowEdge) { AppSettings.applyEditSettingsToOpenDocuments() }
 
                     Toggle("Strict line breaks", isOn: $strictLineBreaks)
                         .onChange(of: strictLineBreaks) { refreshReadViews() }
