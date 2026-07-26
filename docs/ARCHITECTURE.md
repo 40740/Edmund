@@ -182,6 +182,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (§7) |
 | Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey`. `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure. CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline + signing + `RELEASE_TOKEN`: §13. |
 | Find & Replace | `EdmundCore/Find/FindEngine.swift` (pure search), `TextView/EditorTextView+Find.swift` (match state, highlight drawing, pop animation, `EditorFindHandling`), `edmd/Views/FindBarView.swift` (the bar), `edmd/App/FindController.swift` (mediator); Edit ▸ Find menu in `main.swift` |
+| Standard text menus | `edmd/App/main.swift` — Edit ▸ Spelling and Grammar, Transformations, Speech; stock `NSTextView` actions routed to the first responder. **Substitutions is deliberately excluded** (§8) |
 | Status bar | `edmd/Views/StatusBarView.swift` |
 | Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing), `Package.swift`, `Info.plist`, `Resources/` |
 
@@ -261,7 +262,23 @@ Notable subsystems:
   `contextFontMenuProvider`. The bar itself is an `NSGridView` (2×2) so the
   two fields share a left edge and the `‹ ›` / `Replace|All` clusters share
   theirs; find-only is one row and toggling Replace reveals the second and
-  moves **Done** down onto it.
+  moves **Done** down onto it, with a hairline along the bar's bottom edge
+  (whichever row is last) matching the toolbar separator.
+  **Keyboard model.** ⌘F and ⌥⌘F each *toggle their own* bar — the shortcut
+  for the bar already showing closes it, the other switches to it, so ⌘F from
+  the replace bar drops the replace row rather than closing outright:
+
+  | from | ⌘F | ⌥⌘F |
+  | --- | --- | --- |
+  | closed | find | replace |
+  | find | closed | replace |
+  | replace | find | closed |
+
+  Return / ⇧Return in the search field step to the next / previous match, as
+  do ⌘G / ⇧⌘G. Tab walks the bar in visual order and wraps — including
+  *inside* the segmented controls, so `‹`, `›`, `Replace` and `All` are each
+  individually reachable — and ⇧Tab walks it in reverse. Both behaviours
+  needed AppKit worked around; see §8.
 - **Mode-switch viewport sync** (Edit ↔ Read, line-accurate both ways):
   read HTML blocks carry `id="edmund-l<startLine>"` anchors; scroll maps as
   (anchor line, fraction-into-block) via API-injected `evaluateJavaScript`
@@ -492,6 +509,39 @@ Notable subsystems:
   measures at the wrong scale; and a text field's coordinate space is **flipped**,
   so a positive y offset moves a glyph *down*. Both were found by sweeping the
   constant and measuring, which is the only way to settle a sign question here.
+- **A first-responder menu command dies wherever the target isn't in the
+  responder chain.** The Edit ▸ Find items route to `EditorTextView`, so with
+  focus inside the find bar the editor is *not* in the chain — the bar is —
+  and ⌘F / ⌥⌘F / ⌘G / ⇧⌘G greyed out exactly while you were typing a query.
+  Fix: implement the same selectors on the focused view too (`FindBarView`
+  forwards them). Applies to any overlay that takes focus.
+- **AppKit rebuilds the window's key-view loop and wipes your `nextKeyView`.**
+  A hand-built Tab chain silently reverts whenever the view tree changes;
+  `window.autorecalculatesKeyViewLoop = false` is what makes it stick. Views
+  that can't become key views are skipped automatically, so declaring the
+  whole chain (buttons included) is safe — but buttons only join when macOS
+  *Keyboard navigation* is on, which nothing in-app can override.
+- **Tab never enters an `NSSegmentedControl`.** AppKit focuses segments
+  individually — the focus ring sits on one segment and ← / → move it — but
+  Tab always leaves the whole control, so a trailing segment (`›`, `All`) is
+  unreachable by Tab alone. `SegmentTabbingControl` translates Tab into that
+  arrow handling until the last segment, then releases it to the key-view
+  loop. The focused index has no public accessor, so it's mirrored, and the
+  mirror must be seeded by *entry direction* — AppKit enters on the leading
+  segment forwards and the trailing one via ⇧Tab.
+- **`NSVisualEffectView` ignores `draw(_:)`.** It renders its material through
+  layers and never calls a custom draw, so a border painted there is simply
+  invisible (measured: nothing appeared). Use a pinned subview with a layer
+  background, and refresh its `cgColor` on
+  `viewDidChangeEffectiveAppearance` — a colour snapshot won't follow the
+  appearance by itself.
+- **Edit ▸ Substitutions is deliberately absent.** Smart quotes/dashes, text
+  replacement and autocorrect are switched off in
+  `EditorTextView.commonInit()` on purpose: they rewrite typed Markdown, and
+  the completion machinery can strand marked text and break
+  storage == rawSource (delete-drift investigation). Don't add the standard
+  Substitutions menu back — it re-exposes exactly those toggles. Same reason
+  "Correct Spelling Automatically" is left out of Spelling and Grammar.
 - **Visual work is measured, not eyeballed — and the measuring rig is
   reusable.** Aligning chrome takes a dozen launch/state/capture/measure cycles;
   `.claude/skills/edmund-live-repro-and-diagnostics/scripts/ui-harness.sh` and
