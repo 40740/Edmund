@@ -90,8 +90,6 @@ The list is by no means exhaustive, and neither was it meant to be. I just wante
 
 ## Acknowledgements
 
-The following have greatly influenced the architecture and/or helped with design. I owe them many thanks:  
-
 - [CotEditor](https://coteditor.com) for the philosophy
 - [Typora](https://typora.io) and [Obsidian](https://obsidian.md) for much of the vision
 - [Swift Markdown Engine](https://github.com/nodes-app/swift-markdown-engine) for the architecture reference
@@ -99,6 +97,12 @@ The following have greatly influenced the architecture and/or helped with design
 - [create-dmg](https://github.com/sindresorhus/create-dmg), [screenshot-studio](screenshot-studio.com), and [shields](shields.io) for the utilities
 - Claude, [caveman](https://github.com/JuliusBrussee/caveman), and [ponytail](https://github.com/DietrichGebert/ponytail) for the engineering. 
 <!-- - [RaTeX], [beautiful-mermaid], [Shiki] for extension functionalities -->
+
+Most importantly, many thanks to our contributors: 
+
+<a href="https://github.com/I7T5/Edmund/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=I7T5/Edmund" />
+</a>
 
 ## License
 
