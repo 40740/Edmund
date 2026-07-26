@@ -169,6 +169,21 @@ struct LineNumbersTests {
         #expect(editor.lineNumbersRequiredInset > editor.textContainerInset.width)
     }
 
+    @Test("The line-number face has tabular figures")
+    func tabularFigures() {
+        // The whole right-alignment scheme rests on this: Avenir Next Condensed
+        // is proportional for letters but every *digit* carries the same advance,
+        // so a label's width is its length times one measured digit. If the face
+        // is ever swapped for a proportional-figure one, this is what catches it.
+        let font = EditorTextView.lineNumberFont(ofSize: 14)
+        let widths = Set((0...9).map {
+            ("\($0)" as NSString).size(withAttributes: [.font: font]).width
+        })
+        #expect(widths.count == 1)
+        // And it really is the condensed face, not the fallback.
+        #expect(font.fontName == "AvenirNextCondensed-Regular")
+    }
+
     @Test("The gutter never narrows below three digits")
     func gutterFloor() {
         let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)

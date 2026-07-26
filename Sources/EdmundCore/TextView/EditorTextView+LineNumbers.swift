@@ -90,14 +90,16 @@ extension EditorTextView {
         /// there is no range. Kept as ranges, not a set: selecting a million-line
         /// document shouldn't build a million-element set on every redraw.
         let selectedLines: [ClosedRange<Int>]
-        /// Distance from the top `draw(at:)` expects down to the baseline.
-        /// `draw(at:)` takes the top of the line box, and NSStringDrawing lays
-        /// out a box taller than ascender + descender (20 pt for the 14 pt mono
-        /// here) — derive the drop from the height it actually uses, or every
-        /// number sits a few points low against its line.
-        let topToBaseline: CGFloat
-        /// A monospace face gives every digit the same advance, which is what
-        /// lets the numbers be right-aligned without measuring each one.
+        /// Distance from the top `draw(at:)` expects down to the middle of a
+        /// digit's cap band. Numbers are centered on the text's cap band rather
+        /// than sat on its baseline, so they read level beside any size; the
+        /// digit's *ink* has to do the centering, since the box `draw(at:)` lays
+        /// out is far taller than the figures inside it (20 pt for a 14 pt face)
+        /// and centering the box leaves every number riding high.
+        let digitCenterFromTop: CGFloat
+        /// One digit's advance. The face's figures are tabular (see
+        /// `lineNumberFont`), so this holds for all ten and a label's width is
+        /// just its length — no need to measure each number.
         let digitWidth: CGFloat
 
         /// Body ink for the selected lines, chrome ink for the rest.
@@ -106,8 +108,32 @@ extension EditorTextView {
         }
     }
 
+    /// The face for line numbers: Avenir Next Condensed, the one CotEditor uses
+    /// for the same job. Narrow, so it takes little of the margin it has to fit
+    /// in, and a UI face rather than a code face, so the numbers read as chrome
+    /// instead of as more content.
+    ///
+    /// It is **not** monospaced — the letters are proportional. Its *figures*
+    /// are tabular: every digit carries the same advance. That is the property
+    /// the drawing leans on, and the only one it needs — it right-aligns each
+    /// label from a single measured digit width (`LineNumberStyle.digitWidth`)
+    /// rather than measuring every number.
+    ///
+    /// Falls back to the system's monospaced-digit face, which has the same
+    /// guarantee, if the family is ever missing.
+    static func lineNumberFont(ofSize size: CGFloat) -> NSFont {
+        NSFont(name: "AvenirNextCondensed-Regular", size: size)
+            ?? .monospacedDigitSystemFont(ofSize: size, weight: .regular)
+    }
+
+    /// Sized to the theme's monospace face — the code size, not the body size,
+    /// so the numbers stay chrome-scaled while still following the editor's zoom.
+    var lineNumberFont: NSFont {
+        Self.lineNumberFont(ofSize: theme.monospaceFont().pointSize)
+    }
+
     var lineNumberStyle: LineNumberStyle {
-        let font = theme.monospaceFont()
+        let font = lineNumberFont
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font, .foregroundColor: lineNumberColor
         ]
@@ -116,7 +142,7 @@ extension EditorTextView {
             attributes: attributes,
             currentAttributes: [.font: font, .foregroundColor: foregroundColor],
             selectedLines: selectedLineSpans,
-            topToBaseline: digit.size().height + font.descender,
+            digitCenterFromTop: digit.size().height + font.descender - font.capHeight / 2,
             digitWidth: digit.size().width)
     }
 
@@ -149,15 +175,17 @@ extension EditorTextView {
     }
 
     /// Calls `body` once per visible source line, with its 1-indexed number and
-    /// the baseline of its **first** visual line in text-container coordinates
-    /// (so a wrapped line is numbered once, at its top).
+    /// the vertical extent of its **first** visual line in text-container
+    /// coordinates (so a wrapped line is numbered once, against its top line).
+    /// The number's own cap band is centered on it — see
+    /// `LineNumberStyle.digitCenterFromTop`.
     ///
     /// Walks the viewport the text view has *already* laid out. Forcing layout
     /// instead (`.ensuresLayout`, or enumerating from the document start)
     /// re-enters the viewport layout controller mid-draw, which blanks the text
     /// view — and on a large document it would lay out the whole thing, the trap
     /// `lineRect(forCharacterAt:)` documents.
-    func enumerateVisibleLineNumbers(_ body: (Int, CGFloat) -> Void) {
+    func enumerateVisibleLineNumbers(_ body: (_ line: Int, _ capCenterY: CGFloat) -> Void) {
         guard let tlm = textLayoutManager,
               let viewport = tlm.textViewportLayoutController.viewportRange
         else { return }
@@ -185,8 +213,21 @@ extension EditorTextView {
             else { return true }
             lastLine = line
 
-            body(line, frame.minY + firstLine.typographicBounds.minY
-                     + firstLine.glyphOrigin.y)
+            // Center on the text's *cap band*, not on the line fragment's box:
+            // the box carries leading and paragraph spacing, so centering in it
+            // rides high. Take the tallest cap on the line so a heading centers
+            // against its own size — and read it off the line's own attributes
+            // rather than the storage, where a list item's first character is
+            // the 0.01 pt hidden font and would report no cap at all.
+            let bounds = firstLine.typographicBounds
+            let baseline = frame.minY + bounds.minY + firstLine.glyphOrigin.y
+            let text = firstLine.attributedString
+            var cap: CGFloat = 0
+            text.enumerateAttribute(.font,
+                                    in: NSRange(location: 0, length: text.length)) { value, _, _ in
+                if let font = value as? NSFont { cap = max(cap, font.capHeight) }
+            }
+            body(line, baseline - (cap > 0 ? cap : self.bodyFont.capHeight) / 2)
             return true
         }
     }
@@ -228,13 +269,13 @@ extension EditorTextView {
         // gutter is the placement for "always visible".
         guard origin.x >= lineNumbersRequiredInset else { return }
 
-        enumerateVisibleLineNumbers { line, baseline in
+        enumerateVisibleLineNumbers { line, capCenterY in
             let label = NSAttributedString(string: "\(line)", attributes: style.attributed(line))
             // dev: Add one-char space between content and line number
             let x = rightEdge - style.digitWidth * CGFloat(label.length + 1)
-            let y = origin.y + baseline - style.topToBaseline
+            let y = origin.y + capCenterY - style.digitCenterFromTop
             guard rect.intersects(NSRect(x: x, y: y, width: rightEdge - x,
-                                         height: style.topToBaseline)) else { return }
+                                         height: 2 * style.digitCenterFromTop)) else { return }
             label.draw(at: NSPoint(x: x, y: y))
         }
     }
@@ -290,7 +331,7 @@ final class LineNumberRulerView: NSRulerView {
         clipsToBounds = true
         clientView = editor
         ruleThickness = Self.thickness(digits: Self.minimumDigits,
-                                       font: editor.theme.monospaceFont())
+                                       font: editor.lineNumberFont)
     }
 
     required init(coder: NSCoder) {
@@ -324,7 +365,7 @@ final class LineNumberRulerView: NSRulerView {
 
         let style = editor.lineNumberStyle
         let needed = Self.thickness(digits: Self.digitCount(editor.lineStarts.count),
-                                    font: editor.theme.monospaceFont())
+                                    font: editor.lineNumberFont)
         if abs(needed - ruleThickness) > 0.5 {
             // Re-tiles the scroll view, which can't happen mid-draw — land it on
             // the next runloop pass instead.
@@ -339,11 +380,11 @@ final class LineNumberRulerView: NSRulerView {
             + editor.textContainerOrigin.y
         let rightEdge = ruleThickness - EditorTextView.lineNumberPadding
 
-        editor.enumerateVisibleLineNumbers { line, baseline in
+        editor.enumerateVisibleLineNumbers { line, capCenterY in
             let label = NSAttributedString(string: "\(line)",
                                            attributes: style.attributed(line))
             label.draw(at: NSPoint(x: rightEdge - style.digitWidth * CGFloat(label.length),
-                                   y: rulerOffsetY + baseline - style.topToBaseline))
+                                   y: rulerOffsetY + capCenterY - style.digitCenterFromTop))
         }
     }
 }
