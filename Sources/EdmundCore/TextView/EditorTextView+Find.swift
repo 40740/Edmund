@@ -70,6 +70,11 @@ extension EditorTextView {
     /// force whole-document layout on every frame.
     public override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
+        // Line numbers in the column's margin ride this same pass (they are
+        // beside the text, never under it). See EditorTextView+LineNumbers.
+        if showLineNumbers && !lineNumbersByWindowEdge {
+            drawLineNumbersBesideContent(in: rect)
+        }
         guard findActive, !findMatches.isEmpty, let tlm = textLayoutManager else { return }
 
         let visible = viewportCharRange(tlm)

@@ -141,6 +141,7 @@ enum AppSettings {
         static let invisibleControl    = "settings.edit.invisibleControl"
         static let showListIndentGuides = "settings.edit.showListIndentGuides"
         static let showLineNumbers     = "settings.edit.showLineNumbers"
+        static let lineNumbersByWindowEdge = "settings.edit.lineNumbersByWindowEdge"
         static let highlightCurrentLine = "settings.edit.highlightCurrentLine"
         // Edit ▸ Editing.
         static let indentStyle         = "settings.edit.indentStyle"
@@ -490,6 +491,17 @@ enum AppSettings {
         UserDefaults.standard.bool(forKey: Key.showListIndentGuides)
     }
 
+    /// Show source line numbers — default off.
+    static var showLineNumbers: Bool {
+        UserDefaults.standard.bool(forKey: Key.showLineNumbers)
+    }
+
+    /// Put the line numbers in a gutter at the window's leading edge rather than
+    /// beside the text — default off.
+    static var lineNumbersByWindowEdge: Bool {
+        UserDefaults.standard.bool(forKey: Key.lineNumbersByWindowEdge)
+    }
+
     /// Pushes every Edit-pane setting into an editor. Called when a document
     /// window is built and again — for every open document — whenever the pane
     /// changes something.
@@ -501,6 +513,8 @@ enum AppSettings {
         editor.isContinuousSpellCheckingEnabled = spellCheck
         editor.invisibles = invisiblesConfig
         editor.showListIndentGuides = showListIndentGuides
+        editor.showLineNumbers = showLineNumbers
+        editor.lineNumbersByWindowEdge = lineNumbersByWindowEdge
         editor.refreshOverdraw()
     }
 

@@ -56,7 +56,16 @@ public class EditorTextView: NSTextView {
 
     // MARK: - State (internal for @testable import)
 
-    public var rawSource: String = ""
+    /// Drops the line-start table and repaints the gutter on every write. This
+    /// is the one hook that covers all of rawSource's assignment sites (load,
+    /// undo, didChangeText, formatting, indentation, renumbering) — none of
+    /// them rebuild anything here, the next lookup does it lazily.
+    public var rawSource: String = "" {
+        didSet {
+            lineStartsCache = nil
+            lineNumberRuler?.needsDisplay = true
+        }
+    }
     /// Columns of leading whitespace that make up one list-nesting level,
     /// detected from the document (the smallest indent used, or one tab).
     /// Defaults to 4. Used to map a list item's indentation to a nesting depth.
@@ -280,6 +289,33 @@ public class EditorTextView: NSTextView {
     /// `invisibles`, and for the same reason: the vend delegate reads it.
     nonisolated(unsafe) public var showListIndentGuides = false
 
+    /// Show source line numbers — default off. They sit in the reading column's
+    /// own margin unless `lineNumbersByWindowEdge` moves them out to a gutter.
+    /// See EditorTextView+LineNumbers.
+    public var showLineNumbers = false {
+        didSet {
+            guard oldValue != showLineNumbers else { return }
+            updateLineNumberRuler()
+        }
+    }
+
+    /// Put the line numbers in a gutter at the window's leading edge instead of
+    /// beside the text — default off. Installs/removes an NSRulerView on the
+    /// enclosing scroll view, so it is a no-op until the view has one;
+    /// `viewDidMoveToSuperview` replays it.
+    public var lineNumbersByWindowEdge = false {
+        didSet {
+            guard oldValue != lineNumbersByWindowEdge else { return }
+            updateLineNumberRuler()
+        }
+    }
+
+    /// The installed gutter, or nil unless the numbers are on *and* by the edge.
+    var lineNumberRuler: LineNumberRulerView?
+
+    /// UTF-16 offsets of each line's first character; see `lineStarts`.
+    var lineStartsCache: [Int]?
+
     // MARK: - Derived Visual Properties
 
     /// The app accent: the macOS system accent (`controlAccentColor`), which
@@ -310,7 +346,10 @@ public class EditorTextView: NSTextView {
     /// the shared `NSColor(hex:)` helper (which uses `calibratedRed:`) — the
     /// calibrated color space renders visibly lighter than the sRGB hex value
     /// once composited on screen.
-    private var editorBackgroundColor: NSColor {
+    /// Internal rather than private: the line-number gutter fills itself with
+    /// this so the two surfaces read as one (the scroll view draws no
+    /// background of its own).
+    var editorBackgroundColor: NSColor {
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         guard dark else { return .textBackgroundColor }
         return NSColor(srgbRed: 0x29 / 255.0, green: 0x29 / 255.0, blue: 0x29 / 255.0, alpha: 1.0)

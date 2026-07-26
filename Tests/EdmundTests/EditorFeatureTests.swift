@@ -321,14 +321,19 @@ struct AppearanceIntegrationTests {
         #expect(editor.insertionPointColor == editor.accentColor)
     }
 
-    @Test("Body text uses textColor")
+    @Test("Body text uses the editor's foreground color")
     @MainActor func bodyTextColor() {
         let editor = makeEditor()
         editor.loadContent("hello")
         activateBlock(0, in: editor)
 
+        // Not `NSColor.textColor` outright: dark mode softens body text to
+        // #e6e6e6 (matching Read mode's --fg) because pure white glares against
+        // the near-black background. Asserting textColor here passed only in a
+        // light-appearance run and failed on any machine set to dark.
         let color = fgColor(at: 0, in: editor)
-        #expect(color == NSColor.textColor)
+        #expect(color == editor.foregroundColor)
+        if !editor.isDarkAppearance { #expect(color == NSColor.textColor) }
     }
 
     @Test("Selection attributes use accent color with alpha")
