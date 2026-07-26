@@ -108,22 +108,12 @@ extension EditorTextView {
         }
         let deferred = dirty.subtracting(syncSet)
 
-        let nsString = ts.string as NSString
         ts.beginEditing()
         for idx in syncSet where idx < blocks.count {
             let cursorInBlock: Int? = (idx == newActiveIndex)
                 ? max(0, cursorInRaw - blocks[idx].range.location) : nil
             restyleBlock(idx, cursorInBlock: cursorInBlock)
             blocks[idx].isStyled = true
-
-            // Full recompose resets separator newlines to base attributes as
-            // a side effect of rebuilding the whole string; do the same for
-            // dirty blocks so stale paragraph styles can't linger on the `\n`
-            // after e.g. a former callout.
-            let sep = blocks[idx].range.upperBound
-            if sep < nsString.length && nsString.character(at: sep) == 0x0A {
-                ts.setAttributes(baseAttributes, range: NSRange(location: sep, length: 1))
-            }
         }
         ts.endEditing()
 
