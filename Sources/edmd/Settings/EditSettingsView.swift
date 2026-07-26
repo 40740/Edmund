@@ -3,7 +3,7 @@
 //
 // Several controls here are deliberately `.disabled(true)`: their setting is
 // stored and the UI is final, but the feature behind them isn't built yet
-// (focus mode, hard wrap). Each becomes live by
+// (hard wrap). Each becomes live by
 // deleting its `.disabled(true)` when the feature lands — see misc/backlog.md.
 
 import SwiftUI
@@ -27,7 +27,8 @@ struct EditSettingsView: View {
     @AppStorage(AppSettings.Key.showLineNumbers)      private var showLineNumbers = false
     @AppStorage(AppSettings.Key.lineNumbersByWindowEdge)
     private var lineNumbersByWindowEdge = false
-    @AppStorage(AppSettings.Key.highlightCurrentLine) private var highlightCurrentLine = false
+    @AppStorage(AppSettings.Key.typewriterMode) private var typewriterScroll = true
+    @AppStorage(AppSettings.Key.focusMode) private var focusMode = false
     @AppStorage(AppSettings.Key.indentStyle)
     private var indentStyle = AppSettings.IndentStyle.spaces
     @AppStorage(AppSettings.Key.indentWidth)       private var indentWidth = 2
@@ -60,9 +61,19 @@ struct EditSettingsView: View {
             // TODO: Move Max Content Width here, after Settings ▸ Themes 
             
             GridRow {
-                Text("Focus mode:").gridColumnAlignment(.trailing)
-                Toggle("Highlight current line", isOn: $highlightCurrentLine)
-                    .disabled(true)   // not implemented yet
+                Text("Editor:").gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Typewriter scroll", isOn: $typewriterScroll)
+                        .onChange(of: typewriterScroll) { AppSettings.applyEditSettingsToOpenDocuments() }
+                    Toggle("Focus mode", isOn: $focusMode)
+                        .onChange(of: focusMode) { AppSettings.applyEditSettingsToOpenDocuments() }
+                    Text("Dim all but current line and selection.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 380, alignment: .leading)
+                        .padding(.leading, 20)
+                }
             }
             
             GridRow {

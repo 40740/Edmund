@@ -142,7 +142,10 @@ enum AppSettings {
         static let showListIndentGuides = "settings.edit.showListIndentGuides"
         static let showLineNumbers     = "settings.edit.showLineNumbers"
         static let lineNumbersByWindowEdge = "settings.edit.lineNumbersByWindowEdge"
-        static let highlightCurrentLine = "settings.edit.highlightCurrentLine"
+        // The same key the View menu's Typewriter Mode item writes
+        // (AppDelegate.typewriterModeKey), so the two stay in sync.
+        static let typewriterMode      = "EditorTypewriterMode"
+        static let focusMode           = "settings.edit.focusMode"
         // Edit ▸ Editing.
         static let indentStyle         = "settings.edit.indentStyle"
         static let indentWidth         = "settings.edit.indentWidth"
@@ -492,6 +495,17 @@ enum AppSettings {
     }
 
     /// Show source line numbers — default off.
+    /// Keep the caret's line vertically centered while typing — the editor's
+    /// long-standing behavior, so it defaults on.
+    static var typewriterMode: Bool {
+        boolDefaultTrue(Key.typewriterMode)
+    }
+
+    /// Dim everything but the lines the selection touches — default off.
+    static var focusMode: Bool {
+        UserDefaults.standard.bool(forKey: Key.focusMode)
+    }
+
     static var showLineNumbers: Bool {
         UserDefaults.standard.bool(forKey: Key.showLineNumbers)
     }
@@ -515,6 +529,8 @@ enum AppSettings {
         editor.showListIndentGuides = showListIndentGuides
         editor.showLineNumbers = showLineNumbers
         editor.lineNumbersByWindowEdge = lineNumbersByWindowEdge
+        editor.typewriterModeEnabled = typewriterMode
+        editor.focusMode = focusMode
         editor.refreshOverdraw()
     }
 
