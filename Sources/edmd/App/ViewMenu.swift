@@ -35,6 +35,14 @@ enum ViewMenu {
         typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
         viewMenu.addItem(typewriterItem)
 
+        // Dims everything but the lines the selection touches. Same setting as
+        // Settings ▸ Edit ▸ Editor, so the two always agree.
+        let focusItem = viewMenu.addItem(
+            withTitle: "Focus Mode",
+            action: #selector(AppDelegate.toggleFocusMode(_:)),
+            keyEquivalent: "")
+        focusItem.state = AppSettings.focusMode ? .on : .off
+
         // View-mode toggle (Edit ↔ Read) + the Source-mode checkbox.
         viewMenu.addItem(.separator())
         viewMenu.addItem(FormatMenu.viewModeToggleItem())

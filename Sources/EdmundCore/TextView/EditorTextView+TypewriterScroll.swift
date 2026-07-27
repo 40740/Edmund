@@ -299,37 +299,7 @@ extension EditorTextView {
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
-    /// 1-indexed source line containing character `offset` (counts "\n" only —
-    /// matches swift-markdown's SourceLocation convention; no CRLF handling,
-    /// same as the rest of the pipeline).
-    public func line(forOffset offset: Int) -> Int {
-        let utf16 = rawSource.utf16
-        let clamped = min(max(0, offset), utf16.count)
-        var line = 1
-        var i = 0
-        for unit in utf16 {
-            if i >= clamped { break }
-            if unit == 0x000A { line += 1 }
-            i += 1
-        }
-        return line
-    }
-
-    /// Character offset of the start of 1-indexed `line`, clamped to the
-    /// document (line < 1 → 0; past the last line → start of the last line).
-    public func offset(forLine line: Int) -> Int {
-        guard line > 1 else { return 0 }
-        var currentLine = 1
-        var lastLineStart = 0
-        var i = 0
-        for unit in rawSource.utf16 {
-            if currentLine == line { return i }
-            if unit == 0x000A {
-                currentLine += 1
-                lastLineStart = i + 1
-            }
-            i += 1
-        }
-        return currentLine == line ? i : lastLineStart
-    }
+    // `line(forOffset:)` / `offset(forLine:)` moved to
+    // EditorTextView+LineNumbers, where the cached line-start table they now
+    // binary-search lives.
 }

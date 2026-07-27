@@ -54,6 +54,12 @@ public extension NSAttributedString.Key {
     /// The second row draws after that fill, so nothing overpaints the
     /// label. Value: the non-empty display language `String`.
     static let codeBlockLabelAnchor = NSAttributedString.Key("MarkdownEditor.codeBlockLabelAnchor")
+    /// A nested list item's indent-guide columns — one x per *ancestor* level,
+    /// measured from the text container's left edge (the same space the
+    /// paragraph's head indents live in). Value: `[CGFloat]`, absent at depth 0.
+    /// Written whether or not the setting is on, so toggling the guides needs a
+    /// re-vend (`refreshOverdraw`) rather than a whole-document restyle.
+    static let listGuides = NSAttributedString.Key("MarkdownEditor.listGuides")
 }
 
 /// Value object describing what to draw behind a decorated paragraph.
@@ -121,12 +127,36 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
     }
 
     public override var hash: Int {
+        var hasher = Hasher()
         switch kind {
-        case .box: return 1
-        case .leftBar: return 2
-        case .tableRow: return 3
-        case .horizontalRule: return 4
+        case .box(let background, let borderColor, let borderEdges,
+                  let borderWidth, let bottomPad):
+            hasher.combine(1)
+            hasher.combine(background)
+            hasher.combine(borderColor)
+            hasher.combine(borderEdges.rawValue)
+            hasher.combine(borderWidth)
+            hasher.combine(bottomPad)
+        case .leftBar(let color, let width):
+            hasher.combine(2)
+            hasher.combine(color)
+            hasher.combine(width)
+        case .tableRow(let offsets, let width, let leftInset,
+                       let separator, let bottomBorder):
+            hasher.combine(3)
+            hasher.combine(offsets)
+            hasher.combine(width)
+            hasher.combine(leftInset)
+            hasher.combine(separator)
+            hasher.combine(bottomBorder)
+        case .horizontalRule(let color, let centerOffset):
+            hasher.combine(4)
+            hasher.combine(color)
+            hasher.combine(centerOffset)
         }
+        hasher.combine(inset)
+        hasher.combine(hugsTextTop)
+        return hasher.finalize()
     }
 }
 
@@ -146,7 +176,13 @@ public final class BlockDecorationList: NSObject, @unchecked Sendable {
         return decorations == other.decorations
     }
 
-    public override var hash: Int { decorations.count }
+    public override var hash: Int {
+        var hasher = Hasher()
+        for decoration in decorations {
+            hasher.combine(decoration)
+        }
+        return hasher.finalize()
+    }
 }
 
 /// An image or stroked vector path drawn at a character's laid-out position,
@@ -166,6 +202,7 @@ public final class FragmentOverlay: NSObject, @unchecked Sendable {
     public let pathColor: NSColor?
     public let pathLineWidth: CGFloat
     public let bounds: CGRect
+    private let cachedHash: Int
 
     public init(image: NSImage, bounds: CGRect) {
         self.image = image
@@ -173,15 +210,26 @@ public final class FragmentOverlay: NSObject, @unchecked Sendable {
         self.pathColor = nil
         self.pathLineWidth = 0
         self.bounds = bounds
+        var hasher = Hasher()
+        hasher.combine(ObjectIdentifier(image))
+        Self.combine(bounds, into: &hasher)
+        self.cachedHash = hasher.finalize()
         super.init()
     }
 
     public init(path: CGPath, color: NSColor, lineWidth: CGFloat, bounds: CGRect) {
+        let frozenPath = path.copy() ?? path
         self.image = nil
-        self.path = path
+        self.path = frozenPath
         self.pathColor = color
         self.pathLineWidth = lineWidth
         self.bounds = bounds
+        var hasher = Hasher()
+        Self.combine(frozenPath, into: &hasher)
+        hasher.combine(color)
+        hasher.combine(lineWidth)
+        Self.combine(bounds, into: &hasher)
+        self.cachedHash = hasher.finalize()
         super.init()
     }
 
@@ -192,7 +240,40 @@ public final class FragmentOverlay: NSObject, @unchecked Sendable {
             && other.bounds == bounds
     }
 
-    public override var hash: Int { Int(bounds.width) ^ Int(bounds.height) }
+    public override var hash: Int { cachedHash }
+
+    private static func combine(_ bounds: CGRect, into hasher: inout Hasher) {
+        hasher.combine(bounds.origin.x)
+        hasher.combine(bounds.origin.y)
+        hasher.combine(bounds.width)
+        hasher.combine(bounds.height)
+    }
+
+    /// `CGPath.hashValue` is always zero on current macOS, so hash the same
+    /// structural elements that Core Graphics uses for path equality.
+    private static func combine(_ path: CGPath, into hasher: inout Hasher) {
+        path.applyWithBlock { elementPointer in
+            let element = elementPointer.pointee
+            hasher.combine(element.type.rawValue)
+            let pointCount: Int
+            switch element.type {
+            case .moveToPoint, .addLineToPoint:
+                pointCount = 1
+            case .addQuadCurveToPoint:
+                pointCount = 2
+            case .addCurveToPoint:
+                pointCount = 3
+            case .closeSubpath:
+                pointCount = 0
+            @unknown default:
+                pointCount = 0
+            }
+            for index in 0..<pointCount {
+                hasher.combine(element.points[index].x)
+                hasher.combine(element.points[index].y)
+            }
+        }
+    }
 }
 
 /// A table cell too wide for its column: its real characters are hidden, and
@@ -204,20 +285,48 @@ public final class TableCellWrap: NSObject, @unchecked Sendable {
     public let styled: NSAttributedString
     public let x: CGFloat
     public let contentWidth: CGFloat
+    private let cachedHash: Int
 
     public init(styled: NSAttributedString, x: CGFloat, contentWidth: CGFloat) {
-        self.styled = styled
+        let frozenStyled = styled.copy() as! NSAttributedString
+        self.styled = frozenStyled
         self.x = x
         self.contentWidth = contentWidth
+        var hasher = Hasher()
+        Self.combine(frozenStyled, into: &hasher)
+        hasher.combine(x)
+        hasher.combine(contentWidth)
+        self.cachedHash = hasher.finalize()
     }
 
     public override func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? TableCellWrap else { return false }
-        return other.styled.string == styled.string
-            && abs(other.x - x) < 0.5 && abs(other.contentWidth - contentWidth) < 0.5
+        return other.styled.isEqual(to: styled)
+            && other.x == x && other.contentWidth == contentWidth
     }
 
-    public override var hash: Int { styled.string.hashValue }
+    public override var hash: Int { cachedHash }
+
+    private static func combine(
+        _ styled: NSAttributedString,
+        into hasher: inout Hasher
+    ) {
+        hasher.combine(styled.string)
+        styled.enumerateAttributes(
+            in: NSRange(location: 0, length: styled.length)
+        ) { attributes, range, _ in
+            hasher.combine(range.location)
+            hasher.combine(range.length)
+            for key in attributes.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+                hasher.combine(key.rawValue)
+                if let object = attributes[key] as? NSObject {
+                    hasher.combine(object.hash)
+                } else {
+                    hasher.combine(String(reflecting: attributes[key]))
+                }
+            }
+        }
+    }
 }
 
 /// A table row's overflowing cells, one `TableCellWrap` per overflowing cell.
@@ -233,7 +342,13 @@ public final class TableCellWrapList: NSObject, @unchecked Sendable {
         return wraps == other.wraps
     }
 
-    public override var hash: Int { wraps.count }
+    public override var hash: Int {
+        var hasher = Hasher()
+        for wrap in wraps {
+            hasher.combine(wrap)
+        }
+        return hasher.finalize()
+    }
 }
 
 /// Layout fragment that draws its paragraph's `BlockDecoration` behind the
@@ -268,6 +383,16 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// real glyphs after `super.draw` — see EditorTextView+Invisibles.
     let invisibles: InvisiblesConfig?
 
+    /// Indent-guide columns for a nested list item, container-relative; empty
+    /// when the item is top-level or the setting is off. Drawn under the text.
+    let listGuides: [CGFloat]
+
+    /// The editor that vended this fragment, for the settings its draw reads
+    /// *live* rather than capturing (`focusMode`). Weak — the layout manager
+    /// outlives no editor, but a fragment must never keep one alive.
+    /// See EditorTextView+FocusMode.
+    weak var owner: EditorTextView?
+
     init(textElement: NSTextElement, range: NSTextRange?,
          decorations: [BlockDecoration],
          overlays: [(offset: Int, overlay: FragmentOverlay)],
@@ -276,7 +401,11 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
          codeBlockLabel: String? = nil,
          codeBlockLabelAnchor: String? = nil,
          codeBlockLabelFont: NSFont = .monospacedSystemFont(ofSize: 10, weight: .regular),
-         invisibles: InvisiblesConfig? = nil) {
+         invisibles: InvisiblesConfig? = nil,
+         listGuides: [CGFloat] = [],
+         owner: EditorTextView? = nil) {
+        self.listGuides = listGuides
+        self.owner = owner
         self.decorations = decorations
         self.overlays = overlays
         self.antialias = antialias
@@ -389,6 +518,11 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             bounds = bounds.union(CGRect(x: containerLeft - 4, y: 0,
                                          width: containerWidth + 8, height: frame.height))
         }
+        // Guides sit left of the item's text, outside the text-hugging frame.
+        if !listGuides.isEmpty {
+            bounds = bounds.union(CGRect(x: containerLeft, y: 0,
+                                         width: containerWidth, height: frame.height))
+        }
         for (offset, overlay) in overlays {
             if let rect = overlayRect(anchorOffset: offset, overlay: overlay) {
                 bounds = bounds.union(rect.insetBy(dx: -2, dy: -2))
@@ -409,7 +543,12 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     }
 
     override func draw(at point: CGPoint, in context: CGContext) {
+        // Focus mode fades this whole fragment — text, boxes, bars, overlays —
+        // as one group. See EditorTextView+FocusMode.
+        let dimming = beginFocusDim(in: context)
+        defer { endFocusDim(dimming, in: context) }
         context.saveGState()
+        drawListGuides(at: point, in: context)
         // Decorations are stacked outermost-first. Each box stops short of the
         // fragment bottom by the padding of the boxes drawn before it, so an
         // outer box's bottom padding stays visible *below* an inner nested box
@@ -575,6 +714,60 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         return line.typographicBounds.minY + line.glyphOrigin.y - font.ascender
     }
 
+    /// The gray for editor chrome drawn as thin lines (table borders, list
+    /// indent guides). In dark mode `separatorColor` is ~10% ink and all but
+    /// vanishes, so use the shared marker gray there; light mode keeps
+    /// `separatorColor`. Read mode's `--table-border` matches.
+    private var chromeLineColor: NSColor {
+        NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? EditorTextView.darkRuleGray : NSColor.separatorColor
+    }
+
+    /// Vertical hairlines marking a list item's indent columns, drawn under the
+    /// text. Offsets are container-relative, so they land on the same columns as
+    /// the markers no matter how this item's own first line is indented (an
+    /// ordered or active marker shifts `point.x`, which is the *text* start —
+    /// hence `containerLeft` rather than `point.x` alone). They are measured
+    /// from the container's text origin, which sits `lineFragmentPadding` in
+    /// from its left edge — the same origin the paragraph's head indents use.
+    ///
+    /// All but the last offset are the item's ancestor columns, spanning its
+    /// whole height: consecutive list items tile with no gap (list paragraphs
+    /// carry no paragraph spacing), so the per-fragment fills read as one
+    /// continuous line down a nested run. Height is `decorationDrawHeight`, not
+    /// the raw frame, so a list at the end of the document doesn't paint a stub
+    /// over the absorbed trailing empty line.
+    ///
+    /// The last offset is the item's *own* column, drawn only from its second
+    /// line down — a wrapped continuation line then stays visibly tied to its
+    /// own bullet, while the first line leaves room for the marker itself.
+    private func drawListGuides(at point: CGPoint, in context: CGContext) {
+        guard !listGuides.isEmpty else { return }
+        // Filled at exactly one device pixel rather than stroked, for the same
+        // reason as the table's column borders — see `.tableRow`.
+        let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
+        let hairline = 1 / scale
+        let padding = textLayoutManager?.textContainer?.lineFragmentPadding ?? 0
+        let originX = point.x + containerLeft + padding
+        let height = decorationDrawHeight
+        context.setFillColor(chromeLineColor.cgColor)
+
+        func fill(_ offset: CGFloat, from top: CGFloat) {
+            guard height > top else { return }
+            let lineX = (((originX + offset) * scale).rounded()) / scale
+            context.fill(CGRect(x: lineX, y: point.y + top,
+                                width: hairline, height: height - top))
+        }
+
+        for offset in listGuides.dropLast() { fill(offset, from: 0) }
+        // Second *real* line: a trailing zero-length line is the document's
+        // final empty line absorbed into this fragment, not a wrapped line.
+        if let wrapped = textLineFragments.filter({ $0.characterRange.length > 0 })
+            .dropFirst().first, let own = listGuides.last {
+            fill(own, from: wrapped.typographicBounds.minY)
+        }
+    }
+
     private func drawDecoration(_ decoration: BlockDecoration, at point: CGPoint,
                                 in context: CGContext, bottomInset: CGFloat = 0,
                                 topInset: CGFloat = 0) {
@@ -636,13 +829,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator, let bottomBorder):
             // Offsets are text-relative; the fragment's origin is the text start.
-            // In dark mode `separatorColor` is ~10% ink and the grid all but
-            // vanishes, so use the shared marker gray there; light mode keeps
-            // separatorColor. Read mode's --table-border matches.
-            let darkChrome = NSAppearance.currentDrawing()
-                .bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            let borderColor = (darkChrome ? EditorTextView.darkRuleGray
-                                          : NSColor.separatorColor)
+            let borderColor = chromeLineColor
             context.setStrokeColor(borderColor.cgColor)
             context.setLineWidth(1)
             // Column borders are FILLED at exactly one device pixel rather than
@@ -726,8 +913,21 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
         // line always also carries the box decoration, so it needs no extra
         // clause here.)
         let invisibles = self.invisibles
+        // Read only when the setting is on, so a list-heavy document keeps the
+        // plain fast path with guides off (the default).
+        let listGuides = showListIndentGuides
+            ? (str.attribute(.listGuides, at: 0, effectiveRange: nil) as? [CGFloat] ?? [])
+            : []
+        // Focus mode dims from inside the fragment's own draw, so while it is on
+        // every paragraph needs the custom fragment — a plain one has no draw to
+        // hook. (Vending one costs nothing here: with no decorations, overlays
+        // or cell wraps its init does no work.) Only this plain ↔ decorated
+        // swap needs the re-vend a `refreshOverdraw()` forces; whether a
+        // decorated fragment actually dims is read live from `owner`, so
+        // turning the mode *off* takes effect on the next redraw.
+        let focusMode = self.focusMode
         guard !decorations.isEmpty || !overlays.isEmpty || !cellWraps.isEmpty || !textAntialias
-                || (invisibles?.drawsAnything ?? false)
+                || (invisibles?.drawsAnything ?? false) || !listGuides.isEmpty || focusMode
         else {
             return NSTextLayoutFragment(textElement: textElement,
                                         range: textElement.elementRange)
@@ -741,7 +941,9 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                            codeBlockLabel: codeBlockLabelValue,
                                            codeBlockLabelAnchor: codeBlockLabelAnchorValue,
                                            codeBlockLabelFont: codeBlockLabelFont,
-                                           invisibles: invisibles)
+                                           invisibles: invisibles,
+                                           listGuides: listGuides,
+                                           owner: self)
     }
 }
 

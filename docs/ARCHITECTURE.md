@@ -16,7 +16,7 @@ rule applies to both.
 
 ```bash
 swift build                 # debug build of both targets
-swift test                  # full suite (≈750+ tests, ~10s)
+swift test                  # full suite (≈1200 tests, ~10s)
 swift test --filter Callout # one suite
 ./scripts/build-app.sh      # builds build/Edmund.app (release + bundles + icon + codesign)
 ```
@@ -159,6 +159,16 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
   icon is a stroked `CGPath` (`SVGPath` parses the vendored Lucide
   geometry), never an image — see
   `docs/investigations/archives/callout-title-wrap-investigation.md`.
+- **Repeated immutable overlays are process-cached.** List markers, callout
+  headers/icons, and identical math overlays must reuse the same
+  `FragmentOverlay` value across editor instances. Creating one per block
+  grows Foundation's process-wide weak attribute-dictionary intern table and
+  makes later lazy-styling slices progressively slower. Cache keys include
+  every visual/metric input, and the `NSCache`-backed marker caches are bounded.
+- **Custom attributed-string values need discriminating hashes.** Value
+  equality paired with constant-by-kind/count hashes turns Foundation's global
+  attribute-dictionary interner into a collision chain and makes styling
+  superlinear. Hash every field used by equality whenever the value permits it.
 
 ---
 
@@ -168,13 +178,19 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | --- | --- |
 | Editor core / state | `TextView/EditorTextView.swift` (+ many extensions) |
 | Parsing | `Parsing/BlockParser.swift`, `SyntaxHighlighter*.swift`, `CodeHighlighter.swift`, `CodeSyntaxPalette.swift` (shared Tomorrow/One-Dark hex table — read by both the editor's `NSColor` palette and the HTML CSS generator) |
-| Block model | `Model/Block.swift`, `Callout.swift`, `EditorTheme.swift`, `ListIndentState.swift` |
-| Markdown feature toggles | `Model/MarkdownFeatures.swift` — one `OptionSet` (`.all` default) gating each extension (highlight, `%%`comment, callout, wikilink, footnote, math, image dimensions `\|WxH`, `![[embed]]`, collapsible callouts `[!x]-/+`, plus Phase-2 front-matter/tag/blockRef/multi-block-comment). Threaded into `SyntaxHighlighter.parse(features:)` (gates each custom-parser pass; callout gated at render via `calloutInfo`), `EditorTextView.markdownFeatures` (didSet recompose), and `ReadRenderOptions.features` (→ `HTMLRenderer`). Assembled from per-feature UserDefaults toggles by `AppSettings.markdownFeatures`; Settings ▸ Markdown pane. A cleared flag renders the syntax as plain text in **both** back-ends. |
+| Code-fence highlighting | A pluggable seam, not a hardcoded scanner. `CodeHighlighter` is the facade: it resolves the effective language, then hands `(code, language)` to the active `CodeSyntaxBackend`. `BuiltinSyntaxBackend` is the default — one single-pass O(n) char scanner driven by a declarative `LanguageDefinition` (keywords, comment/string delimiters) rather than per-language code. `SyntaxDefinitionStore` loads those definitions from two places: the bundled JSON in `EdmundCore/Resources/Syntaxes/` and the user's Application Support dir, so **users can add a language without a rebuild**. Settings ▸ Syntax picks the fallback language (`settings.syntax.defaultCodeSyntax`). |
+| Block model | `Model/Block.swift`, `Callout.swift`, `EditorTheme.swift`, `ListIndentState.swift`, `LinkDefinitionState.swift` (incremental index of `[label]: dest` reference-link definitions, which resolve across blocks — so a definition edit dirties the blocks that cite it), `LineEnding.swift` (buffer is always LF internally so `BlockParser`'s `\n` split stays clean; the file's original CRLF/CR style is remembered and written back on save), `StatusBarPrefs.swift`, `SVGPath.swift` (minimal SVG→`CGPath` for the vendored Lucide geometry — §5's wrapping-callout icon) |
+| Text storage | `TextView/EditorTextStorage.swift` — `NSTextStorage` subclass whose `fixAttributes` does **font substitution only**. The editor manages every attribute on every character (incl. custom keys like `.blockDecoration`/`.fragmentOverlay`), so AppKit's usual attribute fixing would fight it. Also carries the `pendingEdit` that drives incremental reparse (§4) and the bypassed-edit heal (§8). |
+| Markdown feature toggles | `Model/MarkdownFeatures.swift` — one `OptionSet` (`.all` default) gating each extension (highlight, `%%`comment, callout, wikilink, footnote, math, image dimensions `\|WxH`, `![[embed]]`, collapsible callouts `[!x]-/+`, plus Phase-2 front-matter/tag/blockRef/multi-block-comment). Threaded into `SyntaxHighlighter.parse(features:)` (gates each custom-parser pass; callout gated at render via `calloutInfo`), `EditorTextView.markdownFeatures` (didSet recompose), and `ReadRenderOptions.features` (→ `HTMLRenderer`). Assembled from per-feature UserDefaults toggles by `AppSettings.markdownFeatures`; Settings ▸ Syntax pane. A cleared flag renders the syntax as plain text in **both** back-ends. |
 | Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
-| Invisible characters | `TextView/EditorTextView+Invisibles.swift` — faint marks (· → ¬ ␣ ▯) overdrawn on laid-out whitespace, riding `DecoratedTextLayoutFragment.draw`. Pure display overlay: inserts no characters (storage == rawSource), TextKit 2 path only. Delegate vends the decorated fragment for every visible paragraph while on (viewport-bounded); plain fast path when off (default). Config pushed via `EditorTextView.invisibles` from `AppSettings.invisiblesConfig`; Settings ▸ Edit. **Editor-only by design** (like CotEditor) — an edit affordance, not content, so Read mode / Export never show it (the one deliberate exception to §5's "one parser, two back-ends"). |
+| Invisible characters | `TextView/EditorTextView+Invisibles.swift` — faint marks (· → ¬ ␣ ▯) overdrawn on laid-out whitespace, riding `DecoratedTextLayoutFragment.draw`. Pure display overlay: no characters inserted, TextKit 2 only. `EditorTextView.invisibles` ← `AppSettings.invisiblesConfig`; Settings ▸ Edit. Mechanism: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
+| List indent guides | Faint vertical hairlines on list items: one per *ancestor* level spanning the item, plus the item's own column beside its wrapped continuation lines. Offsets from `listGuideOffsets(depth:slotWidth:)` (`Rendering/EditorTextView+ListRendering.swift`), written to `.listGuides` **whether or not the setting is on** — the fragment gates the drawing, so toggling is a re-vend, never a restyle. `EditorTextView.showListIndentGuides`; Settings ▸ Edit. Geometry traps (container-relative offsets, `lineFragmentPadding`): [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
+| Line numbers | `TextView/EditorTextView+LineNumbers.swift` — source line numbers (Settings ▸ Edit ▸ Lines, off by default), `EditorTextView.showLineNumbers`. **Two placements over one walk**, and the placement is **not** a setting: it follows whether the margin can hold them (beside the content by default, a `LineNumberRulerView` at the window edge otherwise). Also home to `line(forOffset:)`/`offset(forLine:)`, binary-searching the cached `lineStarts`. Editor-only; never printed. Placement rules, the macOS 14 SIGSEGV, draw rules and the tabular-figure face: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
+| Focus mode | `TextView/EditorTextView+FocusMode.swift` — dims all but the lines the selection touches (Settings ▸ Edit ▸ Editor, View ▸ Focus Mode; off by default), `EditorTextView.focusMode`. **One transparency layer around `DecoratedTextLayoutFragment.draw`**, so text and its decorations fade as one composite; it cannot be a scrim (NSTextView composites fragments *after* `draw(_:)` returns). Editor-only. Why, and the measurements: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML; callout/checkbox icons are inline Lucide SVGs from `LucideIcons`), `HTMLTheme` (EditorTheme → CSS), `DocumentHTML` (assembly + asset inlining: math + local images → data URIs), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print). `Document.refreshReadView()` keeps an open Read view in sync with edits and theme changes. |
 | Icons | `Model/LucideIcons.swift` — vendored [Lucide](https://lucide.dev) SVGs (ISC, `LICENSES/lucide.txt`). Callout headers use them in **both** modes: Read inlines the SVG (CSS-tinted via `currentColor`); Edit rasterizes to a tinted `NSImage` overlay. SF Symbols can't ship in exported PDFs (license); app-chrome SF Symbols are fine (in-app UI). Edit-mode task checkboxes still use SF Symbols (on-screen only); Read-mode checkboxes are a composed Lucide SVG. |
-| Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift` |
+| Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift`, `+AutoPairs.swift`, `+ListRenumbering.swift` |
+| Hard wrap | `Editing/HardWrap.swift` (pure `wrap`/`unwrap`) + `Editing/EditorTextView+HardWrap.swift` (Edit ▸ Hard Wrap Paragraphs). Settings ▸ Edit ▸ Document, off by default; read at **load/save time in `Document`**, not pushed onto the editor. Treated as a property of the *file*: opening a wrapped file joins its paragraphs, save re-wraps, and **only files that arrived wrapped are wrapped** (`wasHardWrapped`). The column is **derived from the file's own existing breaks**, not guessed. Requires strict line breaks. Full rules, GFM constraints and perf numbers: [`architecture/hard-wrap.md`](architecture/hard-wrap.md). |
 | Formatting commands | `Editing/EditorTextView+Formatting{Core,Commands}.swift` (Format-menu actions); menu built from `edmd/App/FormatMenu.swift` |
 | Lazy/compose/undo/scroll | `TextView/EditorTextView+{Composition,LazyStyling,Undo,TypewriterScroll,SelectionTracking,ContentWidth,EditFlow}.swift` |
 | App shell | `edmd/App/{main,Document,DocumentController}.swift`; menu bar in `main.swift` `setupMenuBar()` + `FormatMenu.swift`; Sparkle `SPUStandardUpdaterController` in `AppDelegate` |
@@ -183,10 +199,22 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Key bindings | `edmd/Settings/KeyBindingStore.swift` + `KeyBindingsSettingsView.swift`. Every rebindable command is a `MenuCommand` (`App/FormatMenu.swift`) with a stable `id`, a `group` (the menu it lives under) and a default `Shortcut`; `makeItem()` resolves the user's override from `KeyBindingStore` and registers the built `NSMenuItem` in `KeyBindingCatalog`, so the pane retunes shortcuts live without rebuilding the menu bar. Overrides live in one UserDefaults dict (`settings.keyBindings`, `id → "shift+cmd+e"`); an empty string means "user removed this shortcut", a missing key means "use the default". Conflicts are checked against the **live `NSApp.mainMenu`**, not the catalog, so system items (⌘S, ⌘C) count too; a chord without ⌘ or ⌃ is refused outright (it would fire while typing). Only Edmund's own commands are listed — the OS-standard items stay fixed. |
 | Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (§7) |
 | Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey`. `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure. CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline + signing + `RELEASE_TOKEN`: §13. |
+| Find & Replace | `EdmundCore/Find/FindEngine.swift` (pure search), `TextView/EditorTextView+Find.swift` (match state, highlight drawing, pop animation, `EditorFindHandling`), `edmd/Views/FindBarView.swift` (the bar), `edmd/App/FindController.swift` (mediator); Edit ▸ Find menu in `main.swift` |
+| Standard text menus | `edmd/App/main.swift` — Edit ▸ Spelling and Grammar, Transformations, Speech; stock `NSTextView` actions routed to the first responder. **Substitutions is deliberately excluded** (§8) |
 | Status bar | `edmd/Views/StatusBarView.swift` |
 | Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing), `Package.swift`, `Info.plist`, `Resources/` |
 
 Notable subsystems:
+
+- **A draw-only setting needs more than `invalidateLayout` to appear.** The
+  layout manager hands back its *cached* fragments, so a paragraph vended as a
+  plain `NSTextLayoutFragment` stays plain and the new overdraw never shows
+  (measured: a live toggle drew nothing until the next edit). `refreshOverdraw()`
+  also pokes the storage with an attributes-only `edited(.editedAttributes, …)`
+  — no text change, no restyle, no undo entry — to force a re-vend. Invisibles,
+  list indent guides and focus mode all depend on it; the affordances that use
+  it are in
+  [`architecture/editor-affordances.md`](architecture/editor-affordances.md).
 
 - **Typewriter scroll**: keeps caret vertically centered. Must lay out the
   viewport↔caret span before measuring (else stale TK2 estimates);
@@ -237,6 +265,48 @@ Notable subsystems:
   **Export as PDF… / Print… (⌘P)** run the same HTML through
   `WKWebView.printOperation` (`MarkdownPrinter`; vector text, math is
   high-DPI PNG). Full spec: `docs/architecture/reader-and-export.md`.
+- **Find & Replace** (in-document, ⌘F / ⌥⌘F / ⌘G / ⇧⌘G): **not**
+  `NSTextFinder` — it renders the system bar rather than the Notes look, and
+  its highlighting drives `NSLayoutManager`, which the TextKit 2 tripwire
+  (§2) forbids. Instead: `FindEngine` is a pure `NSString.range(of:)` scan
+  (case-sensitive / whole-word options, no regex) over `rawSource`; because
+  of the identity invariant, search index == raw index == display index, so
+  there is **no offset mapping**. Highlighting is **draw-only** — a
+  `drawBackground(in:)` override fills rects from
+  `enumerateTextSegments(in:type:.highlight)`, offset by
+  `textContainerOrigin` — so it never writes attributes into storage and
+  can't perturb recompose. Navigation never moves the caret (that would
+  trigger the active-block-renders-raw recompose); it scrolls via
+  `revealFindMatch`, which leaves an already-visible match alone and
+  otherwise puts the hit's line at the top. Every match gets a grey resting
+  background; the one just navigated to also gets a Preview-style "pop" — a
+  drop-shadowed rounded yellow box that springs in from a larger scale with
+  an `easeOutBack` overshoot, holds, then fades, driven by a `CADisplayLink`
+  (constants at the top of `+Find.swift`). Replace / Replace All are the
+  only paths that touch text and go through the sanctioned edit cycle (§4),
+  Replace All rebuilding the source back-to-front so it lands as one undo
+  step. EdmundCore stays unaware of the controller via the
+  `EditorFindHandling` protocol — the same decoupling as
+  `contextFontMenuProvider`. The bar itself is an `NSGridView` (2×2) so the
+  two fields share a left edge and the `‹ ›` / `Replace|All` clusters share
+  theirs; find-only is one row and toggling Replace reveals the second and
+  moves **Done** down onto it, with a hairline along the bar's bottom edge
+  (whichever row is last) matching the toolbar separator.
+  **Keyboard model.** ⌘F and ⌥⌘F each *toggle their own* bar — the shortcut
+  for the bar already showing closes it, the other switches to it, so ⌘F from
+  the replace bar drops the replace row rather than closing outright:
+
+  | from | ⌘F | ⌥⌘F |
+  | --- | --- | --- |
+  | closed | find | replace |
+  | find | closed | replace |
+  | replace | find | closed |
+
+  Return / ⇧Return in the search field step to the next / previous match, as
+  do ⌘G / ⇧⌘G. Tab walks the bar in visual order and wraps — including
+  *inside* the segmented controls, so `‹`, `›`, `Replace` and `All` are each
+  individually reachable — and ⇧Tab walks it in reverse. Both behaviours
+  needed AppKit worked around; see §8.
 - **Mode-switch viewport sync** (Edit ↔ Read, line-accurate both ways):
   read HTML blocks carry `id="edmund-l<startLine>"` anchors; scroll maps as
   (anchor line, fraction-into-block) via API-injected `evaluateJavaScript`
@@ -255,6 +325,15 @@ Notable subsystems:
 - `AppSettings` (`edmd/Settings`) = UserDefaults keys + typed accessors.
   SwiftUI panes use `@AppStorage`. Live changes broadcast to every open
   `Document.editor` (the font/line-height/content-width `applyTo…` helpers).
+- **Five panes**, built by `SettingsWindowController.addPane`: General,
+  Appearance, Edit, Syntax, Advanced. Keys are namespaced to match
+  (`settings.<pane>.<name>`), so the key tells you which pane owns it. There is
+  no "Markdown" pane — the Markdown feature toggles (§6) live under
+  `settings.syntax.*`.
+- This section owns the *mechanism* and the settings with non-obvious
+  behavior, not the full key list — that inventory drifts fastest and lives in
+  `.claude/skills/edmund-config-and-flags/`. Grep
+  `Sources/edmd/Settings/AppSettings.swift` for the current truth.
 - Theme/appearance/fonts flow into `EditorTheme` → the editor's derived
   `bodyFont`, colors, paragraph styles.
 - **Max content width** persists as **centimetres** (`maxContentWidthCm`);
@@ -263,7 +342,8 @@ Notable subsystems:
   and is the slider's magnetic snap point; slider range: 3 in floor → the
   screen's physical width (`NSScreen.physicalWidthCm`).
 - **Window size** persists as the last window's full **frame** size
-  (`lastWindowSize`) — §8 on why frame, not content size.
+  (`settings.window.lastWidth`/`lastHeight`) — §8 on why frame, not content
+  size.
 - **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): always-on
   (opt-out) file logger. `Log.{debug,info,error}(_:category:)` and
   `Log.measure(_:) { … }` (single-line durations) write to
@@ -287,6 +367,8 @@ Notable subsystems:
 ---
 
 ## 8. Quirks & gotchas (will bite you)
+
+### Build, signing & packaging
 
 - **SwiftMath fonts**: `build-app.sh` must copy `*.bundle` into the `.app`
   root (it does). Without it the app **crashes the instant it renders any
@@ -326,6 +408,9 @@ Notable subsystems:
   take", `rm -rf .build` and rebuild. `shasum` the binary to confirm it
   changed. Never hand-delete `.build/…/edmd.build/` — corrupts the
   output-file-map and wedges the target until a full clean.
+
+### Running & verifying the app
+
 - **`open Edmund.app` foregrounds a running instance** instead of
   relaunching. `pkill -x edmd` first, or launch the binary directly
   (`build/Edmund.app/Contents/MacOS/edmd file.md &`).
@@ -337,6 +422,13 @@ Notable subsystems:
   windows, state restoration) —
   `rm -rf ~/Library/"Saved Application State"/com.i7t5.edmund.savedState`
   and relaunch.
+- **Visual work is measured, not eyeballed — and the measuring rig is
+  reusable.** Aligning chrome takes a dozen launch/state/capture/measure cycles;
+  `.claude/skills/edmund-live-repro-and-diagnostics/scripts/ui-harness.sh` and
+  `ui-measure.py` are that loop, already encoding the flaky bits (AX-driven
+  clicks, appearance forced per-launch via `-settings.appearance.mode`, capture
+  by window id without stealing focus). Extend them for new surfaces rather than
+  rebuilding one-off shell; they are permanent fixtures, not scratch files.
 - **Don't drive the Settings window with System Events** to capture a pane.
   `click at {x, y}` is a no-op, the toolbar's pane items are intermittently
   absent from the AX element list, and the window frequently opens
@@ -348,6 +440,9 @@ Notable subsystems:
   Deterministic and needs no accessibility at all. Note
   `kCGWindowOwnerPID` bridges to `Int`, not `Int32` — the wrong cast
   silently matches nothing.
+
+### TextKit 2 layout & geometry
+
 - **Width not known at first styling**: on load the view may be unsized, so
   anything that bakes the content width (e.g. callout header images)
   renders at a fallback width until a width-settled re-render. Prefer real
@@ -375,6 +470,9 @@ Notable subsystems:
 - **A selection taller than the viewport must be revealed at its *nearest*
   end** (`scrollRangeToVisible` override): always revealing the top fought
   drag-selection autoscroll and oscillated the viewport mid-drag.
+
+### Edit, selection & storage integrity
+
 - **Never mutate storage while an IME is composing (`hasMarkedText()`)**:
   during composition storage holds the provisional marked text, so
   `storage == rawSource` is transiently false and `didChangeText` defers
@@ -430,6 +528,9 @@ Notable subsystems:
   (`ensureBlocksStyled(upTo:)` + `ensureLayout`) — the drain's later layout
   invalidation is *not* scroll-compensated, so landing first and letting
   styling catch up slides the just-anchored viewport.
+
+### AppKit chrome & controls
+
 - **A custom toolbar item can't win a right-click from a view-level
   handler.** With `allowsUserCustomization = true` the toolbar turns any
   secondary (right / control) click over the toolbar — *including* a custom
@@ -449,6 +550,72 @@ Notable subsystems:
   `window.setFrame(_:)` **after the toolbar is installed** (the frame is
   only final then), so frame-in == frame-out (`windowDidResize` ↔
   `makeWindowControllers` in `Document.swift`).
+- **`NSSearchField`'s magnifier glyph can't be repositioned — draw your
+  own.** AppKit draws it ~3.75pt below the field's vertical centre (a 21×15
+  image in a rect the field's full 22pt height). Every built-in hook is a
+  dead end, and each was measured, not assumed:
+  `searchButtonRect(forBounds:)` is only a *sizing probe* (AppKit calls it
+  with a 40000×40000 bounds, never to position); the button cell's
+  `drawInterior(withFrame:in:)` is bypassed by the search field's private
+  draw path; the cell ignores a replacement image entirely (the Big Sur
+  regression, FB8913004), so re-padding the image does nothing; and the
+  glyph is not a subview, so there is nothing to move in `layout()`.
+  `imageRect(forBounds:)` *is* honoured, but drawing is clipped to a fixed
+  band, so shifting or growing the rect just chops the top off the glyph.
+  What works (`FindBarView.swift`): swap in a button cell whose
+  `imageRect` returns `.zero` — it draws nothing but still handles the
+  click, so the search-options menu keeps working — and draw the
+  magnifier + ▾ yourself in the field's `draw(_:)`, centred on
+  `searchButtonRect(forBounds: bounds)` (that call *is* correct for real
+  bounds). Template images drawn by hand render flat black, so tint per
+  draw or the glyph won't follow light/dark.
+- **Place a hand-drawn SF Symbol by its *ink*, not its image bounds.** Symbol
+  images carry internal padding that varies per symbol, so drawing one at its
+  image rect lands it a couple of points off whatever you measured. Render the
+  symbol once, scan its alpha for a tight bounding box, then scale/offset so the
+  *ink* hits the measured target (`CountingSearchField.inkBounds`). Two traps:
+  `NSBitmapImageRep.size` must be assigned **before** the `NSGraphicsContext` is
+  made — it defines the context's coordinate space, and a late assignment
+  measures at the wrong scale; and a text field's coordinate space is **flipped**,
+  so a positive y offset moves a glyph *down*. Both were found by sweeping the
+  constant and measuring, which is the only way to settle a sign question here.
+- **A first-responder menu command dies wherever the target isn't in the
+  responder chain.** The Edit ▸ Find items route to `EditorTextView`, so with
+  focus inside the find bar the editor is *not* in the chain — the bar is —
+  and ⌘F / ⌥⌘F / ⌘G / ⇧⌘G greyed out exactly while you were typing a query.
+  Fix: implement the same selectors on the focused view too (`FindBarView`
+  forwards them). Applies to any overlay that takes focus.
+- **AppKit rebuilds the window's key-view loop and wipes your `nextKeyView`.**
+  A hand-built Tab chain silently reverts whenever the view tree changes;
+  `window.autorecalculatesKeyViewLoop = false` is what makes it stick. Views
+  that can't become key views are skipped automatically, so declaring the
+  whole chain (buttons included) is safe — but buttons only join when macOS
+  *Keyboard navigation* is on, which nothing in-app can override.
+- **Tab never enters an `NSSegmentedControl`.** AppKit focuses segments
+  individually — the focus ring sits on one segment and ← / → move it — but
+  Tab always leaves the whole control, so a trailing segment (`›`, `All`) is
+  unreachable by Tab alone. `SegmentTabbingControl` translates Tab into that
+  arrow handling until the last segment, then releases it to the key-view
+  loop. The focused index has no public accessor, so it's mirrored, and the
+  mirror must be seeded by *entry direction* — AppKit enters on the leading
+  segment forwards and the trailing one via ⇧Tab.
+- **`NSVisualEffectView` ignores `draw(_:)`.** It renders its material through
+  layers and never calls a custom draw, so a border painted there is simply
+  invisible (measured: nothing appeared). Use a pinned subview with a layer
+  background, and refresh its `cgColor` on
+  `viewDidChangeEffectiveAppearance` — a colour snapshot won't follow the
+  appearance by itself.
+
+### Deliberate omissions
+
+- **Edit ▸ Substitutions is deliberately absent.** Smart quotes/dashes, text
+  replacement and autocorrect are switched off in
+  `EditorTextView.commonInit()` on purpose: they rewrite typed Markdown, and
+  the completion machinery can strand marked text and break
+  storage == rawSource (delete-drift investigation). Don't add the standard
+  Substitutions menu back — it re-exposes exactly those toggles. Same reason
+  "Correct Spelling Automatically" is left out of Spelling and Grammar.
+
 
 ---
 
@@ -524,9 +691,17 @@ only with reason):
 
 1. **`swift test` is green** (all pass). Add tests for new behavior / bug
    repros.
-2. **Visual changes are eyeballed** — build the app and `screencapture` the
-   result (§8), or render offscreen to a PNG. Don't trust headless layout
-   alone for anything that draws.
+2. **Visual changes are measured, not eyeballed** — build the app and
+   `screencapture` the result (§8), or render offscreen to a PNG. Don't trust
+   headless layout alone for anything that draws. For anything phrased as
+   *align / centre / balance the padding / match the native control*, report
+   **numbers** (device px and points, 2:1 on Retina), not an impression —
+   "the glyph's centre is 137.5, the field's is 137.5" settles what "looks
+   right" cannot. Drive the app with the reusable harness rather than fresh
+   one-off shell: `ui-harness.sh` + `ui-measure.py` in
+   `.claude/skills/edmund-live-repro-and-diagnostics/scripts/`. **Keep and
+   extend those tools** — they're checked-in fixtures, and the setup cost is
+   otherwise paid again every visual task.
 3. **Frequent, small, logical commits** — one feature/fix each. Don't
    discard uncommited changes.
 4. **Don't autopush, PR, or merge unless asked.** Branch off `main` (don't
@@ -540,6 +715,12 @@ only with reason):
    get renamed to `worktree-*`. `.worktrees/` is gitignored. Distinct from
    `.claude/worktrees/`, which Claude Code's own EnterWorktree tool manages
    automatically for agent isolation — don't hand-edit that one.
+7. **Reviewing someone else's PR uses `/edmund-pr-review <number>`**
+   (`.claude/skills/edmund-pr-review/`). It gathers the PR, checks it against
+   the invariants and the TextKit 2 estimate rule, verifies the claim the merge
+   rests on instead of relaying it, asks the maintainer for the calls that are
+   theirs, and emits a merge checklist. Shipping your *own* change is `/ship`
+   (`.claude/commands/ship.md`) — different job.
 
 If you (the agent) improve this workflow or discover a better verification
 trick, update this section.

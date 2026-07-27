@@ -132,6 +132,8 @@ enum AppSettings {
         static let showToolbar         = "settings.edit.showToolbar"
         static let autoHideToolbar     = "settings.edit.autoHideToolbar"
         static let showInvisibles      = "settings.edit.showInvisibles"
+        // Parked with the rest of the Always mode (see `showInvisibles` below):
+        // static let invisiblesMode  = "settings.edit.invisiblesMode"
         static let invisibleLineEnding = "settings.edit.invisibleLineEnding"
         static let invisibleTab        = "settings.edit.invisibleTab"
         static let invisibleSpace      = "settings.edit.invisibleSpace"
@@ -139,7 +141,10 @@ enum AppSettings {
         static let invisibleControl    = "settings.edit.invisibleControl"
         static let showListIndentGuides = "settings.edit.showListIndentGuides"
         static let showLineNumbers     = "settings.edit.showLineNumbers"
-        static let highlightCurrentLine = "settings.edit.highlightCurrentLine"
+        // The same key the View menu's Typewriter Mode item writes
+        // (AppDelegate.typewriterModeKey), so the two stay in sync.
+        static let typewriterMode      = "EditorTypewriterMode"
+        static let focusMode           = "settings.edit.focusMode"
         // Edit ▸ Editing.
         static let indentStyle         = "settings.edit.indentStyle"
         static let indentWidth         = "settings.edit.indentWidth"
@@ -149,6 +154,7 @@ enum AppSettings {
         static let autoCloseBrackets   = "settings.edit.autoCloseBrackets"
         static let continueLists       = "settings.edit.continueLists"
         static let spellCheck          = "settings.edit.spellCheck"
+        static let grammarCheck        = "settings.edit.grammarCheck"
     }
 
     /// The default language for untagged code fences ("plain" = none).
@@ -433,6 +439,19 @@ enum AppSettings {
     /// into `ReadRenderOptions`), not pushed onto the editor.
     static var strictLineBreaks: Bool { boolDefaultTrue(Key.strictLineBreaks) }
 
+    /// Hard-wrap long lines (default off): a file that arrives hard-wrapped is
+    /// joined into logical lines when it opens and re-wrapped at 80 columns when
+    /// it is saved. Like `strictLineBreaks` this is read at load/save time
+    /// (Document) rather than pushed onto the editor — there is no live editor
+    /// behavior to configure.
+    ///
+    /// Requires strict line breaks: with those off a single newline renders as a
+    /// literal `<br>`, so joining lines would delete visible breaks and wrapping
+    /// would invent them. The Settings checkbox greys out to match.
+    static var hardWrapLongLines: Bool {
+        UserDefaults.standard.bool(forKey: Key.hardWrapLongLines) && strictLineBreaks
+    }
+
     /// Detect and learn a document's indent style when it opens (default on).
     /// Read once at open time in `Document.showWindows`, overriding this
     /// document's indent; it never rewrites the global `indentStyle`/`indentWidth`.
@@ -440,6 +459,29 @@ enum AppSettings {
 
     /// Show invisible characters (whitespace marks) within the selection —
     /// default off.
+    ///
+    /// Invisibles once had an Always / Upon Selection mode picker; it was cut
+    /// (commit 6652972) because nobody reached for Always. Parked here, with the
+    /// matching pieces in `EditSettingsView` and `InvisiblesConfig`, in case the
+    /// choice comes back:
+    ///
+    ///     enum InvisibleCharacterMode: String, CaseIterable, Identifiable {
+    ///         case uponSelection
+    ///         case always
+    ///         var id: Self { self }
+    ///         var label: String {
+    ///             switch self {
+    ///             case .uponSelection: return "Upon Selection"
+    ///             case .always: return "Always"
+    ///             }
+    ///         }
+    ///     }
+    ///
+    ///     static var invisiblesMode: InvisibleCharacterMode {
+    ///         guard let raw = UserDefaults.standard.string(forKey: Key.invisiblesMode),
+    ///               let mode = InvisibleCharacterMode(rawValue: raw) else { return .uponSelection }
+    ///         return mode
+    ///     }
     static var showInvisibles: Bool { UserDefaults.standard.bool(forKey: Key.showInvisibles) }
 
     // The per-category toggles (default on, gated by `showInvisibles`).
@@ -456,8 +498,37 @@ enum AppSettings {
         return InvisiblesConfig(
             lineEnding: invisibleLineEnding, tab: invisibleTab, space: invisibleSpace,
             otherWhitespace: invisibleWhitespace, otherControl: invisibleControl,
+            // mode: invisiblesMode == .always ? .always : .uponSelection,
             color: .tertiaryLabelColor)
     }
+
+    /// Draw the vertical guides on nested list items — default off.
+    static var showListIndentGuides: Bool {
+        UserDefaults.standard.bool(forKey: Key.showListIndentGuides)
+    }
+
+    /// Show source line numbers — default off.
+    /// Keep the caret's line vertically centered while typing — the editor's
+    /// long-standing behavior, so it defaults on.
+    static var typewriterMode: Bool {
+        boolDefaultTrue(Key.typewriterMode)
+    }
+
+    /// Dim everything but the lines the selection touches — default off.
+    static var focusMode: Bool {
+        UserDefaults.standard.bool(forKey: Key.focusMode)
+    }
+
+    static var showLineNumbers: Bool {
+        UserDefaults.standard.bool(forKey: Key.showLineNumbers)
+    }
+
+    /// Put the line numbers in a gutter at the window's leading edge rather than
+    /// beside the text — default off.
+    /// Grammar rides AppKit's continuous spell-checking pass, so it does
+    /// nothing unless `spellCheck` is on too — which is why the checkbox is a
+    /// sub-toggle rather than a peer.
+    static var grammarCheck: Bool { UserDefaults.standard.bool(forKey: Key.grammarCheck) }
 
     /// Pushes every Edit-pane setting into an editor. Called when a document
     /// window is built and again — for every open document — whenever the pane
@@ -468,8 +539,13 @@ enum AppSettings {
         editor.indentUsesTabs = indentStyle == .tabs
         editor.indentWidth = indentWidth
         editor.isContinuousSpellCheckingEnabled = spellCheck
+        editor.isGrammarCheckingEnabled = grammarCheck
         editor.invisibles = invisiblesConfig
-        editor.refreshInvisibles()
+        editor.showListIndentGuides = showListIndentGuides
+        editor.showLineNumbers = showLineNumbers
+        editor.typewriterModeEnabled = typewriterMode
+        editor.focusMode = focusMode
+        editor.refreshOverdraw()
     }
 
     /// Applies the Edit-pane settings to every open document (editor behavior

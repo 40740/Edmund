@@ -124,9 +124,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    /// Toggles focus-mode dimming, persists the choice, and applies it to every
+    /// open document immediately. The Settings checkbox binds the same key.
+    @MainActor @objc func toggleFocusMode(_ sender: Any?) {
+        UserDefaults.standard.set(!AppSettings.focusMode, forKey: AppSettings.Key.focusMode)
+        AppSettings.applyEditSettingsToOpenDocuments()
+    }
+
     @MainActor func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(toggleTypewriterMode(_:)) {
             menuItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
+        }
+        if menuItem.action == #selector(toggleFocusMode(_:)) {
+            menuItem.state = AppSettings.focusMode ? .on : .off
         }
         return true
     }
@@ -272,6 +282,97 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         editMenu.addItem(withTitle: "Select All",
                          action: #selector(NSText.selectAll(_:)),
                          keyEquivalent: "a")
+
+        editMenu.addItem(NSMenuItem.separator())
+
+        // Reflows the selected paragraphs, or the whole document when nothing
+        // is selected. The manual counterpart to Settings ▸ Edit ▸ Document,
+        // which only wraps files that already arrived wrapped. First-responder
+        // routing like the Find items, so it greys out in Reading mode.
+        editMenu.addItem(withTitle: "Hard Wrap Paragraphs",
+                         action: #selector(EditorTextView.hardWrapParagraphs(_:)),
+                         keyEquivalent: "")
+
+        editMenu.addItem(NSMenuItem.separator())
+
+        // Find submenu — routes to first-responder actions on EditorTextView,
+        // which forward to the document's FindController. Grays out in Reading
+        // mode (the web view is first responder and implements none of these).
+        let findMenuItem = NSMenuItem()
+        let findMenu = NSMenu(title: "Find")
+        findMenu.addItem(withTitle: "Find…",
+                         action: #selector(EditorTextView.showFindBar(_:)),
+                         keyEquivalent: "f")
+        findMenu.addItem(withTitle: "Find and Replace…",
+                         action: #selector(EditorTextView.showFindReplaceBar(_:)),
+                         keyEquivalent: "f").keyEquivalentModifierMask = [.command, .option]
+        findMenu.addItem(withTitle: "Find Next",
+                         action: #selector(EditorTextView.findNext(_:)),
+                         keyEquivalent: "g")
+        findMenu.addItem(withTitle: "Find Previous",
+                         action: #selector(EditorTextView.findPrevious(_:)),
+                         keyEquivalent: "g").keyEquivalentModifierMask = [.command, .shift]
+        findMenuItem.submenu = findMenu
+        findMenuItem.title = "Find"
+        editMenu.addItem(findMenuItem)
+
+        // The standard text submenus, same first-responder routing as Find.
+        // NSTextView supplies the actions *and* the checkmark state for the
+        // toggles (our validateMenuItem override falls through to super for
+        // anything that isn't a formatting command).
+        //
+        // In Reading mode the editing commands gray out — measured: all of
+        // Transformations, plus Show Spelling and Check Document Now. The two
+        // spell-checking toggles and Start Speaking stay live, because the web
+        // view answers those selectors itself; both are harmless there (they
+        // act on the rendered view, not the source).
+        //
+        // Substitutions is deliberately absent: smart quotes/dashes, text
+        // replacement and autocorrect are switched off in
+        // `EditorTextView.commonInit()` on purpose — they rewrite typed Markdown
+        // and the completion machinery can strand marked text, breaking the
+        // storage == rawSource invariant. Same reason "Correct Spelling
+        // Automatically" is left out of Spelling and Grammar below.
+        let spellingMenu = NSMenu(title: "Spelling and Grammar")
+        spellingMenu.addItem(withTitle: "Show Spelling and Grammar",
+                             action: #selector(NSText.showGuessPanel(_:)),
+                             keyEquivalent: ":")
+        spellingMenu.addItem(withTitle: "Check Document Now",
+                             action: #selector(NSText.checkSpelling(_:)),
+                             keyEquivalent: ";")
+        spellingMenu.addItem(.separator())
+        spellingMenu.addItem(withTitle: "Check Spelling While Typing",
+                             action: #selector(NSTextView.toggleContinuousSpellChecking(_:)),
+                             keyEquivalent: "")
+        spellingMenu.addItem(withTitle: "Check Grammar With Spelling",
+                             action: #selector(NSTextView.toggleGrammarChecking(_:)),
+                             keyEquivalent: "")
+        let spellingItem = NSMenuItem()
+        spellingItem.title = "Spelling and Grammar"
+        spellingItem.submenu = spellingMenu
+        editMenu.addItem(spellingItem)
+
+        let transformMenu = NSMenu(title: "Transformations")
+        transformMenu.addItem(withTitle: "Make Upper Case",
+                              action: #selector(NSResponder.uppercaseWord(_:)), keyEquivalent: "")
+        transformMenu.addItem(withTitle: "Make Lower Case",
+                              action: #selector(NSResponder.lowercaseWord(_:)), keyEquivalent: "")
+        transformMenu.addItem(withTitle: "Capitalize",
+                              action: #selector(NSResponder.capitalizeWord(_:)), keyEquivalent: "")
+        let transformItem = NSMenuItem()
+        transformItem.title = "Transformations"
+        transformItem.submenu = transformMenu
+        editMenu.addItem(transformItem)
+
+        let speechMenu = NSMenu(title: "Speech")
+        speechMenu.addItem(withTitle: "Start Speaking",
+                           action: #selector(NSTextView.startSpeaking(_:)), keyEquivalent: "")
+        speechMenu.addItem(withTitle: "Stop Speaking",
+                           action: #selector(NSTextView.stopSpeaking(_:)), keyEquivalent: "")
+        let speechItem = NSMenuItem()
+        speechItem.title = "Speech"
+        speechItem.submenu = speechMenu
+        editMenu.addItem(speechItem)
 
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)

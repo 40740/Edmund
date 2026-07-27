@@ -32,9 +32,40 @@ public class EditorTextView: NSTextView {
     /// Set by Document.makeWindowControllers(). Not available in unit tests.
     public weak var document: NSDocument?
 
+    // MARK: - Find
+
+    /// Character ranges of the current search's matches, in raw/display index
+    /// space (identity). Drawn as highlights by `drawBackground(in:)` while
+    /// `findActive`. Never written into storage — draw-only, to hold the
+    /// storage == rawSource invariant. See EditorTextView+Find.
+    public var findMatches: [NSRange] = []
+    /// Index into `findMatches` of the current match (drawn stronger), or nil.
+    public var currentMatchIndex: Int?
+    /// True while the find bar is open; gates highlight drawing.
+    public var findActive = false
+    /// The match currently being emphasised (the newly-navigated hit), and how
+    /// far its yellow→grey settle animation has progressed (0…1). Drives the
+    /// CotEditor-style pop; nil when nothing is animating. See EditorTextView+Find.
+    var emphasisRange: NSRange?
+    var emphasisProgress: CGFloat = 0
+    var emphasisLink: CADisplayLink?
+    /// Routes menu/keyboard find commands to the app-side find controller.
+    /// Weak; mirrors the module decoupling of `contextFontMenuProvider` so
+    /// EdmundCore need not know about edmd's FindController.
+    public weak var findHandler: EditorFindHandling?
+
     // MARK: - State (internal for @testable import)
 
-    public var rawSource: String = ""
+    /// Drops the line-start table and repaints the gutter on every write. This
+    /// is the one hook that covers all of rawSource's assignment sites (load,
+    /// undo, didChangeText, formatting, indentation, renumbering) — none of
+    /// them rebuild anything here, the next lookup does it lazily.
+    public var rawSource: String = "" {
+        didSet {
+            lineStartsCache = nil
+            lineNumberRuler?.needsDisplay = true
+        }
+    }
     /// Columns of leading whitespace that make up one list-nesting level,
     /// detected from the document (the smallest indent used, or one tab).
     /// Defaults to 4. Used to map a list item's indentation to a nesting depth.
@@ -116,10 +147,22 @@ public class EditorTextView: NSTextView {
 
     public var theme: EditorTheme = .load() {
         didSet {
+            cachedBodyFont = nil
+            cachedBodyParagraphStyle = nil
+            cachedMonospaceFont = nil
+            cachedHiddenFont = nil
             textAntialias = theme.antialias
             codeBlockLabelFont = theme.monospaceFont(ofSize: max(9, theme.monospaceFontSize - 3))
         }
     }
+
+    /// Styling touches these values for every block. Reusing the immutable
+    /// objects avoids feeding thousands of short-lived, equivalent attribute
+    /// values into Foundation's process-wide attribute-dictionary interner.
+    var cachedBodyFont: NSFont?
+    var cachedBodyParagraphStyle: NSParagraphStyle?
+    var cachedMonospaceFont: NSFont?
+    var cachedHiddenFont: NSFont?
 
     /// Mirror of `theme.antialias`, readable from the `nonisolated`
     /// layout-fragment vendor.
@@ -231,13 +274,66 @@ public class EditorTextView: NSTextView {
     /// Clamped on read, so a garbage value can't produce an empty indent unit.
     public var indentWidth = 2
 
+    /// Whether this document arrived hard-wrapped — opening it actually joined
+    /// lines — in which case saving re-wraps it so the file keeps its shape.
+    /// A file that was never wrapped is never wrapped on your behalf, so the
+    /// setting can't reformat a document that didn't ask for it. Set only by
+    /// `loadContent(_:unwrapHardWrapping:)`: it describes the file on disk, not
+    /// the buffer, so editing — including Hard Wrap Paragraphs — never changes
+    /// it. See EditorTextView+HardWrap.
+    public internal(set) var wasHardWrapped = false
+
+    /// The column this document is wrapped at. Detected from the file when it
+    /// opens (Settings ▸ Edit ▸ Document ▸ "Detect max line length"), so a file
+    /// wrapped at 72 is written back at 72 instead of being reflowed to 80 on
+    /// its first save. Falls back to `HardWrap.column` when detection is off or
+    /// the file isn't consistently wrapped.
+    public internal(set) var hardWrapColumn = HardWrap.column
+
     /// Invisible-character marks (whitespace made visible), or nil = off (the
     /// default). Editor-only; Read mode never shows these. `nonisolated(unsafe)`
     /// like `textAntialias` because the (nonisolated) layout-fragment delegate
     /// reads it at vend time; always set from the main actor. After changing it,
-    /// call `refreshInvisibles()` — it alters no attributes, so a restyle won't
+    /// call `refreshOverdraw()` — it alters no attributes, so a restyle won't
     /// re-vend the fragments. See EditorTextView+Invisibles.
     nonisolated(unsafe) public var invisibles: InvisiblesConfig?
+
+    /// Draw the vertical indent guides on nested list items — default off. The
+    /// guide columns are baked into the text by the list renderer regardless
+    /// (`.listGuides`); this only gates the drawing, so flipping it needs a
+    /// `refreshOverdraw()` and never a restyle. `nonisolated(unsafe)` like
+    /// `invisibles`, and for the same reason: the vend delegate reads it.
+    nonisolated(unsafe) public var showListIndentGuides = false
+
+    /// Dim everything but the lines the selection touches — default off. Purely
+    /// a draw-time fade (no attribute changes), so flipping it needs a
+    /// `refreshOverdraw()` and never a restyle. `nonisolated(unsafe)` like
+    /// `invisibles`, and for the same reason: the vend delegate reads it.
+    /// See EditorTextView+FocusMode.
+    nonisolated(unsafe) public var focusMode = false
+
+    /// Show source line numbers — default off. They sit in the reading column's
+    /// own margin, or in a window-edge gutter when that margin is too narrow to
+    /// hold them; the placement is chosen for you, not configured. See
+    /// EditorTextView+LineNumbers.
+    public var showLineNumbers = false {
+        didSet {
+            guard oldValue != showLineNumbers else { return }
+            updateLineNumberRuler()
+        }
+    }
+
+    /// Set while a placement re-check is waiting on the runloop, so a burst of
+    /// resize callbacks queues one hop rather than dozens. See
+    /// `scheduleLineNumberPlacementUpdate`.
+    var lineNumberPlacementUpdateScheduled = false
+
+    /// The installed gutter, or nil unless the numbers are on *and* don't fit
+    /// beside the text.
+    var lineNumberRuler: LineNumberRulerView?
+
+    /// UTF-16 offsets of each line's first character; see `lineStarts`.
+    var lineStartsCache: [Int]?
 
     // MARK: - Derived Visual Properties
 
@@ -269,7 +365,10 @@ public class EditorTextView: NSTextView {
     /// the shared `NSColor(hex:)` helper (which uses `calibratedRed:`) — the
     /// calibrated color space renders visibly lighter than the sRGB hex value
     /// once composited on screen.
-    private var editorBackgroundColor: NSColor {
+    /// Internal rather than private: the line-number gutter fills itself with
+    /// this so the two surfaces read as one (the scroll view draws no
+    /// background of its own).
+    var editorBackgroundColor: NSColor {
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         guard dark else { return .textBackgroundColor }
         return NSColor(srgbRed: 0x29 / 255.0, green: 0x29 / 255.0, blue: 0x29 / 255.0, alpha: 1.0)
@@ -277,14 +376,22 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Font & Paragraph Style (derived from theme)
 
-    public var bodyFont: NSFont { theme.bodyFont }
+    public var bodyFont: NSFont {
+        if let cachedBodyFont { return cachedBodyFont }
+        let font = theme.bodyFont
+        cachedBodyFont = font
+        return font
+    }
 
     var bodyParagraphStyle: NSParagraphStyle {
+        if let cachedBodyParagraphStyle { return cachedBodyParagraphStyle }
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = theme.lineSpacing
         ps.paragraphSpacingBefore = theme.paragraphSpacingBefore
         ps.paragraphSpacing = 0
-        return ps
+        let style = ps.copy() as! NSParagraphStyle
+        cachedBodyParagraphStyle = style
+        return style
     }
 
     /// Apply a new theme and restyle every block in place. `persist: false`
@@ -615,14 +722,32 @@ public class EditorTextView: NSTextView {
     // MARK: - Content Loading (called by Document)
 
     /// Replace the editor's content. Used by NSDocument on file open.
-    public func loadContent(_ content: String) {
+    ///
+    /// `unwrapHardWrapping` joins each paragraph's soft-broken lines so editing
+    /// works on one long logical line. It runs *after* the line ending is
+    /// detected and normalized — unwrapping in the caller instead would hand
+    /// `LineEnding.detect` text whose `\r\n`s had already been rewritten and
+    /// silently turn every CRLF file into LF.
+    public func loadContent(_ content: String, unwrapHardWrapping: Bool = false) {
         Log.measure("Loaded document (\(content.count) chars)", category: .document) {
             // Remember the file's line ending, then normalize the buffer to LF so
             // block parsing and rendering never see a stray `\r`. A file that mixes
             // styles is normalized to LF on save too (rather than its dominant style),
             // so its endings become consistent.
             originalLineEnding = LineEnding.isInconsistent(in: content) ? .lf : LineEnding.detect(in: content)
-            rawSource = LineEnding.normalize(content)
+            let normalized = LineEnding.normalize(content)
+            // The join changing nothing *is* the detection that this file has no
+            // hard wrapping — so it keeps its shape and save leaves it alone.
+            // Both readings come off one parse: the column has to be detected
+            // from the breaks the file actually has, which the join is about to
+            // remove, and parsing twice would double the cost of opening a
+            // wrapped file (parsing is ~95% of the work here).
+            let joined = unwrapHardWrapping
+                ? HardWrap.unwrapDetectingColumn(normalized, features: markdownFeatures)
+                : (text: normalized, column: nil)
+            wasHardWrapped = joined.text != normalized
+            hardWrapColumn = (wasHardWrapped ? joined.column : nil) ?? HardWrap.column
+            rawSource = joined.text
             rebuildListIndentState()
             rebuildLinkDefState()
             blocks = BlockParser.parse(rawSource, features: markdownFeatures)

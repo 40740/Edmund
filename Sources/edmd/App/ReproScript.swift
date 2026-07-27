@@ -11,6 +11,8 @@ import WebKit
 /// Accessibility permission. Commands, one per line:
 ///   sleep <ms>        wait before the next command
 ///   caret <needle>    place the caret before the first occurrence of <needle>
+///   selectoff <n> <len>  select an absolute range (chrome that reacts to a
+///                     selection, not just a caret)
 ///   type <text>       type text, one key event per character
 ///   backspace <n>     press delete n times (300ms apart)
 ///   tab / backtab     indent / dedent the selected list line(s)
@@ -50,6 +52,17 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     let n = min(Int(arg) ?? 0, (editor.rawSource as NSString).length)
                     editor.setSelectedRange(NSRange(location: n, length: 0))
+                }
+            case "selectoff":
+                // "<location> <length>" — an absolute selection, for checking
+                // what a range (not just a caret) does to the chrome.
+                schedule(after: delay) { editor in
+                    let parts = arg.split(separator: " ").compactMap { Int($0) }
+                    guard parts.count == 2 else { return }
+                    let length = (editor.rawSource as NSString).length
+                    let location = min(parts[0], length)
+                    editor.setSelectedRange(NSRange(location: location,
+                                                    length: min(parts[1], length - location)))
                 }
             case "clickoff":
                 // Absolute-offset caret move on the MOUSE path: sets
