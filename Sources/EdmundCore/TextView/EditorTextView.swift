@@ -313,8 +313,9 @@ public class EditorTextView: NSTextView {
     nonisolated(unsafe) public var focusMode = false
 
     /// Show source line numbers — default off. They sit in the reading column's
-    /// own margin unless `lineNumbersByWindowEdge` moves them out to a gutter.
-    /// See EditorTextView+LineNumbers.
+    /// own margin, or in a window-edge gutter when that margin is too narrow to
+    /// hold them; the placement is chosen for you, not configured. See
+    /// EditorTextView+LineNumbers.
     public var showLineNumbers = false {
         didSet {
             guard oldValue != showLineNumbers else { return }
@@ -322,18 +323,8 @@ public class EditorTextView: NSTextView {
         }
     }
 
-    /// Put the line numbers in a gutter at the window's leading edge instead of
-    /// beside the text — default off. Installs/removes an NSRulerView on the
-    /// enclosing scroll view, so it is a no-op until the view has one;
-    /// `viewDidMoveToSuperview` replays it.
-    public var lineNumbersByWindowEdge = false {
-        didSet {
-            guard oldValue != lineNumbersByWindowEdge else { return }
-            updateLineNumberRuler()
-        }
-    }
-
-    /// The installed gutter, or nil unless the numbers are on *and* by the edge.
+    /// The installed gutter, or nil unless the numbers are on *and* don't fit
+    /// beside the text.
     var lineNumberRuler: LineNumberRulerView?
 
     /// UTF-16 offsets of each line's first character; see `lineStarts`.

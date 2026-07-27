@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ### Added
 - Hard wrap: a file that is already hard-wrapped is joined into single lines for editing and re-wrapped on save at the width it already uses, so editing never fights the wrap and diffs stay line-sized (Settings ▸ Edit ▸ Document, off by default; requires strict line breaks). Files that were never wrapped are left alone
 - Edit ▸ Hard Wrap Paragraphs: reflows the selected paragraphs, or the whole document, at 80 characters
+- Check grammar while typing (Settings ▸ Edit ▸ Words)
 - Focus mode: dims everything but the lines the selection touches, including code blocks, callouts and other drawn chrome (Settings ▸ Edit ▸ Editor, View ▸ Focus Mode; off by default)
 - Typewriter scroll is now also a checkbox in Settings ▸ Edit ▸ Editor (same setting as View ▸ Typewriter Scroll)
 - macOS Services menu: "Open in Edmund" and "New Edmund Document with Selection"
@@ -16,7 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Quick Look preview extension: renders Markdown as rich text, following the system light/dark appearance
 - AppleScript code-fence syntax highlighting
 - List indent guides: vertical lines marking each nesting level of a list (Settings ▸ Edit, off by default)
-- Line numbers: source line numbers beside the text column, or in a gutter by the window edge (Settings ▸ Edit, off by default)
+- Line numbers: source line numbers beside the text column, moving out to a gutter by the window edge on their own whenever the margin is too narrow to hold them (Settings ▸ Edit, off by default)
 
 
 ## [0.2.1] - 2026-07-17

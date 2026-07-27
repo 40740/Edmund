@@ -86,33 +86,86 @@ struct LineNumbersTests {
         #expect(!scrollView.rulersVisible)
     }
 
-    @Test("The window-edge sub-setting installs and removes the gutter")
-    func gutterInstallRemove() {
-        // What the Settings toggles drive. The editor configures itself before
-        // Document adds it to a scroll view, so the install has to survive
-        // being asked for while there is no scroll view yet.
+    /// A margin too narrow for the numbers. With no content-width cap the
+    /// column fills the window and only the 24 pt base inset is left, which a
+    /// three-digit document (the fixtures below are 200 lines) overruns.
+    @MainActor private func squeezeMargin(_ editor: EditorTextView) {
+        editor.maxContentWidthPoints = .greatestFiniteMagnitude
+        editor.updateContentInset()
+    }
+
+    /// A cap far narrower than the window, which centres the column and leaves
+    /// a wide margin on each side.
+    @MainActor private func wideMargin(_ editor: EditorTextView) {
+        editor.maxContentWidthPoints = 120
+        editor.updateContentInset()
+    }
+
+    @Test("A margin too narrow for the numbers puts up the gutter")
+    func gutterAppearsWhenMarginIsTight() {
+        // The editor configures itself before Document adds it to a scroll view,
+        // so the install has to survive being asked for while there is none yet.
         let editor = makeEditor()
+        editor.loadContent(Array(repeating: "line", count: 200).joined(separator: "\n"))
         editor.showLineNumbers = true
-        editor.lineNumbersByWindowEdge = true
+        squeezeMargin(editor)
         #expect(editor.lineNumberRuler == nil)   // nothing to install onto
 
         let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 300))
         scrollView.documentView = editor         // → viewDidMoveToSuperview
+        #expect(!editor.lineNumbersFitBesideContent)
         #expect(editor.lineNumberRuler != nil)
         #expect(scrollView.verticalRulerView === editor.lineNumberRuler)
         #expect(scrollView.rulersVisible)
+    }
 
-        // Back to the default placement: the gutter goes, the numbers stay on.
-        editor.lineNumbersByWindowEdge = false
+    @Test("Widening the margin brings the numbers back beside the text")
+    func gutterGivesWayToTheMargin() {
+        let editor = makeEditor()
+        editor.loadContent(Array(repeating: "line", count: 200).joined(separator: "\n"))
+        editor.showLineNumbers = true
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 300))
+        scrollView.documentView = editor
+        squeezeMargin(editor)
+        #expect(editor.lineNumberRuler != nil)
+
+        wideMargin(editor)
+        #expect(editor.lineNumbersFitBesideContent)
         #expect(editor.lineNumberRuler == nil)
         #expect(!scrollView.rulersVisible)
         #expect(editor.showLineNumbers)
+    }
 
-        // And turning the numbers off entirely with the gutter armed keeps it off.
-        editor.lineNumbersByWindowEdge = true
+    @Test("Turning the numbers off takes the gutter with them")
+    func gutterFollowsTheSetting() {
+        let editor = makeEditor()
+        editor.loadContent(Array(repeating: "line", count: 200).joined(separator: "\n"))
+        editor.showLineNumbers = true
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 300))
+        scrollView.documentView = editor
+        squeezeMargin(editor)
+        #expect(editor.lineNumberRuler != nil)
+
         editor.showLineNumbers = false
         #expect(editor.lineNumberRuler == nil)
         #expect(!scrollView.rulersVisible)
+    }
+
+    @Test("Re-checking placement never stacks up a second gutter")
+    func gutterIsInstalledOnce() {
+        let editor = makeEditor()
+        editor.loadContent(Array(repeating: "line", count: 200).joined(separator: "\n"))
+        editor.showLineNumbers = true
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 300))
+        scrollView.documentView = editor
+        squeezeMargin(editor)
+        let first = editor.lineNumberRuler
+        #expect(first != nil)
+
+        // Showing a ruler resizes the document view, which re-enters this path.
+        for _ in 0..<5 { editor.updateContentInset() }
+        #expect(editor.lineNumberRuler === first)
+        #expect(scrollView.verticalRulerView === first)
     }
 
     @Test("The caret's line is inked as body text")
