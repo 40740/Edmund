@@ -186,5 +186,46 @@
                        length="7793566"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 0.3.0</title>
+            <pubDate>Mon, 27 Jul 2026 16:54:35 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Settings stuff.</p>
+<p>Thanks to @CaliLuke for his first contribution (#236) and for being the first community contributor :D</p>
+<h3>Added</h3>
+<ul>
+<li>Improved performance (#236 @CaliLuke)</li>
+<li><strong>(Almost) Full Obsidian-flavored Markdown support</strong>: YAML front matter, <code>[image|dimension()</code> (implicit), <code>^block</code>, <code>#tag</code>, collapsible callout</li>
+<li><strong>Find and replace</strong> in Apple Notes fashion</li>
+<li><strong>Settings &gt; Edit</strong>: Hide toolbar, focus mode, detect indentation, show invisible characters, show line numbers, hard-wrap long lines</li>
+<li><strong>Settings &gt; Syntax</strong>: Toggle Markdown syntax support, add code block syntax</li>
+<li><strong>Settings &gt; Key Bindings</strong></li>
+<li>Edit &gt; Find, Spelling &amp; Grammar, Transformations, Speech menus</li>
+<li>Finder services</li>
+<li><code>Option+Cmd+I</code> to open inspector</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Misc UI improvements: Numbered lists marker in read mode, thicker thematic break, removed bottom border from edit mode tables, removed inline code color from read mode</li>
+<li>Dark mode readability: Empty checkbox in edit mode, blockquote bars in read mode, table borders in edit mode</li>
+<li>Code block syntax highlighting is now controlled by syntax-based JSON instead of general regex</li>
+<li>Inline math block renders as block in read mode</li>
+<li>Format &gt; Comments now wraps selection in <code>&lt;!-- selection --&gt;</code></li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Headers render spaces after <code>#...</code></li>
+<li>Indented code block renders as monospace</li>
+<li>Replace right-click &quot;Font&quot; menu in edit mode with our Format &gt; Font menu</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.3.0/Edmund-0.3.0.dmg"
+                       sparkle:version="8"
+                       sparkle:shortVersionString="0.3.0"
+                       sparkle:edSignature="ky3kunM5LGdyUlLTBhZ5ukSiQtTIlIhznlNerk15czWpAf2ZFaV53oLYAky3Rm7rlLzPFrcUHXb6sGj28ZaBBw=="
+                       length="13636661"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
