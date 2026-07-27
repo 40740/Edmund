@@ -26,11 +26,23 @@ struct KeyBindingsSettingsView: View {
 
     private var groups: [String] { KeyBindingCatalog.shared.groups }
 
-    private var rows: [KeyBindingCatalog.Row] {
-        KeyBindingCatalog.shared.rows(inGroup: selectedGroup ?? "").filter { row in
-            guard row.indented, let submenu = row.submenu else { return true }
-            return expandedSubmenus.contains(submenu)
+    /// A top-level command, or a submenu with the commands it holds.
+    private struct Section: Identifiable {
+        let row: KeyBindingCatalog.Row
+        var children: [KeyBindingCatalog.Row] = []
+        var id: String { row.id }
+    }
+
+    private var sections: [Section] {
+        var sections: [Section] = []
+        for row in KeyBindingCatalog.shared.rows(inGroup: selectedGroup ?? "") {
+            if row.indented, !sections.isEmpty {
+                sections[sections.count - 1].children.append(row)
+            } else {
+                sections.append(Section(row: row))
+            }
         }
+        return sections
     }
 
     var body: some View {
@@ -106,6 +118,9 @@ struct KeyBindingsSettingsView: View {
     /// titles line up whether or not they open a submenu.
     private static let disclosureWidth: CGFloat = 14
 
+    /// Matches the row height the menu list on the left gets from AppKit.
+    private static let rowHeight: CGFloat = 24
+
     private var lists: some View {
         HStack(spacing: 0) {
             List(groups, id: \.self, selection: $selectedGroup) { group in
@@ -119,30 +134,55 @@ struct KeyBindingsSettingsView: View {
 
             Divider()
 
-            List(rows) { row in
-                HStack(spacing: 0) {
-                    // Submenu commands sit under their submenu's title, as they
-                    // do in the menu bar, behind a disclosure triangle.
-                    disclosure(for: row)
-                    Text(row.title)
-                    Spacer(minLength: 8)
-                    if let entry = row.entry {
-                        ShortcutField(shortcut: shortcut(for: entry),
-                                      onCommit: { commit($0, to: entry) })
-                            .frame(width: Self.keyColumnWidth)
+            // A stack rather than a List: a List on macOS inserts and removes its
+            // rows immediately, ignoring the animation the disclosure runs in,
+            // so the rows would land before the triangle finished turning.
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(sections) { section in
+                        row(section.row)
+                        // Collapsing clips the children to zero height, so they
+                        // slide out from under their submenu rather than fading
+                        // in over the rows they push down.
+                        VStack(spacing: 0) {
+                            ForEach(section.children) { row($0) }
+                        }
+                        .frame(height: isExpanded(section) ? Self.rowHeight * CGFloat(section.children.count) : 0,
+                               alignment: .top)
+                        .clipped()
                     }
                 }
-                .padding(.leading, Self.rowInset)
-                .padding(.trailing, Self.trailingColumnWidth)
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
+                .frame(maxWidth: .infinity)
             }
-            .listStyle(.plain)
-            // ponytail: re-identifying the list is the blunt way to show an
+            .background(Color(nsColor: .textBackgroundColor))
+            // ponytail: re-identifying the rows is the blunt way to show an
             // edited shortcut — it also resets the scroll position. Worth
             // replacing if the command lists ever get long enough to scroll far.
             .id(revision)
         }
+    }
+
+    private func isExpanded(_ section: Section) -> Bool {
+        guard let submenu = section.row.submenu else { return false }
+        return expandedSubmenus.contains(submenu)
+    }
+
+    private func row(_ row: KeyBindingCatalog.Row) -> some View {
+        HStack(spacing: 0) {
+            // Submenu commands sit under their submenu's title, as they do in
+            // the menu bar, behind a disclosure triangle.
+            disclosure(for: row)
+            Text(row.title)
+            Spacer(minLength: 8)
+            if let entry = row.entry {
+                ShortcutField(shortcut: shortcut(for: entry),
+                              onCommit: { commit($0, to: entry) })
+                    .frame(width: Self.keyColumnWidth)
+            }
+        }
+        .padding(.leading, Self.rowInset + Self.listInset)
+        .padding(.trailing, Self.trailingColumnWidth)
+        .frame(height: Self.rowHeight)
     }
 
     /// The triangle for a submenu row, or the empty gutter every other row keeps
