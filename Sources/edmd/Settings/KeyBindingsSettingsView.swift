@@ -17,7 +17,7 @@ struct KeyBindingsSettingsView: View {
     /// Bumped after every accepted edit to re-read shortcuts out of the store.
     @State private var revision = 0
 
-    private static let menuColumnWidth: CGFloat = 150
+    private static let menuColumnWidth: CGFloat = 120
     private static let keyColumnWidth: CGFloat = 90
     /// An empty column after Key, so the shortcuts aren't flush against the box.
     private static let trailingColumnWidth: CGFloat = 60
@@ -45,7 +45,7 @@ struct KeyBindingsSettingsView: View {
                 lists
             }
             .border(Color(nsColor: .separatorColor))
-            .frame(height: 300)
+            .frame(height: 250)
             .onAppear { if selectedGroup == nil { selectedGroup = groups.first } }
 
             HStack {
