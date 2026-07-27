@@ -274,6 +274,14 @@ public class EditorTextView: NSTextView {
     /// Clamped on read, so a garbage value can't produce an empty indent unit.
     public var indentWidth = 2
 
+    /// Whether this document arrived hard-wrapped — opening it actually joined
+    /// lines — in which case saving re-wraps it so the file keeps its shape.
+    /// A file that was never wrapped is never wrapped on your behalf, so the
+    /// setting can't reformat a document that didn't ask for it. Set by
+    /// `loadContent(_:unwrapHardWrapping:)` and by a whole-document
+    /// `hardWrapParagraphs`. See EditorTextView+HardWrap.
+    public internal(set) var wasHardWrapped = false
+
     /// Invisible-character marks (whitespace made visible), or nil = off (the
     /// default). Editor-only; Read mode never shows these. `nonisolated(unsafe)`
     /// like `textAntialias` because the (nonisolated) layout-fragment delegate
@@ -710,14 +718,26 @@ public class EditorTextView: NSTextView {
     // MARK: - Content Loading (called by Document)
 
     /// Replace the editor's content. Used by NSDocument on file open.
-    public func loadContent(_ content: String) {
+    ///
+    /// `unwrapHardWrapping` joins each paragraph's soft-broken lines so editing
+    /// works on one long logical line. It runs *after* the line ending is
+    /// detected and normalized — unwrapping in the caller instead would hand
+    /// `LineEnding.detect` text whose `\r\n`s had already been rewritten and
+    /// silently turn every CRLF file into LF.
+    public func loadContent(_ content: String, unwrapHardWrapping: Bool = false) {
         Log.measure("Loaded document (\(content.count) chars)", category: .document) {
             // Remember the file's line ending, then normalize the buffer to LF so
             // block parsing and rendering never see a stray `\r`. A file that mixes
             // styles is normalized to LF on save too (rather than its dominant style),
             // so its endings become consistent.
             originalLineEnding = LineEnding.isInconsistent(in: content) ? .lf : LineEnding.detect(in: content)
-            rawSource = LineEnding.normalize(content)
+            let normalized = LineEnding.normalize(content)
+            // The join changing nothing *is* the detection that this file has no
+            // hard wrapping — so it keeps its shape and save leaves it alone.
+            let unwrapped = unwrapHardWrapping
+                ? HardWrap.unwrap(normalized, features: markdownFeatures) : normalized
+            wasHardWrapped = unwrapped != normalized
+            rawSource = unwrapped
             rebuildListIndentState()
             rebuildLinkDefState()
             blocks = BlockParser.parse(rawSource, features: markdownFeatures)

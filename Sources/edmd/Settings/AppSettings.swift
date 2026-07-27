@@ -439,6 +439,19 @@ enum AppSettings {
     /// into `ReadRenderOptions`), not pushed onto the editor.
     static var strictLineBreaks: Bool { boolDefaultTrue(Key.strictLineBreaks) }
 
+    /// Hard-wrap long lines (default off): a file that arrives hard-wrapped is
+    /// joined into logical lines when it opens and re-wrapped at 80 columns when
+    /// it is saved. Like `strictLineBreaks` this is read at load/save time
+    /// (Document) rather than pushed onto the editor — there is no live editor
+    /// behavior to configure.
+    ///
+    /// Requires strict line breaks: with those off a single newline renders as a
+    /// literal `<br>`, so joining lines would delete visible breaks and wrapping
+    /// would invent them. The Settings checkbox greys out to match.
+    static var hardWrapLongLines: Bool {
+        UserDefaults.standard.bool(forKey: Key.hardWrapLongLines) && strictLineBreaks
+    }
+
     /// Detect and learn a document's indent style when it opens (default on).
     /// Read once at open time in `Document.showWindows`, overriding this
     /// document's indent; it never rewrites the global `indentStyle`/`indentWidth`.

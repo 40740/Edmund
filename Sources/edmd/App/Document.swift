@@ -308,7 +308,7 @@ class Document: NSDocument, HeadingNavigable {
     override func showWindows() {
         super.showWindows()
         if let content = pendingContent {
-            editor?.loadContent(content)
+            editor?.loadContent(content, unwrapHardWrapping: AppSettings.hardWrapLongLines)
             // Learn this document's indent from what it actually uses, overriding
             // the global style for this window only (never writes the setting).
             if AppSettings.detectIndent, let detected = EditorTextView.detectIndent(in: content) {
@@ -724,7 +724,17 @@ class Document: NSDocument, HeadingNavigable {
     override func data(ofType typeName: String) throws -> Data {
         // The buffer is always LF; restore the file's original line ending on
         // write so opening, then saving, doesn't silently rewrite every line.
-        let normalized = editor?.rawSource ?? ""
+        //
+        // A hard-wrapped file is held joined for editing, so it has to be
+        // re-wrapped on the way out. Only files that arrived wrapped are
+        // wrapped — `wasHardWrapped` says the join on open actually did
+        // something — so saving never imposes a reflow on a document that
+        // wasn't written that way. The buffer itself is untouched: no caret
+        // move, no undo entry, no dirty flag.
+        var normalized = editor?.rawSource ?? ""
+        if let editor, editor.wasHardWrapped, AppSettings.hardWrapLongLines {
+            normalized = HardWrap.wrap(normalized, features: editor.markdownFeatures)
+        }
         let ending = editor?.originalLineEnding ?? .lf
         let text = ending == .lf
             ? normalized

@@ -1,4 +1,5 @@
 import Testing
+import AppKit
 @testable import EdmundCore
 
 // Hard wrap / unwrap (Edit ▸ Document ▸ "Automatically hard-wrap long lines").
@@ -181,5 +182,118 @@ struct HardWrapTests {
     func empty() {
         #expect(HardWrap.wrap("") == "")
         #expect(HardWrap.unwrap("") == "")
+    }
+}
+
+// The editor side: which documents count as hard-wrapped, and the Edit ▸ Hard
+// Wrap Paragraphs command.
+
+@Suite("HardWrap — editor")
+struct HardWrapEditorTests {
+
+    private func words(_ n: Int) -> String {
+        (1...n).map { String(repeating: "w", count: 9) + String($0 % 10) }
+            .joined(separator: " ")
+    }
+
+    @Test("Opening a wrapped file joins it and flags the document")
+    @MainActor func loadUnwrapsAndFlags() {
+        let editor = makeEditor()
+        editor.loadContent("one two\nthree four", unwrapHardWrapping: true)
+        #expect(editor.rawSource == "one two three four")
+        #expect(editor.wasHardWrapped)
+    }
+
+    @Test("Opening a file that was never wrapped leaves it alone and unflagged")
+    @MainActor func loadLeavesUnwrappedFileAlone() {
+        let editor = makeEditor()
+        editor.loadContent("one line\n\nanother line", unwrapHardWrapping: true)
+        #expect(editor.rawSource == "one line\n\nanother line")
+        #expect(!editor.wasHardWrapped)
+    }
+
+    @Test("Opening without the setting never joins or flags")
+    @MainActor func loadWithoutSettingIsInert() {
+        let editor = makeEditor()
+        editor.loadContent("one two\nthree four")
+        #expect(editor.rawSource == "one two\nthree four")
+        #expect(!editor.wasHardWrapped)
+    }
+
+    @Test("CRLF is still detected when unwrapping on open")
+    @MainActor func loadKeepsLineEndingDetection() {
+        let editor = makeEditor()
+        editor.loadContent("one two\r\nthree four", unwrapHardWrapping: true)
+        #expect(editor.originalLineEnding == .crlf)
+        #expect(editor.rawSource == "one two three four")
+    }
+
+    @Test("The command wraps the whole document and leaves storage == rawSource")
+    @MainActor func commandWrapsDocument() {
+        let editor = makeEditor()
+        editor.loadContent(words(20))
+        editor.hardWrapParagraphs(nil)
+        #expect(editor.rawSource.contains("\n"))
+        #expect(editor.textStorage?.string == editor.rawSource)
+        for line in editor.rawSource.components(separatedBy: "\n") {
+            #expect(line.count <= HardWrap.column)
+        }
+    }
+
+    @Test("A whole-document wrap marks the document hard-wrapped")
+    @MainActor func commandFlagsDocument() {
+        let editor = makeEditor()
+        editor.loadContent(words(20))
+        #expect(!editor.wasHardWrapped)
+        editor.hardWrapParagraphs(nil)
+        #expect(editor.wasHardWrapped)
+    }
+
+    @Test("The command undoes in a single step")
+    @MainActor func commandIsOneUndoStep() {
+        let editor = makeEditor()
+        let original = words(20)
+        editor.loadContent(original)
+        editor.hardWrapParagraphs(nil)
+        #expect(editor.rawSource != original)
+        editor.undo(nil)
+        #expect(editor.rawSource == original)
+        #expect(editor.textStorage?.string == original)
+    }
+
+    @Test("Wrapping an already-wrapped document records no undo step")
+    @MainActor func commandIsInertWhenWrapped() {
+        let editor = makeEditor()
+        editor.loadContent(HardWrap.wrap(words(20)))
+        let before = editor.rawSource
+        editor.hardWrapParagraphs(nil)
+        #expect(editor.rawSource == before)
+        editor.undo(nil)
+        #expect(editor.rawSource == before)
+    }
+
+    @Test("A selection wraps only its own paragraph and doesn't flag the document")
+    @MainActor func commandHonorsSelection() {
+        let editor = makeEditor()
+        let second = words(20)
+        editor.loadContent("short first paragraph\n\n\(second)")
+        let secondStart = ("short first paragraph\n\n" as NSString).length
+        editor.setSelectedRange(NSRange(location: secondStart,
+                                        length: (second as NSString).length))
+        editor.hardWrapParagraphs(nil)
+        #expect(editor.rawSource.hasPrefix("short first paragraph\n\n"))
+        #expect(editor.rawSource.contains("\n"))
+        #expect(editor.textStorage?.string == editor.rawSource)
+        // A local touch-up says nothing about the file as a whole.
+        #expect(!editor.wasHardWrapped)
+    }
+
+    @Test("The command leaves a fenced code block untouched")
+    @MainActor func commandSkipsFences() {
+        let editor = makeEditor()
+        let source = "```\nlet x = \"\(words(20))\"\n```"
+        editor.loadContent(source)
+        editor.hardWrapParagraphs(nil)
+        #expect(editor.rawSource == source)
     }
 }

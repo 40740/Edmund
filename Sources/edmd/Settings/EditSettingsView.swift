@@ -1,10 +1,5 @@
 // The Edit settings pane: one page, in three sections separated by rules —
 // the window chrome, what typing does, and what you see.
-//
-// Several controls here are deliberately `.disabled(true)`: their setting is
-// stored and the UI is final, but the feature behind them isn't built yet
-// (hard wrap). Each becomes live by
-// deleting its `.disabled(true)` when the feature lands — see misc/backlog.md.
 
 import SwiftUI
 import AppKit
@@ -203,9 +198,22 @@ struct EditSettingsView: View {
             }
             
             GridRow {
-                Text("Document:")
-                Toggle("Automatically hard-wrap long lines", isOn: $hardWrapLongLines)
-                    .disabled(true)   // not implemented yet
+                Text("Document:").gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 6) {
+                    // Joining lines only makes sense while a single newline is
+                    // formatting rather than content — see the note below the
+                    // strict line breaks toggle.
+                    Toggle("Automatically hard-wrap long lines", isOn: $hardWrapLongLines)
+                        .disabled(!strictLineBreaks)
+                    Text("Files that are already hard-wrapped are joined into single lines "
+                         + "for editing and re-wrapped at 80 characters on save. Other files "
+                         + "are left alone — use Edit ▸ Hard Wrap Paragraphs.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 380, alignment: .leading)
+                        .padding(.leading, 20)
+                }
             }
         }
         .settingsPanePadding()
