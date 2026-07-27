@@ -183,6 +183,92 @@ struct HardWrapTests {
         #expect(HardWrap.wrap("") == "")
         #expect(HardWrap.unwrap("") == "")
     }
+
+    // MARK: - Detecting the column a file already uses
+
+    /// The property that actually matters: whatever column is detected has to
+    /// reproduce the file's own breaks exactly, so opening and saving is a
+    /// no-op. Asserting a specific number would over-fit — a range of columns
+    /// is genuinely indistinguishable from the breaks alone.
+    private func detectRoundTrips(_ source: String, line: Int = #line) -> Bool {
+        guard let column = HardWrap.detectColumn(source) else { return false }
+        return HardWrap.wrap(HardWrap.unwrap(source), column: column) == source
+    }
+
+    @Test("A file wrapped at 72 round-trips at its own width")
+    func detects72() {
+        let source = HardWrap.wrap(words(40), column: 72)
+        #expect(HardWrap.detectColumn(source) != nil)
+        #expect(detectRoundTrips(source))
+        // 80 is not consistent with breaks made at 72, so it must not be chosen.
+        #expect(HardWrap.detectColumn(source) != 80)
+    }
+
+    @Test("A file wrapped at 80 is detected as 80")
+    func detects80() {
+        #expect(HardWrap.detectColumn(HardWrap.wrap(words(40))) == 80)
+    }
+
+    @Test("Every width from 40 to 120 round-trips")
+    func detectsManyWidths() {
+        for column in stride(from: 40, through: 120, by: 7) {
+            let source = HardWrap.wrap(words(60), column: column)
+            #expect(detectRoundTrips(source), "column \(column) did not round-trip")
+        }
+    }
+
+    @Test("Detection survives real prose, not just uniform words")
+    func detectsProse() {
+        let prose = "The quick brown fox jumps over the lazy dog while a "
+            + "surprisingly verbose narrator describes the entire affair in "
+            + "detail that nobody asked for, at considerable length."
+        for column in [60, 72, 80, 100] {
+            let source = HardWrap.wrap(prose, column: column)
+            #expect(detectRoundTrips(source), "column \(column) did not round-trip")
+        }
+    }
+
+    @Test("An unwrapped file has no detectable column")
+    func noColumnWhenUnwrapped() {
+        #expect(HardWrap.detectColumn("one long single line paragraph") == nil)
+        #expect(HardWrap.detectColumn("") == nil)
+    }
+
+    @Test("A hard break is not read as a wrap point")
+    func hardBreakIsNotAColumnHint() {
+        // Two short lines joined by a hard break say nothing about the column.
+        #expect(HardWrap.detectColumn("one  \ntwo") == nil)
+    }
+
+    @Test("Inconsistently wrapped paragraphs report no column")
+    func inconsistentReportsNil() {
+        // A long line in one paragraph rules out the narrow break in the other.
+        let source = HardWrap.wrap(words(20), column: 110) + "\n\n"
+            + HardWrap.wrap(words(20), column: 40)
+        #expect(HardWrap.detectColumn(source) == nil)
+    }
+
+    @Test("Repeated open/save cycles don't drift the column")
+    func detectionIsStable() {
+        // The failure this guards: taking the low end of the consistent range
+        // writes slightly narrower each time, and the document creeps in.
+        for start in [60, 72, 80, 100] {
+            var source = HardWrap.wrap(words(60), column: start)
+            let first = HardWrap.detectColumn(source)
+            for _ in 0..<5 {
+                let column = HardWrap.detectColumn(source) ?? HardWrap.column
+                #expect(column == first, "column drifted from \(first ?? -1) to \(column)")
+                source = HardWrap.wrap(HardWrap.unwrap(source), column: column)
+            }
+        }
+    }
+
+    @Test("A lone overlong word doesn't drag the detected column up")
+    func loneWordDoesNotConstrain() {
+        let giant = String(repeating: "x", count: 200)
+        let source = HardWrap.wrap("\(words(20)) \(giant) \(words(20))", column: 72)
+        #expect(detectRoundTrips(source))
+    }
 }
 
 // The editor side: which documents count as hard-wrapped, and the Edit ▸ Hard
@@ -288,6 +374,45 @@ struct HardWrapEditorTests {
         #expect(editor.rawSource.hasPrefix("short first paragraph\n\n"))
         #expect(editor.rawSource.contains("\n"))
         #expect(editor.textStorage?.string == editor.rawSource)
+    }
+
+    @Test("A file wrapped at 72 opens, saves and stays at 72")
+    @MainActor func detectedColumnSurvivesRoundTrip() {
+        let editor = makeEditor()
+        let source = HardWrap.wrap(words(40), column: 72)
+        editor.loadContent(source, unwrapHardWrapping: true, detectHardWrapColumn: true)
+        #expect(editor.wasHardWrapped)
+        #expect(editor.hardWrapColumn == 72)
+        // What `Document.data(ofType:)` writes.
+        #expect(HardWrap.wrap(editor.rawSource, column: editor.hardWrapColumn) == source)
+    }
+
+    @Test("Without detection a 72-column file is reflowed to 80")
+    @MainActor func withoutDetectionFallsBackTo80() {
+        let editor = makeEditor()
+        editor.loadContent(HardWrap.wrap(words(40), column: 72), unwrapHardWrapping: true)
+        #expect(editor.hardWrapColumn == HardWrap.column)
+    }
+
+    @Test("An unwrapped file keeps the default column")
+    @MainActor func unwrappedFileKeepsDefaultColumn() {
+        let editor = makeEditor()
+        editor.loadContent("one long single line paragraph",
+                           unwrapHardWrapping: true, detectHardWrapColumn: true)
+        #expect(!editor.wasHardWrapped)
+        #expect(editor.hardWrapColumn == HardWrap.column)
+    }
+
+    @Test("The menu command uses the document's detected column")
+    @MainActor func commandUsesDetectedColumn() {
+        let editor = makeEditor()
+        editor.loadContent(HardWrap.wrap(words(40), column: 60),
+                           unwrapHardWrapping: true, detectHardWrapColumn: true)
+        #expect(editor.hardWrapColumn == 60)
+        editor.hardWrapParagraphs(nil)
+        for line in editor.rawSource.components(separatedBy: "\n") {
+            #expect(line.count <= 60)
+        }
     }
 
     @Test("The command leaves a fenced code block untouched")

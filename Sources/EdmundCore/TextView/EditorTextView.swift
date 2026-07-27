@@ -283,6 +283,13 @@ public class EditorTextView: NSTextView {
     /// it. See EditorTextView+HardWrap.
     public internal(set) var wasHardWrapped = false
 
+    /// The column this document is wrapped at. Detected from the file when it
+    /// opens (Settings ▸ Edit ▸ Document ▸ "Detect max line length"), so a file
+    /// wrapped at 72 is written back at 72 instead of being reflowed to 80 on
+    /// its first save. Falls back to `HardWrap.column` when detection is off or
+    /// the file isn't consistently wrapped.
+    public internal(set) var hardWrapColumn = HardWrap.column
+
     /// Invisible-character marks (whitespace made visible), or nil = off (the
     /// default). Editor-only; Read mode never shows these. `nonisolated(unsafe)`
     /// like `textAntialias` because the (nonisolated) layout-fragment delegate
@@ -725,7 +732,8 @@ public class EditorTextView: NSTextView {
     /// detected and normalized — unwrapping in the caller instead would hand
     /// `LineEnding.detect` text whose `\r\n`s had already been rewritten and
     /// silently turn every CRLF file into LF.
-    public func loadContent(_ content: String, unwrapHardWrapping: Bool = false) {
+    public func loadContent(_ content: String, unwrapHardWrapping: Bool = false,
+                            detectHardWrapColumn: Bool = false) {
         Log.measure("Loaded document (\(content.count) chars)", category: .document) {
             // Remember the file's line ending, then normalize the buffer to LF so
             // block parsing and rendering never see a stray `\r`. A file that mixes
@@ -735,10 +743,17 @@ public class EditorTextView: NSTextView {
             let normalized = LineEnding.normalize(content)
             // The join changing nothing *is* the detection that this file has no
             // hard wrapping — so it keeps its shape and save leaves it alone.
-            let unwrapped = unwrapHardWrapping
-                ? HardWrap.unwrap(normalized, features: markdownFeatures) : normalized
-            wasHardWrapped = unwrapped != normalized
-            rawSource = unwrapped
+            // Both readings come off one parse: the column has to be detected
+            // from the breaks the file actually has, which the join is about to
+            // remove, and parsing twice would double the cost of opening a
+            // wrapped file (parsing is ~95% of the work here).
+            let joined = unwrapHardWrapping
+                ? HardWrap.unwrapDetectingColumn(normalized, features: markdownFeatures,
+                                                 detectingColumn: detectHardWrapColumn)
+                : (text: normalized, column: nil)
+            wasHardWrapped = joined.text != normalized
+            hardWrapColumn = (wasHardWrapped ? joined.column : nil) ?? HardWrap.column
+            rawSource = joined.text
             rebuildListIndentState()
             rebuildLinkDefState()
             blocks = BlockParser.parse(rawSource, features: markdownFeatures)

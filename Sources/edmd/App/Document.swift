@@ -308,7 +308,9 @@ class Document: NSDocument, HeadingNavigable {
     override func showWindows() {
         super.showWindows()
         if let content = pendingContent {
-            editor?.loadContent(content, unwrapHardWrapping: AppSettings.hardWrapLongLines)
+            editor?.loadContent(content,
+                                unwrapHardWrapping: AppSettings.hardWrapLongLines,
+                                detectHardWrapColumn: AppSettings.detectMaxLineLength)
             // Learn this document's indent from what it actually uses, overriding
             // the global style for this window only (never writes the setting).
             if AppSettings.detectIndent, let detected = EditorTextView.detectIndent(in: content) {
@@ -733,7 +735,8 @@ class Document: NSDocument, HeadingNavigable {
         // move, no undo entry, no dirty flag.
         var normalized = editor?.rawSource ?? ""
         if let editor, editor.wasHardWrapped, AppSettings.hardWrapLongLines {
-            normalized = HardWrap.wrap(normalized, features: editor.markdownFeatures)
+            normalized = HardWrap.wrap(normalized, features: editor.markdownFeatures,
+                                       column: editor.hardWrapColumn)
         }
         let ending = editor?.originalLineEnding ?? .lf
         let text = ending == .lf

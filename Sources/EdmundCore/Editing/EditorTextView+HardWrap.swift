@@ -24,7 +24,8 @@ extension EditorTextView {
             length: blocks[endBlock].range.upperBound - blocks[startBlock].range.location)
         let ns = rawSource as NSString
         let oldText = ns.substring(with: oldRange)
-        let newText = HardWrap.wrap(oldText, features: markdownFeatures)
+        let newText = HardWrap.wrap(oldText, features: markdownFeatures,
+                                    column: hardWrapColumn)
         // Already wrapped: leave the document — and the undo stack — alone.
         guard newText != oldText else { return }
 

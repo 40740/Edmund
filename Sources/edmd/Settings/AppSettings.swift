@@ -152,6 +152,7 @@ enum AppSettings {
         static let detectIndent        = "settings.edit.detectIndent"
         static let strictLineBreaks    = "settings.edit.strictLineBreaks"
         static let hardWrapLongLines   = "settings.edit.hardWrapLongLines"
+        static let detectMaxLineLength = "settings.edit.detectMaxLineLength"
         static let autoCloseBrackets   = "settings.edit.autoCloseBrackets"
         static let continueLists       = "settings.edit.continueLists"
         static let spellCheck          = "settings.edit.spellCheck"
@@ -451,6 +452,11 @@ enum AppSettings {
     static var hardWrapLongLines: Bool {
         UserDefaults.standard.bool(forKey: Key.hardWrapLongLines) && strictLineBreaks
     }
+
+    /// Take a hard-wrapped document's own line length when it opens rather than
+    /// assuming 80 (default on). Read once at open time, like `detectIndent`:
+    /// it sets that document's wrap column and never writes a global setting.
+    static var detectMaxLineLength: Bool { boolDefaultTrue(Key.detectMaxLineLength) }
 
     /// Detect and learn a document's indent style when it opens (default on).
     /// Read once at open time in `Document.showWindows`, overriding this

@@ -7,7 +7,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ## [Unreleased]
 
 ### Added
-- Hard wrap: a file that is already hard-wrapped is joined into single lines for editing and re-wrapped at 80 characters on save, so editing never fights the wrap and diffs stay line-sized (Settings ▸ Edit ▸ Document, off by default; requires strict line breaks). Files that were never wrapped are left alone
+- Hard wrap: a file that is already hard-wrapped is joined into single lines for editing and re-wrapped on save, so editing never fights the wrap and diffs stay line-sized (Settings ▸ Edit ▸ Document, off by default; requires strict line breaks). Files that were never wrapped are left alone
+- Detect max line length on document opening (on by default): a file wrapped at 72 or 100 columns is written back at its own width instead of being reflowed to 80
 - Edit ▸ Hard Wrap Paragraphs: reflows the selected paragraphs, or the whole document, at 80 characters
 - Focus mode: dims everything but the lines the selection touches, including code blocks, callouts and other drawn chrome (Settings ▸ Edit ▸ Editor, View ▸ Focus Mode; off by default)
 - Typewriter scroll is now also a checkbox in Settings ▸ Edit ▸ Editor (same setting as View ▸ Typewriter Scroll)

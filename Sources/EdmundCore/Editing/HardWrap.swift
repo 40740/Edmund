@@ -17,14 +17,88 @@ public enum HardWrap {
     public static let column = 80
 
     /// Reflows every paragraph to `column`. Other block kinds are untouched.
-    public static func wrap(_ source: String, features: MarkdownFeatures = .all) -> String {
-        transformParagraphs(source, features: features, wrapParagraph)
+    public static func wrap(_ source: String, features: MarkdownFeatures = .all,
+                            column: Int = HardWrap.column) -> String {
+        transformParagraphs(BlockParser.parse(source, features: features)) {
+            fillParagraph($0, column: column)
+        }
+    }
+
+    /// The column this document was already wrapped at, or nil when its
+    /// paragraphs aren't consistently wrapped (or aren't wrapped at all).
+    ///
+    /// Guessing from the longest line would be off by however much the next
+    /// word overhung, and re-wrapping at a guess moves text that was fine.
+    /// Instead the existing line breaks are read as *constraints* on the column
+    /// a greedy fill must have used: every line that isn't one long word had to
+    /// fit, so `column >= len(line)`; and every break had to be forced, so
+    /// `column < len(line) + 1 + len(next word)`. That leaves a range of columns
+    /// which all reproduce the file's breaks exactly — so any of them
+    /// round-trips losslessly, and the choice only affects text typed later.
+    ///
+    /// Which one to take is therefore a question about *future* text, and the
+    /// endpoints are both wrong for it. The low end is the longest line the file
+    /// happens to contain, which is a little under the real column, so writing
+    /// at it would shave a few characters off the width on every save and creep
+    /// the document narrower. So a conventional width is preferred when one
+    /// qualifies, and the widest consistent column is the fallback — erring wide
+    /// can't compound the way erring narrow does.
+    public static func detectColumn(_ source: String,
+                                    features: MarkdownFeatures = .all) -> Int? {
+        detectColumn(BlockParser.parse(source, features: features))
+    }
+
+    /// Preference order when several columns fit the file's breaks equally well.
+    private static let conventionalColumns = [80, 100, 120, 72, 60]
+
+    static func detectColumn(_ blocks: [Block]) -> Int? {
+        var lowest = 0            // the longest line that had to fit
+        var highest = Int.max     // the tightest "this break was forced" bound
+        var sawBreak = false
+        // The previous paragraph line, or nil at a paragraph boundary — plain
+        // text parses one `.paragraph` block per line, so consecutive paragraph
+        // blocks are exactly the pairs a wrap could have broken between.
+        var previous: String?
+
+        for block in blocks {
+            guard block.kind == .paragraph else { previous = nil; continue }
+            let line = block.content
+            // A line holding one overlong word was emitted whatever the column
+            // was, so it constrains nothing.
+            if line.trimmingCharacters(in: .whitespaces).contains(" ") {
+                lowest = max(lowest, line.count)
+            }
+            // A hard break ended that line for its own reasons, not the column's.
+            if let previous, !endsWithHardBreak(previous),
+               let next = line.split(separator: " ").first {
+                sawBreak = true
+                highest = min(highest, previous.count + next.count)
+            }
+            previous = line
+        }
+
+        guard sawBreak, lowest <= highest else { return nil }
+        let consistent = lowest...highest
+        return conventionalColumns.first(where: consistent.contains) ?? highest
     }
 
     /// Joins each paragraph's soft-broken lines into one line. Other block kinds
     /// are untouched.
     public static func unwrap(_ source: String, features: MarkdownFeatures = .all) -> String {
-        transformParagraphs(source, features: features, unwrapParagraph)
+        transformParagraphs(BlockParser.parse(source, features: features), unwrapParagraph)
+    }
+
+    /// `unwrap` and `detectColumn` over a single parse — the pair every document
+    /// open needs. Worth its own entry point because parsing *is* the cost here:
+    /// the two transforms together are a few ms, while each parse of a 60 KB
+    /// document is ~60 ms, so doing it once rather than twice is the whole
+    /// optimization. `column` is nil when the file isn't consistently wrapped.
+    public static func unwrapDetectingColumn(
+        _ source: String, features: MarkdownFeatures = .all, detectingColumn: Bool = true
+    ) -> (text: String, column: Int?) {
+        let blocks = BlockParser.parse(source, features: features)
+        return (transformParagraphs(blocks, unwrapParagraph),
+                detectingColumn ? detectColumn(blocks) : nil)
     }
 
     /// Block boundaries come from the real parser, so "is this line inside a
@@ -42,7 +116,7 @@ public enum HardWrap {
     /// list needs a hanging continuation indent and a quote needs its `> `
     /// re-emitted per line, and neither is as obviously lossless as a bare
     /// paragraph. Add when asked.
-    private static func transformParagraphs(_ source: String, features: MarkdownFeatures,
+    private static func transformParagraphs(_ blocks: [Block],
                                             _ body: (String) -> String) -> String {
         var out: [String] = []
         var run: [String] = []
@@ -53,7 +127,7 @@ public enum HardWrap {
             run.removeAll()
         }
 
-        for block in BlockParser.parse(source, features: features) {
+        for block in blocks {
             if block.kind == .paragraph {
                 run.append(block.content)
             } else {
@@ -98,14 +172,14 @@ public enum HardWrap {
     /// Unwrapping first means each line handed to `fill` is exactly one
     /// hard-break-delimited segment, so the fill never has to reason about
     /// where the previous wrap happened to land.
-    private static func wrapParagraph(_ content: String) -> String {
+    private static func fillParagraph(_ content: String, column: Int) -> String {
         unwrapParagraph(content)
             .components(separatedBy: "\n")
-            .map(fill)
+            .map { fill($0, column: column) }
             .joined(separator: "\n")
     }
 
-    private static func fill(_ line: String) -> String {
+    private static func fill(_ line: String, column: Int) -> String {
         // A trailing two-space hard break would be eaten by the word split, so
         // set it aside and put it back on the last line. A trailing backslash
         // needs no such care — it travels glued to its word.
