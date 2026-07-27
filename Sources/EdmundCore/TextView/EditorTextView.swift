@@ -277,9 +277,10 @@ public class EditorTextView: NSTextView {
     /// Whether this document arrived hard-wrapped — opening it actually joined
     /// lines — in which case saving re-wraps it so the file keeps its shape.
     /// A file that was never wrapped is never wrapped on your behalf, so the
-    /// setting can't reformat a document that didn't ask for it. Set by
-    /// `loadContent(_:unwrapHardWrapping:)` and by a whole-document
-    /// `hardWrapParagraphs`. See EditorTextView+HardWrap.
+    /// setting can't reformat a document that didn't ask for it. Set only by
+    /// `loadContent(_:unwrapHardWrapping:)`: it describes the file on disk, not
+    /// the buffer, so editing — including Hard Wrap Paragraphs — never changes
+    /// it. See EditorTextView+HardWrap.
     public internal(set) var wasHardWrapped = false
 
     /// Invisible-character marks (whitespace made visible), or nil = off (the

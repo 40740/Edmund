@@ -7,6 +7,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ## [Unreleased]
 
 ### Added
+- Hard wrap: a file that is already hard-wrapped is joined into single lines for editing and re-wrapped at 80 characters on save, so editing never fights the wrap and diffs stay line-sized (Settings ▸ Edit ▸ Document, off by default; requires strict line breaks). Files that were never wrapped are left alone
+- Edit ▸ Hard Wrap Paragraphs: reflows the selected paragraphs, or the whole document, at 80 characters
 - Focus mode: dims everything but the lines the selection touches, including code blocks, callouts and other drawn chrome (Settings ▸ Edit ▸ Editor, View ▸ Focus Mode; off by default)
 - Typewriter scroll is now also a checkbox in Settings ▸ Edit ▸ Editor (same setting as View ▸ Typewriter Scroll)
 - macOS Services menu: "Open in Edmund" and "New Edmund Document with Selection"

@@ -65,10 +65,12 @@ extension EditorTextView {
         // rewritten, and the fill refuses to break in front of a list marker,
         // so no ordered-list run can gain, lose or re-depth a member here.
 
-        // Wrapping the whole document is a statement that this file is
-        // hard-wrapped, so saving keeps it that way. A selection-only wrap is a
-        // local touch-up and says nothing about the file as a whole.
-        if sel.length == 0 { wasHardWrapped = true }
+        // Deliberately does not set `wasHardWrapped`. That flag exists to record
+        // what the *file* was when it opened; a command that only edits the
+        // buffer has no business claiming it. Setting it here would also make
+        // undo look broken — the text would revert but the next save would wrap
+        // it straight back. The wrapped buffer is written out verbatim, and on
+        // the next open the join detects the wrapping for itself.
         document?.updateChangeCount(.changeDone)
     }
 

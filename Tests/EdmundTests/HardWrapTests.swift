@@ -240,13 +240,17 @@ struct HardWrapEditorTests {
         }
     }
 
-    @Test("A whole-document wrap marks the document hard-wrapped")
-    @MainActor func commandFlagsDocument() {
+    /// The flag describes the file on disk, so a command that only rewrites the
+    /// buffer must not set it — otherwise undoing the wrap would leave the next
+    /// save wrapping the text straight back.
+    @Test("The command never marks the document hard-wrapped")
+    @MainActor func commandDoesNotFlagDocument() {
         let editor = makeEditor()
         editor.loadContent(words(20))
-        #expect(!editor.wasHardWrapped)
         editor.hardWrapParagraphs(nil)
-        #expect(editor.wasHardWrapped)
+        #expect(!editor.wasHardWrapped)
+        editor.undo(nil)
+        #expect(!editor.wasHardWrapped)
     }
 
     @Test("The command undoes in a single step")
@@ -284,8 +288,6 @@ struct HardWrapEditorTests {
         #expect(editor.rawSource.hasPrefix("short first paragraph\n\n"))
         #expect(editor.rawSource.contains("\n"))
         #expect(editor.textStorage?.string == editor.rawSource)
-        // A local touch-up says nothing about the file as a whole.
-        #expect(!editor.wasHardWrapped)
     }
 
     @Test("The command leaves a fenced code block untouched")
