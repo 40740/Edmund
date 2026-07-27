@@ -12,7 +12,9 @@ import AppKit
 
 struct KeyBindingsSettingsView: View {
     @State private var selectedGroup: String?
-    @State private var collapsedSubmenus: Set<String> = []
+    /// Submenus the user has opened. Empty to start: like the menu bar, a
+    /// submenu shows its commands only once asked for.
+    @State private var expandedSubmenus: Set<String> = []
     @State private var error: String?
     /// Bumped after every accepted edit to re-read shortcuts out of the store.
     @State private var revision = 0
@@ -27,7 +29,7 @@ struct KeyBindingsSettingsView: View {
     private var rows: [KeyBindingCatalog.Row] {
         KeyBindingCatalog.shared.rows(inGroup: selectedGroup ?? "").filter { row in
             guard row.indented, let submenu = row.submenu else { return true }
-            return !collapsedSubmenus.contains(submenu)
+            return expandedSubmenus.contains(submenu)
         }
     }
 
@@ -87,6 +89,7 @@ struct KeyBindingsSettingsView: View {
             Color.clear
                 .frame(width: Self.trailingColumnWidth)
         }
+        .font(.subheadline)
         .frame(height: 28)
         .background(Color(nsColor: .controlBackgroundColor))
     }
@@ -147,18 +150,21 @@ struct KeyBindingsSettingsView: View {
     @ViewBuilder
     private func disclosure(for row: KeyBindingCatalog.Row) -> some View {
         if row.entry == nil, let submenu = row.submenu {
-            let isCollapsed = collapsedSubmenus.contains(submenu)
+            let isExpanded = expandedSubmenus.contains(submenu)
             Button {
-                if isCollapsed {
-                    collapsedSubmenus.remove(submenu)
-                } else {
-                    collapsedSubmenus.insert(submenu)
+                // Animates both the triangle and the rows appearing under it.
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if isExpanded {
+                        expandedSubmenus.remove(submenu)
+                    } else {
+                        expandedSubmenus.insert(submenu)
+                    }
                 }
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     .frame(width: Self.disclosureWidth, alignment: .leading)
                     .contentShape(Rectangle())
             }
