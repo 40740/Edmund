@@ -323,6 +323,11 @@ public class EditorTextView: NSTextView {
         }
     }
 
+    /// Set while a placement re-check is waiting on the runloop, so a burst of
+    /// resize callbacks queues one hop rather than dozens. See
+    /// `scheduleLineNumberPlacementUpdate`.
+    var lineNumberPlacementUpdateScheduled = false
+
     /// The installed gutter, or nil unless the numbers are on *and* don't fit
     /// beside the text.
     var lineNumberRuler: LineNumberRulerView?

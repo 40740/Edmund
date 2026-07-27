@@ -39,9 +39,11 @@ extension EditorTextView {
         }
         // This margin is where the line numbers live, so resizing it can push
         // them out to the window-edge gutter or bring them back beside the text.
-        // Run even when the inset held steady: the document's digit count grows
-        // on its own, and this is the cheapest place that sees both.
-        updateLineNumberRuler()
+        // Checked even when the inset held steady: the document's digit count
+        // grows on its own, and this is the cheapest place that sees both.
+        // Scheduled rather than applied — this runs inside `setFrameSize`, and
+        // re-tiling the scroll view from inside its own layout is a crash.
+        scheduleLineNumberPlacementUpdate()
         guard insetChanged else { return }
 
         let imageBlocks = IndexSet(blocks.indices.filter { blocks[$0].content.contains("![") })

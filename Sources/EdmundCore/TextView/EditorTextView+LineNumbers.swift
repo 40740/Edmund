@@ -261,8 +261,16 @@ extension EditorTextView {
     /// The switch can't oscillate. The gutter reserves width, so turning it on
     /// only ever shrinks the margin — a document that didn't fit still doesn't,
     /// and one that fits without the gutter fits all the more once it's gone.
+    ///
+    /// The margin is recomputed from the cap rather than read off
+    /// `textContainerOrigin`, which is only correct once `updateContentInset`
+    /// has run at least once. Reading the live inset made a freshly built editor
+    /// see a zero margin, decide nothing fit, and put up a gutter it then had to
+    /// take down — a transient that showed up as an installed ruler in tests.
     var lineNumbersFitBesideContent: Bool {
-        textContainerOrigin.x >= lineNumbersRequiredInset
+        Self.horizontalInset(viewWidth: bounds.width,
+                             maxContentWidth: maxContentWidthPoints)
+            >= lineNumbersRequiredInset
     }
 
     // MARK: In-margin numbers (the default placement)
@@ -302,13 +310,42 @@ extension EditorTextView {
     /// ruler; the in-margin default draws itself. A no-op until the view is
     /// inside a scroll view — Document configures the editor before adding it to
     /// one, so `viewDidMoveToSuperview` replays this.
+    /// Re-checks the placement after a layout change, landing any actual switch
+    /// on the next runloop pass.
+    ///
+    /// The deferral is not optional. `updateContentInset` runs inside
+    /// `setFrameSize`, and adding or removing a ruler re-tiles the scroll view —
+    /// mutating it from inside its own layout crashed the whole test process on
+    /// macOS 14 (SIGSEGV; CI caught what six clean local runs on macOS 15 did
+    /// not). It's the same constraint that keeps `ruleThickness` off the draw
+    /// path, one layer up.
+    ///
+    /// Nothing is scheduled unless the placement actually has to change, so the
+    /// common path is two cheap reads.
+    func scheduleLineNumberPlacementUpdate() {
+        guard enclosingScrollView != nil else { return }
+        let wantsGutter = showLineNumbers && !lineNumbersFitBesideContent
+        guard wantsGutter != (lineNumberRuler != nil),
+              !lineNumberPlacementUpdateScheduled else { return }
+
+        lineNumberPlacementUpdateScheduled = true
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.lineNumberPlacementUpdateScheduled = false
+                self.updateLineNumberRuler()
+            }
+        }
+    }
+
     /// Puts the gutter up (or takes it down) to match `lineNumbersFitBesideContent`.
     ///
-    /// `lineNumberRuler` is assigned *before* the scroll view is told about it,
-    /// and cleared before the removal, because showing or hiding a ruler resizes
-    /// the document view synchronously — which re-enters here through
-    /// `setFrameSize`. Assigning afterwards would let that re-entrant call see
-    /// nil and build a second ruler.
+    /// Call this only from outside a layout pass — `showLineNumbers`,
+    /// `viewDidMoveToSuperview`, or the scheduled hop above. `lineNumberRuler`
+    /// is assigned *before* the scroll view is told about it, and cleared before
+    /// the removal, because showing or hiding a ruler resizes the document view
+    /// synchronously and re-enters through `setFrameSize`; assigning afterwards
+    /// would let that re-entrant call see nil and build a second ruler.
     func updateLineNumberRuler() {
         guard let scrollView = enclosingScrollView else { return }
         if showLineNumbers && !lineNumbersFitBesideContent {

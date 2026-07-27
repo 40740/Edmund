@@ -92,6 +92,7 @@ struct LineNumbersTests {
     @MainActor private func squeezeMargin(_ editor: EditorTextView) {
         editor.maxContentWidthPoints = .greatestFiniteMagnitude
         editor.updateContentInset()
+        settle()
     }
 
     /// A cap far narrower than the window, which centres the column and leaves
@@ -99,6 +100,13 @@ struct LineNumbersTests {
     @MainActor private func wideMargin(_ editor: EditorTextView) {
         editor.maxContentWidthPoints = 120
         editor.updateContentInset()
+        settle()
+    }
+
+    /// A placement switch is applied on the next runloop pass, never inside the
+    /// layout that noticed it — see `scheduleLineNumberPlacementUpdate`.
+    @MainActor private func settle() {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     }
 
     @Test("A margin too narrow for the numbers puts up the gutter")
@@ -113,6 +121,7 @@ struct LineNumbersTests {
 
         let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 300))
         scrollView.documentView = editor         // → viewDidMoveToSuperview
+        settle()
         #expect(!editor.lineNumbersFitBesideContent)
         #expect(editor.lineNumberRuler != nil)
         #expect(scrollView.verticalRulerView === editor.lineNumberRuler)
@@ -164,6 +173,7 @@ struct LineNumbersTests {
 
         // Showing a ruler resizes the document view, which re-enters this path.
         for _ in 0..<5 { editor.updateContentInset() }
+        settle()
         #expect(editor.lineNumberRuler === first)
         #expect(scrollView.verticalRulerView === first)
     }
