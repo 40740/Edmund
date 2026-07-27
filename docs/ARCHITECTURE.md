@@ -196,6 +196,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | App shell | `edmd/App/{main,Document,DocumentController}.swift`; menu bar in `main.swift` `setupMenuBar()` + `FormatMenu.swift`; Sparkle `SPUStandardUpdaterController` in `AppDelegate` |
 | macOS integrations | Services menu (`edmd/App/ServicesProvider.swift` + `NSServices` in `Info.plist`), App Intents (`edmd/App/Intents.swift`), Quick Look preview (`EdmundQuickLook` target, hosts `ReadModeWebView`), AppleScript code-fence syntax (`EdmundCore/Resources/Syntaxes/applescript.json`). **Two shipped-but-not-live-verifiable limitations** (App Intents metadata needs an Xcode-project build; the Quick Look appex won't launch under ad-hoc signing): [`architecture/macos-integrations.md`](architecture/macos-integrations.md). |
 | Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General/Advanced views) |
+| Key bindings | `edmd/Settings/KeyBindingStore.swift` + `KeyBindingsSettingsView.swift`. Every rebindable command is a `MenuCommand` (`App/FormatMenu.swift`) with a stable `id`, a `group` (the menu it lives under) and a default `Shortcut`; `makeItem()` resolves the user's override from `KeyBindingStore` and registers the built `NSMenuItem` in `KeyBindingCatalog`, so the pane retunes shortcuts live without rebuilding the menu bar. Overrides live in one UserDefaults dict (`settings.keyBindings`, `id → "shift+cmd+e"`); an empty string means "user removed this shortcut", a missing key means "use the default". Conflicts are checked against the **live `NSApp.mainMenu`**, not the catalog, so system items (⌘S, ⌘C) count too; a chord without ⌘ or ⌃ is refused outright (it would fire while typing). Only Edmund's own commands are listed — the OS-standard items stay fixed. |
 | Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (§7) |
 | Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey`. `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure. CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline + signing + `RELEASE_TOKEN`: §13. |
 | Find & Replace | `EdmundCore/Find/FindEngine.swift` (pure search), `TextView/EditorTextView+Find.swift` (match state, highlight drawing, pop animation, `EditorFindHandling`), `edmd/Views/FindBarView.swift` (the bar), `edmd/App/FindController.swift` (mediator); Edit ▸ Find menu in `main.swift` |
@@ -428,6 +429,17 @@ Notable subsystems:
   clicks, appearance forced per-launch via `-settings.appearance.mode`, capture
   by window id without stealing focus). Extend them for new surfaces rather than
   rebuilding one-off shell; they are permanent fixtures, not scratch files.
+- **Don't drive the Settings window with System Events** to capture a pane.
+  `click at {x, y}` is a no-op, the toolbar's pane items are intermittently
+  absent from the AX element list, and the window frequently opens
+  off-screen — where `CGWindowListCopyWindowInfo(.optionOnScreenOnly)`
+  can't see it and `screencapture -R` grabs whatever else occupies that
+  rect (another agent's window, in a parallel-worktree session). Instead
+  add a temporary `showSettings(nil)` + `selectedTabViewItemIndex = N` in
+  `applicationDidFinishLaunching`, build, capture by window id, then revert.
+  Deterministic and needs no accessibility at all. Note
+  `kCGWindowOwnerPID` bridges to `Int`, not `Int32` — the wrong cast
+  silently matches nothing.
 
 ### TextKit 2 layout & geometry
 

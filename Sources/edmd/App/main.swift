@@ -232,19 +232,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         fileMenu.addItem(NSMenuItem.separator())
 
-        fileMenu.addItem(withTitle: "Rename\u{2026}",
-                         action: #selector(Document.rename(_:)),
-                         keyEquivalent: "")
+        // Edmund's own File commands are rebindable (Settings ▸ Key Bindings);
+        // the standard New/Open/Save/Print above keep their system shortcuts.
+        fileMenu.addItem(MenuCommand(id: "file.rename", group: "File", title: "Rename\u{2026}",
+                                     action: #selector(Document.rename(_:))).makeItem())
 
-        fileMenu.addItem(withTitle: "Move To\u{2026}",
-                         action: #selector(Document.move(_:)),
-                         keyEquivalent: "")
+        fileMenu.addItem(MenuCommand(id: "file.moveTo", group: "File", title: "Move To\u{2026}",
+                                     action: #selector(Document.move(_:))).makeItem())
 
         fileMenu.addItem(NSMenuItem.separator())
 
-        fileMenu.addItem(withTitle: "Export as PDF\u{2026}",
-                         action: #selector(Document.exportToPDF(_:)),
-                         keyEquivalent: "")
+        fileMenu.addItem(MenuCommand(id: "file.exportPDF", group: "File", title: "Export as PDF\u{2026}",
+                                     action: #selector(Document.exportToPDF(_:))).makeItem())
 
         fileMenu.addItem(withTitle: "Print\u{2026}",
                          action: #selector(Document.printDocument(_:)),
