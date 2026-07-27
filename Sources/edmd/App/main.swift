@@ -175,6 +175,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     // MARK: - Menu Bar
 
+    /// Edit ▸ Find. Edmund's own commands, so they are rebindable — the standard
+    /// Edit items above them (Cut/Copy/Paste, Undo) keep their system shortcuts.
+    @MainActor private static let findCommands: [MenuCommand] = [
+        MenuCommand(id: "find.show", group: "Edit", submenu: "Find", title: "Find\u{2026}",
+                    action: #selector(EditorTextView.showFindBar(_:)), shortcut: .cmd("f")),
+        MenuCommand(id: "find.replace", group: "Edit", submenu: "Find", title: "Find and Replace\u{2026}",
+                    action: #selector(EditorTextView.showFindReplaceBar(_:)), shortcut: .cmdOpt("f")),
+        MenuCommand(id: "find.next", group: "Edit", submenu: "Find", title: "Find Next",
+                    action: #selector(EditorTextView.findNext(_:)), shortcut: .cmd("g")),
+        MenuCommand(id: "find.previous", group: "Edit", submenu: "Find", title: "Find Previous",
+                    action: #selector(EditorTextView.findPrevious(_:)), shortcut: .cmdShift("g")),
+    ]
+
     @MainActor private func setupMenuBar() {
         let mainMenu = NSMenu()
 
@@ -300,18 +313,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // mode (the web view is first responder and implements none of these).
         let findMenuItem = NSMenuItem()
         let findMenu = NSMenu(title: "Find")
-        findMenu.addItem(withTitle: "Find…",
-                         action: #selector(EditorTextView.showFindBar(_:)),
-                         keyEquivalent: "f")
-        findMenu.addItem(withTitle: "Find and Replace…",
-                         action: #selector(EditorTextView.showFindReplaceBar(_:)),
-                         keyEquivalent: "f").keyEquivalentModifierMask = [.command, .option]
-        findMenu.addItem(withTitle: "Find Next",
-                         action: #selector(EditorTextView.findNext(_:)),
-                         keyEquivalent: "g")
-        findMenu.addItem(withTitle: "Find Previous",
-                         action: #selector(EditorTextView.findPrevious(_:)),
-                         keyEquivalent: "g").keyEquivalentModifierMask = [.command, .shift]
+        for command in Self.findCommands { findMenu.addItem(command.makeItem()) }
         findMenuItem.submenu = findMenu
         findMenuItem.title = "Find"
         editMenu.addItem(findMenuItem)
