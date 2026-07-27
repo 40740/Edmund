@@ -178,8 +178,13 @@ final class KeyBindingCatalog {
     struct Row: Identifiable {
         let id: String
         let title: String
-        let indented: Bool
+        /// The submenu this row belongs to — a submenu's own title row included,
+        /// which is what the disclosure triangle collapses.
+        let submenu: String?
         let entry: Entry?
+
+        /// A command inside a submenu, i.e. a row that hides when collapsed.
+        var indented: Bool { entry != nil && submenu != nil }
     }
 
     private(set) var entries: [Entry] = []
@@ -206,11 +211,11 @@ final class KeyBindingCatalog {
                 currentSubmenu = entry.submenu
                 if let submenu = currentSubmenu {
                     rows.append(Row(id: "\(group)/\(submenu)", title: submenu,
-                                    indented: false, entry: nil))
+                                    submenu: submenu, entry: nil))
                 }
             }
             rows.append(Row(id: entry.id, title: entry.title,
-                            indented: entry.submenu != nil, entry: entry))
+                            submenu: entry.submenu, entry: entry))
         }
         return rows
     }

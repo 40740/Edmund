@@ -12,6 +12,7 @@ import AppKit
 
 struct KeyBindingsSettingsView: View {
     @State private var selectedGroup: String?
+    @State private var collapsedSubmenus: Set<String> = []
     @State private var error: String?
     /// Bumped after every accepted edit to re-read shortcuts out of the store.
     @State private var revision = 0
@@ -24,7 +25,10 @@ struct KeyBindingsSettingsView: View {
     private var groups: [String] { KeyBindingCatalog.shared.groups }
 
     private var rows: [KeyBindingCatalog.Row] {
-        KeyBindingCatalog.shared.rows(inGroup: selectedGroup ?? "")
+        KeyBindingCatalog.shared.rows(inGroup: selectedGroup ?? "").filter { row in
+            guard row.indented, let submenu = row.submenu else { return true }
+            return !collapsedSubmenus.contains(submenu)
+        }
     }
 
     var body: some View {
@@ -70,13 +74,16 @@ struct KeyBindingsSettingsView: View {
                 .frame(width: Self.menuColumnWidth, alignment: .leading)
             Divider()
             Text("Command")
-                .padding(.leading, Self.rowInset + Self.listInset)
+                .padding(.leading, Self.rowInset + Self.listInset + Self.disclosureWidth)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Divider()
+            // The dividers flanking Key stop short of the header's edges — they
+            // separate two labels, they don't continue down the lists the way
+            // the Menu one does.
+            Divider().frame(height: 16)
             Text("Key")
                 .padding(.leading, Self.rowInset)
                 .frame(width: Self.keyColumnWidth, alignment: .leading)
-            Divider()
+            Divider().frame(height: 16)
             Color.clear
                 .frame(width: Self.trailingColumnWidth)
         }
@@ -91,6 +98,10 @@ struct KeyBindingsSettingsView: View {
     /// `listRowInsets` is zeroed, so the header adds it to keep the column
     /// titles above their values.
     private static let listInset: CGFloat = 7
+
+    /// The disclosure-triangle gutter. Every top-level row reserves it, so their
+    /// titles line up whether or not they open a submenu.
+    private static let disclosureWidth: CGFloat = 14
 
     private var lists: some View {
         HStack(spacing: 0) {
@@ -108,9 +119,9 @@ struct KeyBindingsSettingsView: View {
             List(rows) { row in
                 HStack(spacing: 0) {
                     // Submenu commands sit under their submenu's title, as they
-                    // do in the menu bar.
+                    // do in the menu bar, behind a disclosure triangle.
+                    disclosure(for: row)
                     Text(row.title)
-                        .padding(.leading, row.indented ? Self.rowInset + 16 : Self.rowInset)
                     Spacer(minLength: 8)
                     if let entry = row.entry {
                         ShortcutField(shortcut: shortcut(for: entry),
@@ -118,6 +129,7 @@ struct KeyBindingsSettingsView: View {
                             .frame(width: Self.keyColumnWidth)
                     }
                 }
+                .padding(.leading, Self.rowInset)
                 .padding(.trailing, Self.trailingColumnWidth)
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
@@ -127,6 +139,34 @@ struct KeyBindingsSettingsView: View {
             // edited shortcut — it also resets the scroll position. Worth
             // replacing if the command lists ever get long enough to scroll far.
             .id(revision)
+        }
+    }
+
+    /// The triangle for a submenu row, or the empty gutter every other row keeps
+    /// so titles at the same level start at the same x.
+    @ViewBuilder
+    private func disclosure(for row: KeyBindingCatalog.Row) -> some View {
+        if row.entry == nil, let submenu = row.submenu {
+            let isCollapsed = collapsedSubmenus.contains(submenu)
+            Button {
+                if isCollapsed {
+                    collapsedSubmenus.remove(submenu)
+                } else {
+                    collapsedSubmenus.insert(submenu)
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .frame(width: Self.disclosureWidth, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            Color.clear
+                .frame(width: row.indented ? Self.disclosureWidth * 2 : Self.disclosureWidth,
+                       height: 1)
         }
     }
 
@@ -254,11 +294,13 @@ final class ShortcutRecorderView: NSView {
         let color: NSColor = isRecording ? .selectedMenuItemTextColor
             : (shortcut == nil ? .tertiaryLabelColor : .labelColor)
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+            .font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
             .foregroundColor: color,
         ]
         let size = (text as NSString).size(withAttributes: attributes)
-        let origin = NSPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2)
+        // Right-aligned, like the key equivalents in a menu.
+        let origin = NSPoint(x: max(0, bounds.maxX - size.width),
+                             y: bounds.midY - size.height / 2)
         (text as NSString).draw(at: origin, withAttributes: attributes)
     }
 }
