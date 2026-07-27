@@ -4,21 +4,34 @@ All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [0.3.0] - 2026-07-27
+
+Settings stuff. 
+
+Thanks to @CaliLuke for his first contribution (#236) and for being the first community contributor :D
 
 ### Added
-- Hard wrap: a file that is already hard-wrapped is joined into single lines for editing and re-wrapped on save at the width it already uses, so editing never fights the wrap and diffs stay line-sized (Settings ▸ Edit ▸ Document, off by default; requires strict line breaks). Files that were never wrapped are left alone
-- Edit ▸ Hard Wrap Paragraphs: reflows the selected paragraphs, or the whole document, at 80 characters
-- Check grammar while typing (Settings ▸ Edit ▸ Words)
-- Focus mode: dims everything but the lines the selection touches, including code blocks, callouts and other drawn chrome (Settings ▸ Edit ▸ Editor, View ▸ Focus Mode; off by default)
-- Typewriter scroll is now also a checkbox in Settings ▸ Edit ▸ Editor (same setting as View ▸ Typewriter Scroll)
-- Settings ▸ Key Bindings: customize the shortcut of any Edmund menu command (File, Edit ▸ Find, Format, View). A shortcut already used elsewhere in the app is refused, and Restore Defaults puts everything back
-- macOS Services menu: "Open in Edmund" and "New Edmund Document with Selection"
-- App Intents ("Open in Edmund", "New Edmund Document") for Shortcuts / Spotlight (metadata generation requires an Xcode-project build; see build-app.sh)
-- Quick Look preview extension: renders Markdown as rich text, following the system light/dark appearance
-- AppleScript code-fence syntax highlighting
-- List indent guides: vertical lines marking each nesting level of a list (Settings ▸ Edit, off by default)
-- Line numbers: source line numbers beside the text column, moving out to a gutter by the window edge on their own whenever the margin is too narrow to hold them (Settings ▸ Edit, off by default)
+- Improved performance (#236 @CaliLuke)
+- **(Almost) Full Obsidian-flavored Markdown support**: YAML front matter, `[image|dimension()` (implicit), `^block`, `#tag`, collapsible callout
+- **Find and replace** in Apple Notes fashion
+- **Settings > Edit**: Hide toolbar, focus mode, detect indentation, show invisible characters, show line numbers, hard-wrap long lines
+- **Settings > Syntax**: Toggle Markdown syntax support, add code block syntax
+- **Settings > Key Bindings**
+- Edit > Find, Spelling & Grammar, Transformations, Speech menus
+- Finder services
+- `Option+Cmd+I` to open inspector
+
+### Changed
+- Misc UI improvements: Numbered lists marker in read mode, thicker thematic break, removed bottom border from edit mode tables, removed inline code color from read mode
+- Dark mode readability: Empty checkbox in edit mode, blockquote bars in read mode, table borders in edit mode
+- Code block syntax highlighting is now controlled by syntax-based JSON instead of general regex
+- Inline math block renders as block in read mode
+- Format > Comments now wraps selection in `<!-- selection -->`
+
+### Fixed
+- Headers render spaces after `#...`
+- Indented code block renders as monospace
+- Replace right-click "Font" menu in edit mode with our Format > Font menu
 
 
 ## [0.2.1] - 2026-07-17
