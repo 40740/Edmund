@@ -267,6 +267,9 @@ private struct ShortcutField: NSViewRepresentable {
 /// is being captured is a key equivalent, not text, and a text field would run
 /// the chord through the input context first.
 final class ShortcutRecorderView: NSView {
+    /// Gap between the shortcut and the right edge of the key column.
+    private static let trailingInset: CGFloat = 8
+
     var shortcut: Shortcut? { didSet { needsDisplay = true } }
     var onCommit: ((Shortcut?) -> Void)?
 
@@ -344,8 +347,10 @@ final class ShortcutRecorderView: NSView {
             .foregroundColor: color,
         ]
         let size = (text as NSString).size(withAttributes: attributes)
-        // Right-aligned, like the key equivalents in a menu.
-        let origin = NSPoint(x: max(0, bounds.maxX - size.width),
+        // Right-aligned, like the key equivalents in a menu, but held off the
+        // column's edge. Inset here rather than in the row so the field's frame
+        // — and the header divider drawn at it — stays put.
+        let origin = NSPoint(x: max(0, bounds.maxX - size.width - Self.trailingInset),
                              y: bounds.midY - size.height / 2)
         (text as NSString).draw(at: origin, withAttributes: attributes)
     }
