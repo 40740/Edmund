@@ -90,14 +90,13 @@ struct KeyBindingsSettingsView: View {
             Text("Command")
                 .padding(.leading, Self.rowInset + Self.listInset + Self.disclosureWidth)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            // The dividers flanking Key stop short of the header's edges — they
-            // separate two labels, they don't continue down the lists the way
-            // the Menu one does.
+            // Stops short of the header's edges — it separates two labels, it
+            // doesn't continue down the lists the way the Menu one does. There
+            // is none after Key: nothing follows it but the empty margin.
             Divider().frame(height: 16)
             Text("Key")
                 .padding(.trailing, ShortcutRecorderView.trailingInset)
                 .frame(width: Self.keyColumnWidth, alignment: .trailing)
-            Divider().frame(height: 16)
             Color.clear
                 .frame(width: Self.trailingColumnWidth)
         }
