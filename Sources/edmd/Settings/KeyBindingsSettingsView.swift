@@ -95,8 +95,8 @@ struct KeyBindingsSettingsView: View {
             // the Menu one does.
             Divider().frame(height: 16)
             Text("Key")
-                .padding(.leading, Self.rowInset)
-                .frame(width: Self.keyColumnWidth, alignment: .leading)
+                .padding(.trailing, ShortcutRecorderView.trailingInset)
+                .frame(width: Self.keyColumnWidth, alignment: .trailing)
             Divider().frame(height: 16)
             Color.clear
                 .frame(width: Self.trailingColumnWidth)
@@ -267,8 +267,9 @@ private struct ShortcutField: NSViewRepresentable {
 /// is being captured is a key equivalent, not text, and a text field would run
 /// the chord through the input context first.
 final class ShortcutRecorderView: NSView {
-    /// Gap between the shortcut and the right edge of the key column.
-    private static let trailingInset: CGFloat = 8
+    /// Gap between the shortcut and the right edge of the key column. The
+    /// header's "Key" label sits on the same margin.
+    static let trailingInset: CGFloat = 8
 
     var shortcut: Shortcut? { didSet { needsDisplay = true } }
     var onCommit: ((Shortcut?) -> Void)?
