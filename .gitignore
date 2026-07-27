@@ -34,3 +34,9 @@ sparkle_private_key.txt
 # system
 .DS_Store
 .netrc
+
+# Stray SwiftPM object/dependency files that land at the repo root
+*.d
+*.o
+*.swiftdeps
+*.swiftdeps~
