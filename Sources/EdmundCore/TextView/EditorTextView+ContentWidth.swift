@@ -33,8 +33,18 @@ extension EditorTextView {
     public func updateContentInset() {
         let target = Self.horizontalInset(viewWidth: bounds.width,
                                           maxContentWidth: maxContentWidthPoints)
-        guard abs(textContainerInset.width - target) > 0.5 else { return }
-        textContainerInset = NSSize(width: target, height: textContainerInset.height)
+        let insetChanged = abs(textContainerInset.width - target) > 0.5
+        if insetChanged {
+            textContainerInset = NSSize(width: target, height: textContainerInset.height)
+        }
+        // This margin is where the line numbers live, so resizing it can push
+        // them out to the window-edge gutter or bring them back beside the text.
+        // Checked even when the inset held steady: the document's digit count
+        // grows on its own, and this is the cheapest place that sees both.
+        // Scheduled rather than applied — this runs inside `setFrameSize`, and
+        // re-tiling the scroll view from inside its own layout is a crash.
+        scheduleLineNumberPlacementUpdate()
+        guard insetChanged else { return }
 
         let imageBlocks = IndexSet(blocks.indices.filter { blocks[$0].content.contains("![") })
         guard !imageBlocks.isEmpty else { return }

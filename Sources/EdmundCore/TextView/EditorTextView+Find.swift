@@ -72,9 +72,9 @@ extension EditorTextView {
         super.drawBackground(in: rect)
         // Line numbers in the column's margin ride this same pass (they are
         // beside the text, never under it). See EditorTextView+LineNumbers.
-        if showLineNumbers && !lineNumbersByWindowEdge {
-            drawLineNumbersBesideContent(in: rect)
-        }
+        // Whether they actually fit — and so whether the gutter has them
+        // instead — is decided inside.
+        if showLineNumbers { drawLineNumbersBesideContent(in: rect) }
         guard findActive, !findMatches.isEmpty, let tlm = textLayoutManager else { return }
 
         let visible = viewportCharRange(tlm)

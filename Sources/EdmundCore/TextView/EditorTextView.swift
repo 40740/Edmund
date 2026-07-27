@@ -274,6 +274,22 @@ public class EditorTextView: NSTextView {
     /// Clamped on read, so a garbage value can't produce an empty indent unit.
     public var indentWidth = 2
 
+    /// Whether this document arrived hard-wrapped — opening it actually joined
+    /// lines — in which case saving re-wraps it so the file keeps its shape.
+    /// A file that was never wrapped is never wrapped on your behalf, so the
+    /// setting can't reformat a document that didn't ask for it. Set only by
+    /// `loadContent(_:unwrapHardWrapping:)`: it describes the file on disk, not
+    /// the buffer, so editing — including Hard Wrap Paragraphs — never changes
+    /// it. See EditorTextView+HardWrap.
+    public internal(set) var wasHardWrapped = false
+
+    /// The column this document is wrapped at. Detected from the file when it
+    /// opens (Settings ▸ Edit ▸ Document ▸ "Detect max line length"), so a file
+    /// wrapped at 72 is written back at 72 instead of being reflowed to 80 on
+    /// its first save. Falls back to `HardWrap.column` when detection is off or
+    /// the file isn't consistently wrapped.
+    public internal(set) var hardWrapColumn = HardWrap.column
+
     /// Invisible-character marks (whitespace made visible), or nil = off (the
     /// default). Editor-only; Read mode never shows these. `nonisolated(unsafe)`
     /// like `textAntialias` because the (nonisolated) layout-fragment delegate
@@ -297,8 +313,9 @@ public class EditorTextView: NSTextView {
     nonisolated(unsafe) public var focusMode = false
 
     /// Show source line numbers — default off. They sit in the reading column's
-    /// own margin unless `lineNumbersByWindowEdge` moves them out to a gutter.
-    /// See EditorTextView+LineNumbers.
+    /// own margin, or in a window-edge gutter when that margin is too narrow to
+    /// hold them; the placement is chosen for you, not configured. See
+    /// EditorTextView+LineNumbers.
     public var showLineNumbers = false {
         didSet {
             guard oldValue != showLineNumbers else { return }
@@ -306,18 +323,13 @@ public class EditorTextView: NSTextView {
         }
     }
 
-    /// Put the line numbers in a gutter at the window's leading edge instead of
-    /// beside the text — default off. Installs/removes an NSRulerView on the
-    /// enclosing scroll view, so it is a no-op until the view has one;
-    /// `viewDidMoveToSuperview` replays it.
-    public var lineNumbersByWindowEdge = false {
-        didSet {
-            guard oldValue != lineNumbersByWindowEdge else { return }
-            updateLineNumberRuler()
-        }
-    }
+    /// Set while a placement re-check is waiting on the runloop, so a burst of
+    /// resize callbacks queues one hop rather than dozens. See
+    /// `scheduleLineNumberPlacementUpdate`.
+    var lineNumberPlacementUpdateScheduled = false
 
-    /// The installed gutter, or nil unless the numbers are on *and* by the edge.
+    /// The installed gutter, or nil unless the numbers are on *and* don't fit
+    /// beside the text.
     var lineNumberRuler: LineNumberRulerView?
 
     /// UTF-16 offsets of each line's first character; see `lineStarts`.
@@ -710,14 +722,32 @@ public class EditorTextView: NSTextView {
     // MARK: - Content Loading (called by Document)
 
     /// Replace the editor's content. Used by NSDocument on file open.
-    public func loadContent(_ content: String) {
+    ///
+    /// `unwrapHardWrapping` joins each paragraph's soft-broken lines so editing
+    /// works on one long logical line. It runs *after* the line ending is
+    /// detected and normalized — unwrapping in the caller instead would hand
+    /// `LineEnding.detect` text whose `\r\n`s had already been rewritten and
+    /// silently turn every CRLF file into LF.
+    public func loadContent(_ content: String, unwrapHardWrapping: Bool = false) {
         Log.measure("Loaded document (\(content.count) chars)", category: .document) {
             // Remember the file's line ending, then normalize the buffer to LF so
             // block parsing and rendering never see a stray `\r`. A file that mixes
             // styles is normalized to LF on save too (rather than its dominant style),
             // so its endings become consistent.
             originalLineEnding = LineEnding.isInconsistent(in: content) ? .lf : LineEnding.detect(in: content)
-            rawSource = LineEnding.normalize(content)
+            let normalized = LineEnding.normalize(content)
+            // The join changing nothing *is* the detection that this file has no
+            // hard wrapping — so it keeps its shape and save leaves it alone.
+            // Both readings come off one parse: the column has to be detected
+            // from the breaks the file actually has, which the join is about to
+            // remove, and parsing twice would double the cost of opening a
+            // wrapped file (parsing is ~95% of the work here).
+            let joined = unwrapHardWrapping
+                ? HardWrap.unwrapDetectingColumn(normalized, features: markdownFeatures)
+                : (text: normalized, column: nil)
+            wasHardWrapped = joined.text != normalized
+            hardWrapColumn = (wasHardWrapped ? joined.column : nil) ?? HardWrap.column
+            rawSource = joined.text
             rebuildListIndentState()
             rebuildLinkDefState()
             blocks = BlockParser.parse(rawSource, features: markdownFeatures)

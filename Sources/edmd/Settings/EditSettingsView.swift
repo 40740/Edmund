@@ -1,10 +1,5 @@
 // The Edit settings pane: one page, in three sections separated by rules —
 // the window chrome, what typing does, and what you see.
-//
-// Several controls here are deliberately `.disabled(true)`: their setting is
-// stored and the UI is final, but the feature behind them isn't built yet
-// (hard wrap). Each becomes live by
-// deleting its `.disabled(true)` when the feature lands — see misc/backlog.md.
 
 import SwiftUI
 import AppKit
@@ -25,8 +20,6 @@ struct EditSettingsView: View {
     @AppStorage(AppSettings.Key.invisibleControl)    private var otherControl = true
     @AppStorage(AppSettings.Key.showListIndentGuides) private var showListIndentGuides = false
     @AppStorage(AppSettings.Key.showLineNumbers)      private var showLineNumbers = false
-    @AppStorage(AppSettings.Key.lineNumbersByWindowEdge)
-    private var lineNumbersByWindowEdge = false
     @AppStorage(AppSettings.Key.typewriterMode) private var typewriterScroll = true
     @AppStorage(AppSettings.Key.focusMode) private var focusMode = false
     @AppStorage(AppSettings.Key.indentStyle)
@@ -37,7 +30,8 @@ struct EditSettingsView: View {
     @AppStorage(AppSettings.Key.hardWrapLongLines) private var hardWrapLongLines = false
     @AppStorage(AppSettings.Key.autoCloseBrackets) private var autoCloseBrackets = true
     @AppStorage(AppSettings.Key.continueLists)     private var continueLists = true
-    @AppStorage(AppSettings.Key.spellCheck)        private var spellCheck = false 
+    @AppStorage(AppSettings.Key.spellCheck)        private var spellCheck = false
+    @AppStorage(AppSettings.Key.grammarCheck)      private var grammarCheck = false
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
@@ -67,12 +61,6 @@ struct EditSettingsView: View {
                         .onChange(of: typewriterScroll) { AppSettings.applyEditSettingsToOpenDocuments() }
                     Toggle("Focus mode", isOn: $focusMode)
                         .onChange(of: focusMode) { AppSettings.applyEditSettingsToOpenDocuments() }
-                    Text("Dim all but current line and selection.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 380, alignment: .leading)
-                        .padding(.leading, 20)
                 }
             }
             
@@ -121,9 +109,16 @@ struct EditSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Automatically insert closing parentheses and quotes", isOn: $autoCloseBrackets)
                     Toggle("Check spelling while typing", isOn: $spellCheck)
+                    // AppKit checks grammar as part of the continuous
+                    // spell-checking pass (hence the menu's "Check Grammar With
+                    // Spelling"), so it has nothing to do on its own.
+                    Toggle("Check grammar while typing", isOn: $grammarCheck)
+                        .padding(.leading, 20)
+                        .disabled(!spellCheck)
                 }
                 .onChange(of: autoCloseBrackets) { AppSettings.applyEditSettingsToOpenDocuments() }
                 .onChange(of: spellCheck) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: grammarCheck) { AppSettings.applyEditSettingsToOpenDocuments() }
             }
             
             GridRow {
@@ -183,17 +178,9 @@ struct EditSettingsView: View {
                     // Not in print / PDF, for now.
                     Toggle("Show line numbers", isOn: $showLineNumbers)
                         .onChange(of: showLineNumbers) { AppSettings.applyEditSettingsToOpenDocuments() }
-                    // Off: the numbers sit in the reading column's own margin.
-                    // On: they move out to a gutter at the window's leading edge,
-                    // which reserves width and so re-centers the column.
-                    Toggle("Show line numbers by window edge", isOn: $lineNumbersByWindowEdge)
-                        .padding(.leading, 20)
-                        .disabled(!showLineNumbers)
-                        .onChange(of: lineNumbersByWindowEdge) { AppSettings.applyEditSettingsToOpenDocuments() }
-
                     Toggle("Strict line breaks", isOn: $strictLineBreaks)
                         .onChange(of: strictLineBreaks) { refreshReadViews() }
-                    Text("Markdown specs ignore single line breaks in read view. Turn off to make single line breaks visible.")
+                    Text("Turn off to make single line breaks / soft-wraps visible.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -203,9 +190,23 @@ struct EditSettingsView: View {
             }
             
             GridRow {
-                Text("Document:")
-                Toggle("Automatically hard-wrap long lines", isOn: $hardWrapLongLines)
-                    .disabled(true)   // not implemented yet
+                Text("Document:").gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 6) {
+                    // Joining lines only makes sense while a single newline is
+                    // formatting rather than content — see the note below the
+                    // strict line breaks toggle.
+                    // One switch for the whole feature: a file that opens
+                    // hard-wrapped is joined for editing and written back at the
+                    // width it already uses, detected from its own line breaks.
+                    Toggle("Detect hard wrap pattern for lines on document opening", isOn: $hardWrapLongLines)
+                        .disabled(!strictLineBreaks)
+                    Text("Requires strict line breaks")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 380, alignment: .leading)
+                        .padding(.leading, 20)
+                }
             }
         }
         .settingsPanePadding()

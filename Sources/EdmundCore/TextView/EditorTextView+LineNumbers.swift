@@ -5,13 +5,17 @@ import AppKit
 // Source line numbers, off by default (Settings ▸ Edit ▸ Lines). Two placements
 // share one walk over the visible lines:
 //
-//   - **Beside the content** (the default): drawn in the reading column's own
+//   - **Beside the content** (preferred): drawn in the reading column's own
 //     margin on the text view's background pass. Reserves nothing, so the column
 //     never moves, and the numbers stay next to the line they label at any
 //     window width.
-//   - **By the window edge** (`lineNumbersByWindowEdge`): a `LineNumberRulerView`
-//     on the scroll view. AppKit owns the scroll sync and clipping, but it
-//     reserves width, so the centered column re-centers when it is switched on.
+//   - **By the window edge**: a `LineNumberRulerView` on the scroll view. AppKit
+//     owns the scroll sync and clipping, but it reserves width, so the centered
+//     column re-centers when it comes up.
+//
+// The placement is not a setting. A wide content-width cap (or a narrow window,
+// or a five-digit document) leaves no margin to draw in, and that is exactly
+// when the gutter takes over — see `lineNumbersFitBesideContent`.
 //
 // Also here: `lineStarts`, the cached line-start table backing
 // `line(forOffset:)` / `offset(forLine:)`, dropped on every `rawSource` write.
@@ -249,6 +253,26 @@ extension EditorTextView {
             + Self.lineNumberPadding - padding
     }
 
+    /// Whether the reading column's margin can hold the numbers. This one test
+    /// picks the placement: true draws them beside the text, false puts up the
+    /// window-edge gutter instead. It moves with the content-width cap (a wide
+    /// cap leaves no margin), the window width, and the document's digit count.
+    ///
+    /// The switch can't oscillate. The gutter reserves width, so turning it on
+    /// only ever shrinks the margin — a document that didn't fit still doesn't,
+    /// and one that fits without the gutter fits all the more once it's gone.
+    ///
+    /// The margin is recomputed from the cap rather than read off
+    /// `textContainerOrigin`, which is only correct once `updateContentInset`
+    /// has run at least once. Reading the live inset made a freshly built editor
+    /// see a zero margin, decide nothing fit, and put up a gutter it then had to
+    /// take down — a transient that showed up as an installed ruler in tests.
+    var lineNumbersFitBesideContent: Bool {
+        Self.horizontalInset(viewWidth: bounds.width,
+                             maxContentWidth: maxContentWidthPoints)
+            >= lineNumbersRequiredInset
+    }
+
     // MARK: In-margin numbers (the default placement)
 
     /// Draws the numbers in the reading column's left margin, right-aligned just
@@ -263,11 +287,11 @@ extension EditorTextView {
 
         // Nothing reserves this margin — the content-width cap owns it, so the
         // column always stretches to the full cap and the numbers give way when
-        // what's left can't hold them.
-        // ponytail: all of them, never just the ones that fit, so the column
-        // can't go ragged with `9` drawn and `100` missing. The window-edge
-        // gutter is the placement for "always visible".
-        guard origin.x >= lineNumbersRequiredInset else { return }
+        // what's left can't hold them. They aren't lost when they do: the same
+        // test puts the window-edge gutter up instead.
+        // ponytail: all or none, never just the ones that fit, so the column
+        // can't go ragged with `9` drawn and `100` missing.
+        guard lineNumbersFitBesideContent else { return }
 
         enumerateVisibleLineNumbers { line, capCenterY in
             let label = NSAttributedString(string: "\(line)", attributes: style.attributed(line))
@@ -286,21 +310,57 @@ extension EditorTextView {
     /// ruler; the in-margin default draws itself. A no-op until the view is
     /// inside a scroll view — Document configures the editor before adding it to
     /// one, so `viewDidMoveToSuperview` replays this.
+    /// Re-checks the placement after a layout change, landing any actual switch
+    /// on the next runloop pass.
+    ///
+    /// The deferral is not optional. `updateContentInset` runs inside
+    /// `setFrameSize`, and adding or removing a ruler re-tiles the scroll view —
+    /// mutating it from inside its own layout crashed the whole test process on
+    /// macOS 14 (SIGSEGV; CI caught what six clean local runs on macOS 15 did
+    /// not). It's the same constraint that keeps `ruleThickness` off the draw
+    /// path, one layer up.
+    ///
+    /// Nothing is scheduled unless the placement actually has to change, so the
+    /// common path is two cheap reads.
+    func scheduleLineNumberPlacementUpdate() {
+        guard enclosingScrollView != nil else { return }
+        let wantsGutter = showLineNumbers && !lineNumbersFitBesideContent
+        guard wantsGutter != (lineNumberRuler != nil),
+              !lineNumberPlacementUpdateScheduled else { return }
+
+        lineNumberPlacementUpdateScheduled = true
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.lineNumberPlacementUpdateScheduled = false
+                self.updateLineNumberRuler()
+            }
+        }
+    }
+
+    /// Puts the gutter up (or takes it down) to match `lineNumbersFitBesideContent`.
+    ///
+    /// Call this only from outside a layout pass — `showLineNumbers`,
+    /// `viewDidMoveToSuperview`, or the scheduled hop above. `lineNumberRuler`
+    /// is assigned *before* the scroll view is told about it, and cleared before
+    /// the removal, because showing or hiding a ruler resizes the document view
+    /// synchronously and re-enters through `setFrameSize`; assigning afterwards
+    /// would let that re-entrant call see nil and build a second ruler.
     func updateLineNumberRuler() {
         guard let scrollView = enclosingScrollView else { return }
-        if showLineNumbers && lineNumbersByWindowEdge {
+        if showLineNumbers && !lineNumbersFitBesideContent {
             guard lineNumberRuler == nil else { return }
             let ruler = LineNumberRulerView(scrollView: scrollView, editor: self)
+            lineNumberRuler = ruler
             scrollView.verticalRulerView = ruler
             scrollView.hasVerticalRuler = true
             scrollView.rulersVisible = true
-            lineNumberRuler = ruler
         } else {
             guard lineNumberRuler != nil else { return }
+            lineNumberRuler = nil
             scrollView.rulersVisible = false
             scrollView.hasVerticalRuler = false
             scrollView.verticalRulerView = nil
-            lineNumberRuler = nil
         }
         needsDisplay = true
     }

@@ -141,7 +141,6 @@ enum AppSettings {
         static let invisibleControl    = "settings.edit.invisibleControl"
         static let showListIndentGuides = "settings.edit.showListIndentGuides"
         static let showLineNumbers     = "settings.edit.showLineNumbers"
-        static let lineNumbersByWindowEdge = "settings.edit.lineNumbersByWindowEdge"
         // The same key the View menu's Typewriter Mode item writes
         // (AppDelegate.typewriterModeKey), so the two stay in sync.
         static let typewriterMode      = "EditorTypewriterMode"
@@ -155,6 +154,7 @@ enum AppSettings {
         static let autoCloseBrackets   = "settings.edit.autoCloseBrackets"
         static let continueLists       = "settings.edit.continueLists"
         static let spellCheck          = "settings.edit.spellCheck"
+        static let grammarCheck        = "settings.edit.grammarCheck"
     }
 
     /// The default language for untagged code fences ("plain" = none).
@@ -439,6 +439,19 @@ enum AppSettings {
     /// into `ReadRenderOptions`), not pushed onto the editor.
     static var strictLineBreaks: Bool { boolDefaultTrue(Key.strictLineBreaks) }
 
+    /// Hard-wrap long lines (default off): a file that arrives hard-wrapped is
+    /// joined into logical lines when it opens and re-wrapped at 80 columns when
+    /// it is saved. Like `strictLineBreaks` this is read at load/save time
+    /// (Document) rather than pushed onto the editor — there is no live editor
+    /// behavior to configure.
+    ///
+    /// Requires strict line breaks: with those off a single newline renders as a
+    /// literal `<br>`, so joining lines would delete visible breaks and wrapping
+    /// would invent them. The Settings checkbox greys out to match.
+    static var hardWrapLongLines: Bool {
+        UserDefaults.standard.bool(forKey: Key.hardWrapLongLines) && strictLineBreaks
+    }
+
     /// Detect and learn a document's indent style when it opens (default on).
     /// Read once at open time in `Document.showWindows`, overriding this
     /// document's indent; it never rewrites the global `indentStyle`/`indentWidth`.
@@ -512,9 +525,10 @@ enum AppSettings {
 
     /// Put the line numbers in a gutter at the window's leading edge rather than
     /// beside the text — default off.
-    static var lineNumbersByWindowEdge: Bool {
-        UserDefaults.standard.bool(forKey: Key.lineNumbersByWindowEdge)
-    }
+    /// Grammar rides AppKit's continuous spell-checking pass, so it does
+    /// nothing unless `spellCheck` is on too — which is why the checkbox is a
+    /// sub-toggle rather than a peer.
+    static var grammarCheck: Bool { UserDefaults.standard.bool(forKey: Key.grammarCheck) }
 
     /// Pushes every Edit-pane setting into an editor. Called when a document
     /// window is built and again — for every open document — whenever the pane
@@ -525,10 +539,10 @@ enum AppSettings {
         editor.indentUsesTabs = indentStyle == .tabs
         editor.indentWidth = indentWidth
         editor.isContinuousSpellCheckingEnabled = spellCheck
+        editor.isGrammarCheckingEnabled = grammarCheck
         editor.invisibles = invisiblesConfig
         editor.showListIndentGuides = showListIndentGuides
         editor.showLineNumbers = showLineNumbers
-        editor.lineNumbersByWindowEdge = lineNumbersByWindowEdge
         editor.typewriterModeEnabled = typewriterMode
         editor.focusMode = focusMode
         editor.refreshOverdraw()

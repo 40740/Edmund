@@ -286,6 +286,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         editMenu.addItem(NSMenuItem.separator())
 
+        // Reflows the selected paragraphs, or the whole document when nothing
+        // is selected. The manual counterpart to Settings ▸ Edit ▸ Document,
+        // which only wraps files that already arrived wrapped. First-responder
+        // routing like the Find items, so it greys out in Reading mode.
+        editMenu.addItem(withTitle: "Hard Wrap Paragraphs",
+                         action: #selector(EditorTextView.hardWrapParagraphs(_:)),
+                         keyEquivalent: "")
+
+        editMenu.addItem(NSMenuItem.separator())
+
         // Find submenu — routes to first-responder actions on EditorTextView,
         // which forward to the document's FindController. Grays out in Reading
         // mode (the web view is first responder and implements none of these).
