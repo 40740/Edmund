@@ -220,4 +220,25 @@ struct KeyBindingTests {
         #expect(item.keyEquivalent == "b")
         #expect(item.keyEquivalentModifierMask == [.command])
     }
+
+    @Test("Submenu commands are listed under a row for the submenu")
+    func rowsNestSubmenuCommands() {
+        useFreshDefaults()
+        let group = "RowsTest"
+        for command in [
+            MenuCommand(id: "rows.top", group: group, title: "Top Level",
+                        action: #selector(NSApplication.terminate(_:))),
+            MenuCommand(id: "rows.sub1", group: group, submenu: "Sub", title: "First",
+                        action: #selector(NSApplication.terminate(_:))),
+            MenuCommand(id: "rows.sub2", group: group, submenu: "Sub", title: "Second",
+                        action: #selector(NSApplication.terminate(_:))),
+        ] { _ = command.makeItem() }
+
+        let rows = KeyBindingCatalog.shared.rows(inGroup: group)
+        #expect(rows.map(\.title) == ["Top Level", "Sub", "First", "Second"])
+        #expect(rows.map(\.indented) == [false, false, true, true])
+        // The submenu's own row is a heading, not an editable command.
+        #expect(rows[1].entry == nil)
+        #expect(rows[2].entry?.id == "rows.sub1")
+    }
 }

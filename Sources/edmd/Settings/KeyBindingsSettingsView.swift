@@ -18,11 +18,13 @@ struct KeyBindingsSettingsView: View {
 
     private static let menuColumnWidth: CGFloat = 150
     private static let keyColumnWidth: CGFloat = 90
+    /// An empty column after Key, so the shortcuts aren't flush against the box.
+    private static let trailingColumnWidth: CGFloat = 60
 
     private var groups: [String] { KeyBindingCatalog.shared.groups }
 
-    private var rows: [KeyBindingCatalog.Entry] {
-        KeyBindingCatalog.shared.entries(inGroup: selectedGroup ?? "")
+    private var rows: [KeyBindingCatalog.Row] {
+        KeyBindingCatalog.shared.rows(inGroup: selectedGroup ?? "")
     }
 
     var body: some View {
@@ -59,29 +61,43 @@ struct KeyBindingsSettingsView: View {
         .frame(width: 600)
     }
 
-    /// The column titles, laid out to the same widths as the lists below.
+    /// The column titles. The cells here and the list rows below carry the same
+    /// widths and insets, so every divider lines up with the column it splits.
     private var header: some View {
         HStack(spacing: 0) {
             Text("Menu")
+                .padding(.leading, Self.rowInset + Self.listInset)
                 .frame(width: Self.menuColumnWidth, alignment: .leading)
             Divider()
             Text("Command")
+                .padding(.leading, Self.rowInset + Self.listInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 12)
             Divider()
             Text("Key")
+                .padding(.leading, Self.rowInset)
                 .frame(width: Self.keyColumnWidth, alignment: .leading)
-                .padding(.leading, 8)
+            Divider()
+            Color.clear
+                .frame(width: Self.trailingColumnWidth)
         }
-        .padding(.horizontal, 8)
         .frame(height: 28)
         .background(Color(nsColor: .controlBackgroundColor))
     }
+
+    /// Leading inset shared by the header cells and the list rows.
+    private static let rowInset: CGFloat = 8
+
+    /// A plain List still insets its row content by this much after
+    /// `listRowInsets` is zeroed, so the header adds it to keep the column
+    /// titles above their values.
+    private static let listInset: CGFloat = 7
 
     private var lists: some View {
         HStack(spacing: 0) {
             List(groups, id: \.self, selection: $selectedGroup) { group in
                 Text(group)
+                    .listRowInsets(EdgeInsets(top: 0, leading: Self.rowInset,
+                                              bottom: 0, trailing: Self.rowInset))
                     .listRowSeparator(.hidden)
             }
             .listStyle(.plain)
@@ -89,14 +105,21 @@ struct KeyBindingsSettingsView: View {
 
             Divider()
 
-            List(rows) { entry in
+            List(rows) { row in
                 HStack(spacing: 0) {
-                    Text(entry.title)
+                    // Submenu commands sit under their submenu's title, as they
+                    // do in the menu bar.
+                    Text(row.title)
+                        .padding(.leading, row.indented ? Self.rowInset + 16 : Self.rowInset)
                     Spacer(minLength: 8)
-                    ShortcutField(shortcut: shortcut(for: entry),
-                                  onCommit: { commit($0, to: entry) })
-                        .frame(width: Self.keyColumnWidth)
+                    if let entry = row.entry {
+                        ShortcutField(shortcut: shortcut(for: entry),
+                                      onCommit: { commit($0, to: entry) })
+                            .frame(width: Self.keyColumnWidth)
+                    }
                 }
+                .padding(.trailing, Self.trailingColumnWidth)
+                .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
             }
             .listStyle(.plain)

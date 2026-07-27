@@ -166,9 +166,20 @@ final class KeyBindingCatalog {
     struct Entry: Identifiable {
         let id: String
         let group: String
+        /// The submenu the command lives in, if any (see `MenuCommand.submenu`).
+        let submenu: String?
         let title: String
         let defaultShortcut: Shortcut?
         weak var item: NSMenuItem?
+    }
+
+    /// One line of the Settings command list: either a command, or the title of
+    /// the submenu whose (indented) commands follow it.
+    struct Row: Identifiable {
+        let id: String
+        let title: String
+        let indented: Bool
+        let entry: Entry?
     }
 
     private(set) var entries: [Entry] = []
@@ -183,18 +194,40 @@ final class KeyBindingCatalog {
         entries.filter { $0.group == group }
     }
 
+    /// The group's commands in menu order, with each submenu's title inserted
+    /// above its commands — the nesting the menu bar itself shows. Commands of
+    /// one submenu are registered contiguously (the submenu is built in one go),
+    /// so a title is emitted whenever the submenu changes.
+    func rows(inGroup group: String) -> [Row] {
+        var rows: [Row] = []
+        var currentSubmenu: String?
+        for entry in entries where entry.group == group {
+            if entry.submenu != currentSubmenu {
+                currentSubmenu = entry.submenu
+                if let submenu = currentSubmenu {
+                    rows.append(Row(id: "\(group)/\(submenu)", title: submenu,
+                                    indented: false, entry: nil))
+                }
+            }
+            rows.append(Row(id: entry.id, title: entry.title,
+                            indented: entry.submenu != nil, entry: entry))
+        }
+        return rows
+    }
+
     /// Called by `MenuCommand.makeItem()`. The Font submenu is rebuilt for every
     /// editor right-click, so an id can be registered many times — keep the first
     /// live item (the menu-bar one, built at launch) rather than repointing the
     /// catalog at a throwaway context menu that is gone by the time the user
     /// edits its shortcut.
-    func register(id: String, group: String, title: String, defaultShortcut: Shortcut?, item: NSMenuItem) {
+    func register(id: String, group: String, submenu: String? = nil, title: String,
+                  defaultShortcut: Shortcut?, item: NSMenuItem) {
         if let index = entries.firstIndex(where: { $0.id == id }) {
             guard entries[index].item == nil else { return }
             entries[index].item = item
             return
         }
-        entries.append(Entry(id: id, group: group, title: title,
+        entries.append(Entry(id: id, group: group, submenu: submenu, title: title,
                              defaultShortcut: defaultShortcut, item: item))
     }
 

@@ -29,6 +29,9 @@ struct MenuCommand {
     let id: String
     /// The menu this command lives under, as Settings ▸ Key Bindings groups it.
     var group: String = "Format"
+    /// The submenu it sits in, if any ("Font", "Heading", …). Settings lists the
+    /// commands nested under this title, the way the menu bar shows them.
+    var submenu: String? = nil
     let title: String
     let action: Selector
     /// The out-of-the-box shortcut. The user's override, if any, wins in `makeItem()`.
@@ -42,7 +45,7 @@ struct MenuCommand {
         item.keyEquivalentModifierMask = effective?.modifiers ?? []
         item.tag = tag
         item.representedObject = representedObject
-        KeyBindingCatalog.shared.register(id: id, group: group, title: title,
+        KeyBindingCatalog.shared.register(id: id, group: group, submenu: submenu, title: title,
                                           defaultShortcut: shortcut, item: item)
         // nil target → responder chain (focused EditorTextView / Document).
         return item
@@ -124,23 +127,23 @@ enum FormatMenu {
     ]
 
     private static let fontCommands: [MenuCommand] = [
-        MenuCommand(id: "format.bold", title: "Bold",
+        MenuCommand(id: "format.bold", submenu: "Font", title: "Bold",
                     action: #selector(EditorTextView.formatBold(_:)), shortcut: .cmd("b")),
-        MenuCommand(id: "format.italic", title: "Italic",
+        MenuCommand(id: "format.italic", submenu: "Font", title: "Italic",
                     action: #selector(EditorTextView.formatItalic(_:)), shortcut: .cmd("i")),
-        MenuCommand(id: "format.underline", title: "Underline",
+        MenuCommand(id: "format.underline", submenu: "Font", title: "Underline",
                     action: #selector(EditorTextView.formatUnderline(_:)), shortcut: .cmd("u")),
-        MenuCommand(id: "format.strikethrough", title: "Strikethrough",
+        MenuCommand(id: "format.strikethrough", submenu: "Font", title: "Strikethrough",
                     action: #selector(EditorTextView.formatStrikethrough(_:))),
-        MenuCommand(id: "format.highlight", title: "Highlight",
+        MenuCommand(id: "format.highlight", submenu: "Font", title: "Highlight",
                     action: #selector(EditorTextView.formatHighlight(_:))),
-        MenuCommand(id: "format.code", title: "Code",
+        MenuCommand(id: "format.code", submenu: "Font", title: "Code",
                     action: #selector(EditorTextView.formatCode(_:))),
-        MenuCommand(id: "format.math", title: "Math",
+        MenuCommand(id: "format.math", submenu: "Font", title: "Math",
                     action: #selector(EditorTextView.formatInlineMath(_:))),
-        MenuCommand(id: "format.keyboard", title: "Keyboard",
+        MenuCommand(id: "format.keyboard", submenu: "Font", title: "Keyboard",
                     action: #selector(EditorTextView.formatKeyboard(_:))),
-        MenuCommand(id: "format.comment", title: "Comments",
+        MenuCommand(id: "format.comment", submenu: "Font", title: "Comments",
                     action: #selector(EditorTextView.formatComment(_:))),
     ]
 
@@ -160,7 +163,8 @@ enum FormatMenu {
         let item = NSMenuItem(title: "Heading", action: nil, keyEquivalent: "")
         let menu = NSMenu(title: "Heading")
         for level in 1...6 {
-            menu.addItem(MenuCommand(id: "format.heading\(level)", title: "Heading \(level)",
+            menu.addItem(MenuCommand(id: "format.heading\(level)", submenu: "Heading",
+                                     title: "Heading \(level)",
                                      action: #selector(EditorTextView.formatHeading(_:)),
                                      tag: level).makeItem())
         }
@@ -172,13 +176,15 @@ enum FormatMenu {
         let item = NSMenuItem(title: "Alert / Callout", action: nil, keyEquivalent: "")
         let menu = NSMenu(title: "Alert / Callout")
         for type in githubCalloutTypes {
-            menu.addItem(MenuCommand(id: "format.callout.\(type)", title: type.capitalized,
+            menu.addItem(MenuCommand(id: "format.callout.\(type)", submenu: "Alert / Callout",
+                                     title: type.capitalized,
                                      action: #selector(EditorTextView.formatCallout(_:)),
                                      representedObject: type).makeItem())
         }
         menu.addItem(.separator())
         for type in obsidianCalloutTypes {
-            menu.addItem(MenuCommand(id: "format.callout.\(type)", title: type.capitalized,
+            menu.addItem(MenuCommand(id: "format.callout.\(type)", submenu: "Alert / Callout",
+                                     title: type.capitalized,
                                      action: #selector(EditorTextView.formatCallout(_:)),
                                      representedObject: type).makeItem())
         }
