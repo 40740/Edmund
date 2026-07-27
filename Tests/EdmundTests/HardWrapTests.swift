@@ -2,7 +2,8 @@ import Testing
 import AppKit
 @testable import EdmundCore
 
-// Hard wrap / unwrap (Edit ▸ Document ▸ "Automatically hard-wrap long lines").
+// Hard wrap / unwrap (Settings ▸ Edit ▸ Document ▸ "Detect hard wrap pattern
+// for lines on document opening").
 // Pure String → String, so no editor or window is involved.
 
 @Suite("HardWrap")
@@ -380,25 +381,29 @@ struct HardWrapEditorTests {
     @MainActor func detectedColumnSurvivesRoundTrip() {
         let editor = makeEditor()
         let source = HardWrap.wrap(words(40), column: 72)
-        editor.loadContent(source, unwrapHardWrapping: true, detectHardWrapColumn: true)
+        editor.loadContent(source, unwrapHardWrapping: true)
         #expect(editor.wasHardWrapped)
         #expect(editor.hardWrapColumn == 72)
         // What `Document.data(ofType:)` writes.
         #expect(HardWrap.wrap(editor.rawSource, column: editor.hardWrapColumn) == source)
     }
 
-    @Test("Without detection a 72-column file is reflowed to 80")
-    @MainActor func withoutDetectionFallsBackTo80() {
+    @Test("A file with no detectable column falls back to 80")
+    @MainActor func inconsistentFileFallsBackTo80() {
         let editor = makeEditor()
-        editor.loadContent(HardWrap.wrap(words(40), column: 72), unwrapHardWrapping: true)
+        // Two paragraphs wrapped at incompatible widths: no single column
+        // explains both, so there is nothing to honour.
+        let source = HardWrap.wrap(words(20), column: 110) + "\n\n"
+            + HardWrap.wrap(words(20), column: 40)
+        editor.loadContent(source, unwrapHardWrapping: true)
+        #expect(editor.wasHardWrapped)
         #expect(editor.hardWrapColumn == HardWrap.column)
     }
 
     @Test("An unwrapped file keeps the default column")
     @MainActor func unwrappedFileKeepsDefaultColumn() {
         let editor = makeEditor()
-        editor.loadContent("one long single line paragraph",
-                           unwrapHardWrapping: true, detectHardWrapColumn: true)
+        editor.loadContent("one long single line paragraph", unwrapHardWrapping: true)
         #expect(!editor.wasHardWrapped)
         #expect(editor.hardWrapColumn == HardWrap.column)
     }
@@ -406,8 +411,7 @@ struct HardWrapEditorTests {
     @Test("The menu command uses the document's detected column")
     @MainActor func commandUsesDetectedColumn() {
         let editor = makeEditor()
-        editor.loadContent(HardWrap.wrap(words(40), column: 60),
-                           unwrapHardWrapping: true, detectHardWrapColumn: true)
+        editor.loadContent(HardWrap.wrap(words(40), column: 60), unwrapHardWrapping: true)
         #expect(editor.hardWrapColumn == 60)
         editor.hardWrapParagraphs(nil)
         for line in editor.rawSource.components(separatedBy: "\n") {

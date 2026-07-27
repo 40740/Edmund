@@ -94,11 +94,10 @@ public enum HardWrap {
     /// document is ~60 ms, so doing it once rather than twice is the whole
     /// optimization. `column` is nil when the file isn't consistently wrapped.
     public static func unwrapDetectingColumn(
-        _ source: String, features: MarkdownFeatures = .all, detectingColumn: Bool = true
+        _ source: String, features: MarkdownFeatures = .all
     ) -> (text: String, column: Int?) {
         let blocks = BlockParser.parse(source, features: features)
-        return (transformParagraphs(blocks, unwrapParagraph),
-                detectingColumn ? detectColumn(blocks) : nil)
+        return (transformParagraphs(blocks, unwrapParagraph), detectColumn(blocks))
     }
 
     /// Block boundaries come from the real parser, so "is this line inside a

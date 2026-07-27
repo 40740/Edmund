@@ -732,8 +732,7 @@ public class EditorTextView: NSTextView {
     /// detected and normalized — unwrapping in the caller instead would hand
     /// `LineEnding.detect` text whose `\r\n`s had already been rewritten and
     /// silently turn every CRLF file into LF.
-    public func loadContent(_ content: String, unwrapHardWrapping: Bool = false,
-                            detectHardWrapColumn: Bool = false) {
+    public func loadContent(_ content: String, unwrapHardWrapping: Bool = false) {
         Log.measure("Loaded document (\(content.count) chars)", category: .document) {
             // Remember the file's line ending, then normalize the buffer to LF so
             // block parsing and rendering never see a stray `\r`. A file that mixes
@@ -748,8 +747,7 @@ public class EditorTextView: NSTextView {
             // remove, and parsing twice would double the cost of opening a
             // wrapped file (parsing is ~95% of the work here).
             let joined = unwrapHardWrapping
-                ? HardWrap.unwrapDetectingColumn(normalized, features: markdownFeatures,
-                                                 detectingColumn: detectHardWrapColumn)
+                ? HardWrap.unwrapDetectingColumn(normalized, features: markdownFeatures)
                 : (text: normalized, column: nil)
             wasHardWrapped = joined.text != normalized
             hardWrapColumn = (wasHardWrapped ? joined.column : nil) ?? HardWrap.column

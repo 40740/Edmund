@@ -30,7 +30,6 @@ struct EditSettingsView: View {
     @AppStorage(AppSettings.Key.detectIndent)      private var detectIndent = true
     @AppStorage(AppSettings.Key.strictLineBreaks)  private var strictLineBreaks = true
     @AppStorage(AppSettings.Key.hardWrapLongLines) private var hardWrapLongLines = false
-    @AppStorage(AppSettings.Key.detectMaxLineLength) private var detectMaxLineLength = true
     @AppStorage(AppSettings.Key.autoCloseBrackets) private var autoCloseBrackets = true
     @AppStorage(AppSettings.Key.continueLists)     private var continueLists = true
     @AppStorage(AppSettings.Key.spellCheck)        private var spellCheck = false 
@@ -204,18 +203,12 @@ struct EditSettingsView: View {
                     // Joining lines only makes sense while a single newline is
                     // formatting rather than content — see the note below the
                     // strict line breaks toggle.
-                    Toggle("Automatically hard-wrap long lines", isOn: $hardWrapLongLines)
+                    // One switch for the whole feature: a file that opens
+                    // hard-wrapped is joined for editing and written back at the
+                    // width it already uses, detected from its own line breaks.
+                    Toggle("Detect hard wrap pattern for lines on document opening", isOn: $hardWrapLongLines)
                         .disabled(!strictLineBreaks)
-                    // Off → every wrapped file is re-wrapped at 80, which
-                    // reflows one written at any other width on its first save.
-                    Toggle("Detect max line length on document opening",
-                           isOn: $detectMaxLineLength)
-                        .padding(.leading, 20)
-                        .disabled(!strictLineBreaks || !hardWrapLongLines)
-                    Text("Files that are already hard-wrapped are joined into single lines "
-                         + "for editing and re-wrapped on save, at the width they already "
-                         + "use or 80 characters. Other files are left alone — use "
-                         + "Edit ▸ Hard Wrap Paragraphs.")
+                    Text("Incompatible with strict line breaks")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

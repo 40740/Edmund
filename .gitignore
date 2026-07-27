@@ -28,6 +28,12 @@ DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 
+# SwiftPM residues
+*.d
+*.o
+*.swiftdeps
+*.swiftdeps~
+
 # Sparkle private key
 sparkle_private_key.txt
 
@@ -35,8 +41,4 @@ sparkle_private_key.txt
 .DS_Store
 .netrc
 
-# Stray SwiftPM object/dependency files that land at the repo root
-*.d
-*.o
-*.swiftdeps
-*.swiftdeps~
+
