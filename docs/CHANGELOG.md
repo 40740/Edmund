@@ -7,6 +7,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ## [Unreleased]
 
 ### Added
+- Focus mode: dims everything but the lines the selection touches, including code blocks, callouts and other drawn chrome (Settings ▸ Edit ▸ Editor, View ▸ Focus Mode; off by default)
+- Typewriter scroll is now also a checkbox in Settings ▸ Edit ▸ Editor (same setting as View ▸ Typewriter Scroll)
 - macOS Services menu: "Open in Edmund" and "New Edmund Document with Selection"
 - App Intents ("Open in Edmund", "New Edmund Document") for Shortcuts / Spotlight (metadata generation requires an Xcode-project build; see build-app.sh)
 - Quick Look preview extension: renders Markdown as rich text, following the system light/dark appearance

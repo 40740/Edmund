@@ -124,9 +124,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    /// Toggles focus-mode dimming, persists the choice, and applies it to every
+    /// open document immediately. The Settings checkbox binds the same key.
+    @MainActor @objc func toggleFocusMode(_ sender: Any?) {
+        UserDefaults.standard.set(!AppSettings.focusMode, forKey: AppSettings.Key.focusMode)
+        AppSettings.applyEditSettingsToOpenDocuments()
+    }
+
     @MainActor func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(toggleTypewriterMode(_:)) {
             menuItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
+        }
+        if menuItem.action == #selector(toggleFocusMode(_:)) {
+            menuItem.state = AppSettings.focusMode ? .on : .off
         }
         return true
     }
