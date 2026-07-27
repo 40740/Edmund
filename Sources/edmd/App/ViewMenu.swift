@@ -37,11 +37,10 @@ enum ViewMenu {
 
         // Dims everything but the lines the selection touches. Same setting as
         // Settings ▸ Edit ▸ Editor, so the two always agree.
-        let focusItem = viewMenu.addItem(
-            withTitle: "Focus Mode",
-            action: #selector(AppDelegate.toggleFocusMode(_:)),
-            keyEquivalent: "")
+        let focusItem = MenuCommand(id: "view.focusMode", group: "View", title: "Focus Mode",
+                                    action: #selector(AppDelegate.toggleFocusMode(_:))).makeItem()
         focusItem.state = AppSettings.focusMode ? .on : .off
+        viewMenu.addItem(focusItem)
 
         // View-mode toggle (Edit ↔ Read) + the Source-mode checkbox.
         viewMenu.addItem(.separator())
