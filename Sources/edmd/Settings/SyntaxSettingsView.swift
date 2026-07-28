@@ -151,7 +151,7 @@ struct SyntaxSettingsView: View {
             .padding(6)
         }
         .frame(width: boxWidth)
-        .background(Color(nsColor: .textBackgroundColor))
+        .settingsSurfaceBackground()
         .border(.separator)
     }
 

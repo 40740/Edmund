@@ -8,9 +8,11 @@ import Foundation
 /// (`ratex_wasm_bg.wasm` + `ratex_wasm.js` glue) and the KaTeX `.ttf` fonts
 /// RaTeX's display list references, unpacked to:
 ///   `ratex_wasm_bg.wasm`, `ratex_wasm.js`, `fonts/KaTeX_*.ttf`, `licenses/*`
-/// Built by `scripts/build-ratex-payload.sh` and hosted as a release asset on
-/// the separate `I7T5/edmund-extensions` repository rather than depending on
-/// npm/upstream uptime. A separate repo, not just a non-`v*` tag here, so a
+/// Built by `scripts/build-ratex-payload.sh` in `I7T5/edmund-extensions` —
+/// that repo owns payload building, and hosts the result as a release asset
+/// rather than depending on npm/upstream uptime. An untracked copy of the
+/// script may sit at this repo's `scripts/` for convenience; it is gitignored,
+/// so the version over there is the one of record. A separate repo, not just a non-`v*` tag here, so a
 /// 1 MB binary never enters this repo's history and so publishing a payload
 /// cannot touch the app's `v*` tag-driven `release.yml` at all.
 public enum RaTeXRelease {

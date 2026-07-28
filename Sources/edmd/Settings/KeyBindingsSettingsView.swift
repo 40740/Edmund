@@ -102,7 +102,7 @@ struct KeyBindingsSettingsView: View {
         }
         .font(.subheadline)
         .frame(height: 28)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .settingsSurfaceBackground()
     }
 
     /// Leading inset shared by the header cells and the list rows.
@@ -129,6 +129,11 @@ struct KeyBindingsSettingsView: View {
                     .listRowSeparator(.hidden)
             }
             .listStyle(.plain)
+            // A `List` paints its own background, which would cover a plain
+            // `.background` behind it — the surface color only shows once the
+            // list's own is hidden.
+            .scrollContentBackground(.hidden)
+            .settingsSurfaceBackground()
             .frame(width: Self.menuColumnWidth)
 
             Divider()
@@ -153,7 +158,7 @@ struct KeyBindingsSettingsView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
-            .background(Color(nsColor: .textBackgroundColor))
+            .settingsSurfaceBackground()
             // ponytail: re-identifying the rows is the blunt way to show an
             // edited shortcut — it also resets the scroll position. Worth
             // replacing if the command lists ever get long enough to scroll far.

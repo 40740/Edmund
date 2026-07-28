@@ -10,10 +10,14 @@ import EdmundCore
 struct ExtensionsSettingsView: View {
     @State private var selectedID: String? = ExtensionRegistry.all.first?.id
     @State private var enabledIDs: Set<String> = AppSettings.enabledExtensionIDs
-
+    @State private var installedExpanded = true
+    @State private var recommendedExpanded = true
     private var selected: EdmundExtension? {
         ExtensionRegistry.all.first { $0.id == selectedID }
     }
+
+    private var installed: [EdmundExtension] { ExtensionRegistry.all.filter(\.isInstalled) }
+    private var recommended: [EdmundExtension] { ExtensionRegistry.all.filter { !$0.isInstalled } }
 
     // Bottom corners only — the sidebar/detail pair sits flush at the top of
     // the panel (no rounding to clip against there), the footer strip is what
@@ -26,12 +30,17 @@ struct ExtensionsSettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HSplitView {
-                List(ExtensionRegistry.all, id: \.id, selection: $selectedID) { ext in
-                    ExtensionRow(name: ext.name, isEnabled: enabledIDs.contains(ext.id)) { enabled in
-                        setEnabled(enabled, for: ext.id)
-                    }
+                List(selection: $selectedID) {
+                    sidebarSection("Installed", items: installed, isExpanded: $installedExpanded)
+                    sidebarSection("Recommended", items: recommended, isExpanded: $recommendedExpanded)
                 }
                 .listStyle(.sidebar)
+                // `.sidebar` draws a vibrant, accent-tinted material. Hiding the
+                // scroll background and painting the shared surface underneath
+                // keeps the sidebar's row/selection styling while dropping the
+                // tint, so the two halves of the split read as one surface.
+                .scrollContentBackground(.hidden)
+                .settingsSurfaceBackground()
                 .frame(minWidth: 140, idealWidth: 180, maxWidth: 260)
 
                 Group {
@@ -51,9 +60,11 @@ struct ExtensionsSettingsView: View {
                 }
                 .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(20)
-                .background(Color(nsColor: .textBackgroundColor))
+                .settingsSurfaceBackground()
             }
-            .frame(width: 560, height: 360)
+            // Width matches the other panes (`settingsPanePadding`'s 600), so
+            // the window doesn't resize when switching tabs.
+            .frame(width: 600, height: 320)
 
             Divider()
 
@@ -72,16 +83,72 @@ struct ExtensionsSettingsView: View {
         .focusEffectDisabled()
     }
 
+    /// One collapsible sidebar group. Omitted entirely when empty — an
+    /// "Installed" header with nothing under it reads as a broken list.
+    ///
+    /// Header and items are emitted as sibling rows rather than wrapped in a
+    /// `Section`, and the header is hand-built rather than a `DisclosureGroup`.
+    /// Both substitutions are forced by `.listStyle(.sidebar)`:
+    ///
+    /// - `DisclosureGroup` hangs its chevron to the *left* of the label and
+    ///   indents its children under it. Finder puts the affordance after the
+    ///   title and keeps rows at the sidebar's own margin.
+    /// - A `Section` in a sidebar list becomes an outline group that owns its
+    ///   own collapsed state. With a custom header that state can't be reached,
+    ///   so it stayed collapsed while this view's `isExpanded` flipped
+    ///   underneath it — the chevron animated and the rows never appeared.
+    ///   Flat rows have no second disclosure state to disagree with.
+    @ViewBuilder
+    private func sidebarSection(_ title: String, items: [EdmundExtension],
+                                isExpanded: Binding<Bool>) -> some View {
+        if !items.isEmpty {
+            Button {
+                withAnimation(.snappy(duration: 0.18)) { isExpanded.wrappedValue.toggle() }
+            } label: {
+                HStack(spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
+            .selectionDisabled()
+
+            if isExpanded.wrappedValue {
+                ForEach(items, id: \.id) { ext in
+                    ExtensionRow(name: ext.name, isEnabled: enabledIDs.contains(ext.id)) { enabled in
+                        setEnabled(enabled, for: ext.id)
+                    }
+                    .tag(ext.id)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+                }
+            }
+        }
+    }
+
     private func setEnabled(_ enabled: Bool, for id: String) {
         if enabled { enabledIDs.insert(id) } else { enabledIDs.remove(id) }
         AppSettings.setExtensionEnabled(id, enabled)
     }
 }
 
-/// One sidebar row: a small leading dot (green when enabled, gray when
-/// disabled) that toggles on its own tap — independent of selecting the
-/// row — plus the extension's name, still dimmed when disabled so the state
-/// reads clearly even without relying on the color alone.
+/// One sidebar row: a small leading dot that toggles on its own tap —
+/// independent of selecting the row — plus the extension's name.
+///
+/// The dot is drawn only when the extension is enabled. A green/gray pair
+/// encodes the state in hue alone, which is exactly the distinction
+/// red-green color blindness loses; presence-vs-absence survives it, and
+/// survives grayscale and low contrast too. The name stays dimmed while
+/// disabled so the row still carries the state redundantly. The tap target
+/// keeps its full size either way, so the dot doesn't become a moving target
+/// and a disabled extension is still togglable from the sidebar.
 private struct ExtensionRow: View {
     let name: String
     let isEnabled: Bool
@@ -90,7 +157,7 @@ private struct ExtensionRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(isEnabled ? Color.green : Color.secondary.opacity(0.35))
+                .fill(isEnabled ? Color.green : .clear)
                 .frame(width: 6, height: 6)
                 .frame(width: 16, height: 16)   // wider invisible tap target than the visible dot
                 .contentShape(Rectangle())
