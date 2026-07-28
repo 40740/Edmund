@@ -57,6 +57,44 @@ struct RaTeXWasmIntegrationTests {
         let bad = host.render(latex: "\\frac{", displayMode: false, pointSize: 16, color: black)
         #expect(bad == nil)
 
+        // `displayMode` actually reaches RaTeX. Before 0.1.14 the argument
+        // didn't exist and the call defaulted to display, so inline math came
+        // back display-typeset: `\sum`'s limits stacked above and below it
+        // instead of sitting beside it. That shows up as a much taller, much
+        // narrower image — so the two modes must not agree here.
+        let sum = "\\sum_{i=1}^{n} i"
+        let sumInline = host.render(latex: sum, displayMode: false, pointSize: 16, color: black)
+        let sumDisplay = host.render(latex: sum, displayMode: true, pointSize: 16, color: black)
+        #expect(sumInline != nil)
+        #expect(sumDisplay != nil)
+        if let i = sumInline, let d = sumDisplay {
+            #expect(d.image.size.height > i.image.size.height * 1.5)
+            #expect(d.image.size.width < i.image.size.width)
+        }
+
+        // `aligned` expands its row spacing to fit tall rows. The 0.1.12 defect
+        // (docs/investigations/math-ratex-multirow-investigation.md) inverted
+        // this: three rows of `\lim`/`\frac`/`\exp` reported a *smaller* total
+        // height than three rows of bare letters, because the row pitch never
+        // grew past the plain-letter case — which is what collapsed the rows
+        // on top of each other in read mode and overlapped the next paragraph
+        // in edit mode. Comparing the two shapes, rather than pinning an
+        // absolute height, keeps this honest across future RaTeX versions.
+        let simpleRows = host.render(latex: "\\begin{aligned} a &= b \\\\ c &= d \\\\ e &= f \\end{aligned}",
+                                     displayMode: true, pointSize: 16, color: black)
+        let tallRows = host.render(latex: """
+            \\begin{aligned}
+            \\lim_{n\\to\\infty} \\frac{a_n}{b_n} &= \\exp\\left(\\frac{1}{2}\\right) \\\\
+            \\lim_{n\\to\\infty} \\frac{c_n}{d_n} &= \\exp\\left(\\frac{3}{4}\\right) \\\\
+            \\lim_{n\\to\\infty} \\frac{e_n}{f_n} &= \\exp\\left(\\frac{5}{6}\\right)
+            \\end{aligned}
+            """, displayMode: true, pointSize: 16, color: black)
+        #expect(simpleRows != nil)
+        #expect(tallRows != nil)
+        if let simple = simpleRows, let tall = tallRows {
+            #expect(tall.image.size.height > simple.image.size.height)
+        }
+
         // Unload clears readiness.
         host.unload()
         #expect(!host.isLoaded)

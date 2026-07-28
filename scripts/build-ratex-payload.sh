@@ -9,7 +9,7 @@
 #         RaTeXRelease.archiveSHA256). Host the tarball at RaTeXRelease.archiveURL.
 set -euo pipefail
 
-VERSION="${1:-0.1.12}"
+VERSION="${1:-0.1.14}"
 OUT="build/ratex-wasm-${VERSION}.tar.gz"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

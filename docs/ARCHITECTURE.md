@@ -638,14 +638,30 @@ Notable subsystems:
   constraint still holds for any *new* overlay that could share a line with
   wrapping text. Full investigation:
   `docs/investigations/archives/callout-title-wrap-investigation.md`.
-- **RaTeX's `aligned` (multi-row) layout doesn't expand row spacing for tall
-  content** (fractions/limits/`\exp`) — confirmed upstream via direct
-  DisplayList JSON inspection (item Y-coordinates land too close together;
-  `height`/`depth` under-reported), not an Edmund rendering bug. Shows as
-  edit-mode overlap with the next paragraph and read-mode row collapse onto
-  one line. **Blocks shipping the Advanced Math extension** (see
-  `misc/backlog.md`) alongside RaTeX's separate inline-renders-as-display
-  gap. Full investigation: `docs/investigations/math-ratex-multirow-investigation.md`.
+- **RaTeX rendered inline math in display style until 0.1.14**, because
+  `renderLatex`'s `displayMode` argument didn't exist yet and the engine
+  defaults to display — so `$\sum_{i=1}^{n}$` stacked its limits above and
+  below mid-sentence. Fixed by passing the argument explicitly
+  (`WasmMathHost.render`). Prefixing `\displaystyle` was never the lever it
+  appeared to be: with the default already display, it measured identically
+  with and without.
+- **The recorded "RaTeX `aligned` row-spacing" defect did not survive
+  re-testing and is not a known bug.** It was filed against 0.1.12 by
+  comparing two *different* equations rather than one equation across two
+  versions. Head-to-head on identical input, 0.1.12 and 0.1.14 both stack
+  multi-row `aligned` correctly (four `\lim`/`\frac` rows: 4 clean
+  y-clusters, ~10em total, both versions). Nothing upstream was ever waiting
+  to be fixed here. If multi-row math ever collapses again, the escaping
+  round-trip is the thing to suspect first, not RaTeX's layout — see the next
+  entry. Full write-up: `docs/investigations/math-ratex-multirow-investigation.md`.
+- **swift-markdown unescapes `\\` before you ever see the LaTeX.** A `Text`
+  node's `.string` has Markdown backslash-unescaping applied (`\\`→`\`,
+  `\$`→`$`), which silently turns an `aligned` block's row separators into
+  nothing — every row lands on one line. Read mode therefore parses math from
+  the *raw* source (`sourceText(paragraph)` in `HTMLRenderer.visitParagraph`),
+  exactly as edit mode reads by range. The `?? Self.plainText(of:)` fallback
+  on that line is the mangled path — anything that makes `sourceText` return
+  nil reintroduces the collapse.
 - *(Add new ones here as you find them — with a one-line repro and a
   pointer to any deeper write-up in `docs/`.)*
 

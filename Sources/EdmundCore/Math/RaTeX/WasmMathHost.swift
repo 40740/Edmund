@@ -98,13 +98,17 @@ public final class WasmMathHost {
                   latex as NSString
         if let hit = cache.object(forKey: key) { return hit.m }
 
-        // `\displaystyle` selects block layout for a `$$…$$` equation (matching
-        // the delimiter the editor stripped before calling us). The per-item
-        // color in the JSON is ignored — the renderer tints to `color`, so the
-        // cache stays color-keyed.
-        let wrapped = displayMode ? "\\displaystyle " + latex : latex
+        // `renderLatex(latex, color, displayMode)` — the third argument arrived
+        // in RaTeX 0.1.14 and is what actually selects block vs inline
+        // typesetting. It must be passed explicitly: it *defaults to true*, so
+        // the earlier two-argument call rendered inline `$…$` math in display
+        // style (`\sum`'s limits stacked above/below instead of beside it).
+        // Prefixing `\displaystyle` was never the lever it looked like — with
+        // the default already display, it measured identically with and
+        // without, so it's gone. The per-item color in the JSON is ignored —
+        // the renderer tints to `color`, so the cache stays color-keyed.
         guard let fn = ctx.objectForKeyedSubscript("renderLatex"),
-              let result = fn.call(withArguments: [wrapped, "#000000"]),
+              let result = fn.call(withArguments: [latex, "#000000", displayMode]),
               !result.isUndefined, !result.isNull,
               let json = result.toString() else { return nil }
 

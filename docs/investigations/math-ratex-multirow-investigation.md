@@ -6,6 +6,12 @@ multi-line derivation onto one line) turned out to share one upstream root
 cause, found by dumping RaTeX's own DisplayList JSON rather than guessing
 from screenshots.
 
+> **Superseded — see Round 2 at the end of this file.** The root cause
+> recorded below is wrong: it rests on a comparison between two different
+> equations rather than one equation across two RaTeX versions. Measured
+> head-to-head, 0.1.12 stacks all of these correctly. Kept as written for the
+> record; read Round 2 first.
+
 Not fixed — root cause is upstream (`erweixin/RaTeX`'s WASM), not
 Edmund's rendering. Tracked in `misc/backlog.md` as a **ship blocker** for
 the Advanced Math extension, alongside the separate inline-renders-as-
@@ -91,22 +97,7 @@ timing and by code path).
 
 ## The fix
 
-None applied. This lives upstream in `erweixin/RaTeX`'s WASM, in the same
-family as the already-acknowledged inline/display-mode gap — both point at
-the same conclusion: **the WASM's layout engine is still incomplete for
-non-trivial equations.** Fixing it in Edmund would mean either:
-
-- Re-deriving row spacing/total height from the DisplayList's own glyph
-  extents (measure each glyph's actual ink bounds via CoreText, don't trust
-  `dl.height`/`dl.depth`) — real work, and still wouldn't fix the read-mode
-  row-collapse (that needs the *positions* to be right, not just the
-  reserved box), or
-- Waiting for upstream's display-mode/layout work to land, per the dev's
-  own timeline.
-
-Per the maintainer: **do not ship the Advanced Math extension until RaTeX
-resolves this and the inline/display-mode gap.** Tracked in
-`misc/backlog.md`.
+None applied at the time. See Round 2 — the conclusion above did not hold up.
 
 ## Verification
 
@@ -141,3 +132,79 @@ Dump the DisplayList JSON first (temporary env-var hook in
 Edmund rendering code — if the Y-coordinates/height/depth are already wrong
 in RaTeX's own output, no amount of changing `DisplayListRenderer` or the
 paragraph-height reservation code will fix it.
+
+
+---
+
+# Round 2 (2026-07-28) — the root cause above is wrong
+
+Re-opened when RaTeX 0.1.14 shipped, to check whether upstream had fixed
+this. It hadn't, because there was nothing upstream to fix.
+
+## What was wrong with Round 1
+
+Round 1 compared **two different equations**, not one equation across two
+versions. The "simple" control (`a &= b \\ c &= d \\ e &= f`) and the
+"complex" case (a hand-built `\lim`/`\frac`/`\exp` derivation) were both
+measured on 0.1.12 only, and the complex case's smaller `height`/`depth` was
+read as the defect. That comparison can't support the conclusion: two
+different LaTeX inputs are *expected* to produce different metrics, and no
+version-to-version comparison was ever run.
+
+## Head-to-head measurement
+
+Same inputs, both versions, via the same `renderLatex` JSON the original
+investigation dumped (`total` = `height + depth`, in em; *y-clusters* =
+distinct item Y values grouped with a 0.6em gap threshold, i.e. how many
+visually separated rows the display list actually contains):
+
+| input | 0.1.12 | 0.1.14 |
+|---|---|---|
+| 4-row derivation, `\overset` + `\limits` (the screenshot's shape) | total 10.61em, yspan 9.96em, 7 clusters | total 10.31em, yspan 9.96em, 7 clusters |
+| same, without `\overset` | total 7.83em, yspan 7.18em, 6 clusters | total 7.53em, yspan 7.18em, 6 clusters |
+| plain 4-row `a &= b \\ …` | total 6.00em, yspan 4.50em, 4 clusters | total 5.70em, yspan 4.50em, 4 clusters |
+| 3-row `\lim`/`\frac`/`\exp` (Round 1's own "complex" case) | total 8.10em | total 7.80em |
+
+**0.1.12 already stacked every one of these correctly**, including Round 1's
+own complex case, which measures 8.10em — not the 2.7em Round 1 recorded.
+Row spacing tracks row content in both versions; the two differ by a uniform
+~0.3em, which is the unrelated 0.1.14 layout-fidelity work, not row spacing.
+
+No LaTeX that reproduces the collapse has been found on any version.
+
+## What the screenshots probably were
+
+Two mechanisms remain, both Edmund-side and both already addressed:
+
+- **Read-mode collapse**: swift-markdown applies Markdown backslash-unescaping
+  to a `Text` node's `.string` (`\\`→`\`), which deletes an `aligned`
+  block's row separators outright — every row then lands on one line, exactly
+  what `math-ratex-multiline-read-mode.png` shows. Fixed 2026-07-06 in
+  `b1d5ede` by parsing math from raw source in `HTMLRenderer.visitParagraph`,
+  and covered by `HTMLRendererTests` / `DocumentHTMLTests`. This is a much
+  better fit for the evidence than a layout defect: it explains why *edit*
+  mode stacked the same equation correctly (it reads storage by range and
+  never goes through swift-markdown's unescaping) while read mode didn't —
+  something a defect inside RaTeX could not explain, since both modes call
+  the same engine with the same arguments. The screenshot is dated two days
+  after that fix, so either it was taken on an older build or `sourceText`
+  returned nil and hit the `?? plainText` fallback.
+- **Edit-mode overlap**: display math's height reservation, since reworked —
+  `displayMathParagraphStyle` now reserves `imageAscent` in
+  `minimumLineHeight` and folds `imageDescent` into `paragraphSpacing`,
+  rather than reserving one combined height that TextKit 2 puts entirely
+  above the baseline.
+
+## Status
+
+**Not a bug. Not a ship blocker.** The Advanced Math extension is unblocked
+on this axis. The genuine 0.1.14 requirement is the separate `displayMode`
+argument (see `RaTeXRelease`), which *was* real and *is* fixed.
+
+## What Round 1 should have done
+
+Measure one input across two versions before attributing a defect to a
+dependency. Round 1's "Honest limits" section flagged the exact weakness that
+sank it — that the real repro's LaTeX was never captured — and the conclusion
+was written as settled anyway. A control that shares no input with the case
+under test isn't a control.
