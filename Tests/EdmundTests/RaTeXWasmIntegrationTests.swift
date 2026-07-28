@@ -4,12 +4,16 @@ import CryptoKit
 import AppKit
 @testable import EdmundCore
 
-// End-to-end RaTeX wasm test, gated on a local payload archive so it can run on
-// a dev machine without shipping the 1 MB artifact into the repo/CI. Set
-// `RATEX_ARCHIVE` to the `ratex-wasm-<v>.tar.gz` path to exercise the real
-// installer-unpack → JSCore-host → DisplayList-render path. Skipped (passes with
-// no assertions) when the env var is unset.
-@Suite("RaTeX — wasm integration (gated on RATEX_ARCHIVE)")
+// End-to-end RaTeX wasm tests. Both are opt-in so neither runs in CI or on an
+// offline machine; each skips (passing with no assertions) when its env var is
+// unset.
+//
+//   RATEX_ARCHIVE=<path to ratex-wasm-<v>.tar.gz>
+//     Exercises installer-unpack → JSCore-host → DisplayList-render against a
+//     local payload, without shipping the 1 MB artifact into the repo.
+//   RATEX_LIVE=1
+//     Exercises the pinned release coordinates by downloading them for real.
+@Suite("RaTeX — wasm integration (gated on RATEX_ARCHIVE / RATEX_LIVE)")
 struct RaTeXWasmIntegrationTests {
 
     private var archiveURL: URL? {
@@ -35,6 +39,11 @@ struct RaTeXWasmIntegrationTests {
         #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("ratex_wasm_bg.wasm").path))
         #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("ratex_wasm.js").path))
         #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("fonts/KaTeX_Math-Italic.ttf").path))
+        // The payload redistributes MIT-licensed third-party work, so the
+        // license text has to travel inside the archive that lands on disk —
+        // not just live in the hosting repo.
+        #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("licenses/LICENSE-RaTeX").path))
+        #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("licenses/LICENSE-KaTeX-fonts").path))
 
         let host = WasmMathHost()
         host.load(dir: dir)
@@ -98,5 +107,32 @@ struct RaTeXWasmIntegrationTests {
         // Unload clears readiness.
         host.unload()
         #expect(!host.isLoaded)
+    }
+
+    // Exercises the pinned coordinates themselves — downloads
+    // `RaTeXRelease.archiveURL`, checks it against `archiveSHA256`, installs,
+    // and renders. This is the only test that can catch a payload that was
+    // never uploaded, a moved/renamed release asset, or a hash pinned from a
+    // local build that doesn't match the hosted file. Opt-in via `RATEX_LIVE`
+    // because it needs the network and writes to the real Application Support
+    // install directory, so it must not run in CI or on an offline machine.
+    @Test("Pinned release URL and SHA-256 install and render for real")
+    @MainActor func pinnedReleaseInstalls() async throws {
+        guard ProcessInfo.processInfo.environment["RATEX_LIVE"] != nil else { return }
+
+        let renderer = RaTeXRenderer()
+        await renderer.install()
+        #expect(renderer.isReady, "install failed — check the pinned URL and SHA-256")
+
+        // Inline and display must disagree, the same property the offline test
+        // pins, but here through the artifact users actually download.
+        let sum = "\\sum_{i=1}^{n} i"
+        let inline = renderer.render(latex: sum, displayMode: false, pointSize: 16, color: black)
+        let display = renderer.render(latex: sum, displayMode: true, pointSize: 16, color: black)
+        #expect(inline != nil)
+        #expect(display != nil)
+        if let i = inline, let d = display {
+            #expect(d.image.size.height > i.image.size.height * 1.5)
+        }
     }
 }

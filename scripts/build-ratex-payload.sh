@@ -2,7 +2,14 @@
 # Build the RaTeX runtime payload — the tarball Edmund downloads when the user
 # enables the "Advanced Math" extension. Bundles the `ratex-wasm` module and the
 # KaTeX fonts its display list references, at the layout WasmMathHost expects:
-#   ratex_wasm_bg.wasm, ratex_wasm.js, fonts/KaTeX_*.ttf
+#   ratex_wasm_bg.wasm, ratex_wasm.js, fonts/KaTeX_*.ttf, licenses/*
+#
+# The payload redistributes two MIT-licensed third-party works, so their
+# license text ships inside the archive (`licenses/`) rather than only in the
+# hosting repo — the tarball is what actually lands on a user's disk, and MIT
+# requires the notice to travel with the copy. RaTeX's own LICENSE comes from
+# the npm package; KaTeX's is fetched from the KaTeX repo, because the npm
+# package ships the fonts without their license.
 #
 # Usage: ./scripts/build-ratex-payload.sh [version]
 # Output: build/ratex-wasm-<version>.tar.gz  (+ prints its SHA-256 to pin in
@@ -19,10 +26,17 @@ curl -sL "https://registry.npmjs.org/ratex-wasm/-/ratex-wasm-${VERSION}.tgz" -o 
 tar xzf "$WORK/pkg.tgz" -C "$WORK"
 
 PAYLOAD="$WORK/payload"
-mkdir -p "$PAYLOAD/fonts"
+mkdir -p "$PAYLOAD/fonts" "$PAYLOAD/licenses"
 cp "$WORK/package/pkg/ratex_wasm_bg.wasm" "$PAYLOAD/"
 cp "$WORK/package/pkg/ratex_wasm.js"      "$PAYLOAD/"
 cp "$WORK/package/fonts/"*.ttf            "$PAYLOAD/fonts/"
+cp "$WORK/package/LICENSE"                "$PAYLOAD/licenses/LICENSE-RaTeX"
+
+echo "→ fetching the KaTeX font license"
+KATEX_LICENSE_URL="https://raw.githubusercontent.com/KaTeX/KaTeX/main/LICENSE"
+curl -fsSL "$KATEX_LICENSE_URL" -o "$PAYLOAD/licenses/LICENSE-KaTeX-fonts"
+# Fail loudly rather than shipping an empty or error-page "license".
+grep -q "MIT License" "$PAYLOAD/licenses/LICENSE-KaTeX-fonts"
 
 mkdir -p build
 # Deterministic archive so the pinned SHA-256 is independently reproducible:
