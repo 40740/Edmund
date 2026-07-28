@@ -492,6 +492,18 @@ public class EditorTextView: NSTextView {
             name: NSTextView.didChangeSelectionNotification,
             object: self
         )
+
+        // The user switched math engines (or an install finished): re-style
+        // every block so on-screen equations pick up the new renderer. Rare,
+        // deliberate event — same "restyle everything, viewport-first"
+        // recomposeDirty used by a view-mode switch, not a full recompose
+        // (which would reset every fragment to a height estimate).
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(mathEngineDidChange(_:)),
+            name: .mathEngineChanged,
+            object: nil
+        )
     }
 
     deinit {
@@ -506,6 +518,12 @@ public class EditorTextView: NSTextView {
         """)
     }
     #endif
+
+    @objc private func mathEngineDidChange(_ note: Notification) {
+        guard !blocks.isEmpty else { return }
+        recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
+                      cursorInRaw: selectedRange().location)
+    }
 
     /// Hook up scroll promotion once the editor lands in its scroll view.
     public override func viewDidMoveToWindow() {

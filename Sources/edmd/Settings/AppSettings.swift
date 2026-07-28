@@ -32,6 +32,7 @@ enum AppSettings {
         }
     }
 
+
     enum AppearanceMode: String, CaseIterable, Identifiable {
         case matchSystem
         case light
@@ -108,6 +109,7 @@ enum AppSettings {
         static let logRetention = "settings.general.logRetention"
         static let renderBlankLinesAsBreaks = "settings.reading.renderBlankLinesAsBreaks"
         static let sourceMode = "settings.view.sourceMode"
+        static let enabledExtensionIDs = "settings.extensions.enabledIDs"
         static let sendCrashLogs = "settings.advanced.sendCrashLogs"
         static let sentCrashReports = "settings.advanced.sentCrashReports"
         static let lastWindowWidth  = "settings.window.lastWidth"
@@ -305,6 +307,46 @@ enum AppSettings {
             return mode
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.appearanceMode) }
+    }
+
+    /// IDs of extensions (`EdmundExtension.id`) the user has turned on.
+    static var enabledExtensionIDs: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Key.enabledExtensionIDs) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: Key.enabledExtensionIDs) }
+    }
+
+    static func isExtensionEnabled(_ id: String) -> Bool { enabledExtensionIDs.contains(id) }
+
+    /// Persists an extension's on/off state and re-applies the live wiring.
+    @MainActor static func setExtensionEnabled(_ id: String, _ enabled: Bool) {
+        var ids = enabledExtensionIDs
+        if enabled { ids.insert(id) } else { ids.remove(id) }
+        enabledExtensionIDs = ids
+        applyExtensionStates()
+    }
+
+    /// Wires enabled extensions into the app's live state: today, whether
+    /// "Advanced Math" is enabled decides `MathRendering.shared.alternate`
+    /// (RaTeX vs. falling back to SwiftMath), and on-screen equations
+    /// restyle via `engineDidChange()`. Called at launch and whenever an
+    /// extension is enabled/disabled in Settings.
+    @MainActor static func applyExtensionStates() {
+        let mathExt = AdvancedMathExtension.shared
+        if isExtensionEnabled(mathExt.id) {
+            MathRendering.shared.alternate = mathExt.mathRenderer
+            // Load the (already downloaded) payload so the engine is actually
+            // ready — `download()` is a fast no-op-then-load when installed, and
+            // re-fetches if a previously enabled install went missing. Equations
+            // restyle once it's ready. Fired here so a previously enabled RaTeX
+            // comes back after relaunch, not just when toggled in Settings.
+            Task {
+                await mathExt.download()
+                MathRendering.shared.engineDidChange()
+            }
+        } else {
+            MathRendering.shared.alternate = nil
+        }
+        MathRendering.shared.engineDidChange()
     }
 
     static var suppressInconsistentLineEndingWarning: Bool {

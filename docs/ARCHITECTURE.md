@@ -616,6 +616,17 @@ Notable subsystems:
   Substitutions menu back — it re-exposes exactly those toggles. Same reason
   "Correct Spelling Automatically" is left out of Spelling and Grammar.
 
+- **Edit-mode math looks "heavier" than read-mode math because it *is* a
+  different color, not a rendering defect.** Edit mode colors math (and all
+  text) with `.textColor` (pure black in light appearance); read mode uses
+  the softer `#1a1a1a`/`#e6e6e6` `--fg` palette for everything. Both are
+  working as designed — math just matches its ambient text color in each
+  mode. See `docs/investigations/math-ratex-weight-investigation.md`.
+- **A `//` line comment inside `HTMLTheme.swift`'s CSS string literal is
+  invalid CSS and silently drops the whole rule** (CSS has no `//` syntax;
+  the parser chokes past it until the next `{`). Use `/* */`. Cost a whole
+  round of "why doesn't this CSS change do anything" — see
+  `docs/investigations/math-ratex-weight-investigation.md` Round 1.
 
 ---
 
@@ -627,6 +638,14 @@ Notable subsystems:
   constraint still holds for any *new* overlay that could share a line with
   wrapping text. Full investigation:
   `docs/investigations/archives/callout-title-wrap-investigation.md`.
+- **RaTeX's `aligned` (multi-row) layout doesn't expand row spacing for tall
+  content** (fractions/limits/`\exp`) — confirmed upstream via direct
+  DisplayList JSON inspection (item Y-coordinates land too close together;
+  `height`/`depth` under-reported), not an Edmund rendering bug. Shows as
+  edit-mode overlap with the next paragraph and read-mode row collapse onto
+  one line. **Blocks shipping the Advanced Math extension** (see
+  `misc/backlog.md`) alongside RaTeX's separate inline-renders-as-display
+  gap. Full investigation: `docs/investigations/math-ratex-multirow-investigation.md`.
 - *(Add new ones here as you find them — with a one-line repro and a
   pointer to any deeper write-up in `docs/`.)*
 
