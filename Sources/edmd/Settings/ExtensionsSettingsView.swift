@@ -19,54 +19,17 @@ struct ExtensionsSettingsView: View {
     private var installed: [EdmundExtension] { ExtensionRegistry.all.filter(\.isInstalled) }
     private var recommended: [EdmundExtension] { ExtensionRegistry.all.filter { !$0.isInstalled } }
 
-    // Bottom corners only — the sidebar/detail pair sits flush at the top of
-    // the panel (no rounding to clip against there), the footer strip is what
-    // gives the panel its rounded bottom.
-    private var panelShape: some Shape {
-        UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 8,
-                               bottomTrailingRadius: 8, topTrailingRadius: 0)
-    }
-
     var body: some View {
-        VStack(spacing: 0) {
-            HSplitView {
-                List(selection: $selectedID) {
-                    sidebarSection("Installed", items: installed, isExpanded: $installedExpanded)
-                    sidebarSection("Recommended", items: recommended, isExpanded: $recommendedExpanded)
-                }
-                .listStyle(.sidebar)
-                // `.sidebar` draws a vibrant, accent-tinted material. Hiding the
-                // scroll background and painting the shared surface underneath
-                // keeps the sidebar's row/selection styling while dropping the
-                // tint, so the two halves of the split read as one surface.
-                .scrollContentBackground(.hidden)
-                .settingsSurfaceBackground()
-                .frame(minWidth: 140, idealWidth: 180, maxWidth: 260)
-
-                Group {
-                    if let selected {
-                        ExtensionDetailView(
-                            ext: selected,
-                            isEnabled: Binding(
-                                get: { enabledIDs.contains(selected.id) },
-                                set: { setEnabled($0, for: selected.id) }
-                            )
-                        )
-                        .id(selected.id)
-                    } else {
-                        Text("No extensions installed.")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(20)
-                .settingsSurfaceBackground()
+        VStack(alignment: .leading, spacing: 10) {
+            // Two separate boxes with the window background between and around
+            // them, as in Safari's Extensions pane
+            // (misc/frontend-refs/settings-safari-extensions.png), rather than
+            // one panel filling the pane.
+            HStack(spacing: 12) {
+                sidebar
+                detail
             }
-            // Width matches the other panes (`settingsPanePadding`'s 600), so
-            // the window doesn't resize when switching tabs.
-            .frame(width: 600, height: 320)
-
-            Divider()
+            .frame(height: 300)
 
             HStack {
                 Spacer()
@@ -75,12 +38,52 @@ struct ExtensionsSettingsView: View {
                     // Extensions marketplace comes later.
                 }
             }
-            .padding(10)
-            .background(Color(nsColor: .windowBackgroundColor))
         }
-        .clipShape(panelShape)
-        .overlay(panelShape.stroke(Color(nsColor: .separatorColor)))
+        .padding(20)
+        // Every settings pane is 600 wide, so switching tabs only ever resizes
+        // the window vertically.
+        .frame(width: 600)
         .focusEffectDisabled()
+    }
+
+    private var sidebar: some View {
+        List(selection: $selectedID) {
+            sidebarSection("Installed", items: installed, isExpanded: $installedExpanded)
+            sidebarSection("Recommended", items: recommended, isExpanded: $recommendedExpanded)
+        }
+        // `.plain`, not `.sidebar`, for the same reason the Key Bindings menu
+        // list is plain: a sidebar list insets and rounds its selection into a
+        // pill, while a plain list fills the whole row width — the selection bar
+        // this pane wants. A List also paints its own background either way, so
+        // the shared surface color only shows once that is hidden.
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .settingsSurfaceBackground()
+        .frame(width: 170)
+        .border(.separator)
+    }
+
+    private var detail: some View {
+        Group {
+            if let selected {
+                ExtensionDetailView(
+                    ext: selected,
+                    isEnabled: Binding(
+                        get: { enabledIDs.contains(selected.id) },
+                        set: { setEnabled($0, for: selected.id) }
+                    )
+                )
+                .id(selected.id)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                Text("No extensions installed.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .padding(16)
+        .settingsSurfaceBackground()
+        .border(.separator)
     }
 
     /// One collapsible sidebar group. Omitted entirely when empty — an
@@ -118,7 +121,8 @@ struct ExtensionsSettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
+            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+            .listRowSeparator(.hidden)
             .selectionDisabled()
 
             if isExpanded.wrappedValue {
@@ -127,7 +131,9 @@ struct ExtensionsSettingsView: View {
                         setEnabled(enabled, for: ext.id)
                     }
                     .tag(ext.id)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+                    // Leading inset matches the Key Bindings rows' `rowInset`.
+                    .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                    .listRowSeparator(.hidden)
                 }
             }
         }
@@ -139,35 +145,48 @@ struct ExtensionsSettingsView: View {
     }
 }
 
-/// One sidebar row: a small leading dot that toggles on its own tap —
-/// independent of selecting the row — plus the extension's name.
+/// One sidebar row: the extension's name, with a small dot that toggles on its
+/// own tap — independent of selecting the row.
 ///
-/// The dot is drawn only when the extension is enabled. A green/gray pair
-/// encodes the state in hue alone, which is exactly the distinction
-/// red-green color blindness loses; presence-vs-absence survives it, and
-/// survives grayscale and low contrast too. The name stays dimmed while
-/// disabled so the row still carries the state redundantly. The tap target
-/// keeps its full size either way, so the dot doesn't become a moving target
-/// and a disabled extension is still togglable from the sidebar.
+/// The dot is an overlay, not a member of the row's layout, so it claims no
+/// width and the name sits at the same margin it would with no dot at all. It
+/// hangs left into the padding the sidebar list already reserves, close enough
+/// to read as attached to the name rather than as its own column.
+///
+/// It is drawn only when the extension is enabled. A green/gray pair encodes
+/// the state in hue alone, which is exactly the distinction red-green color
+/// blindness loses; presence-vs-absence survives that, and grayscale and low
+/// contrast too. The name stays dimmed while disabled so the row carries the
+/// state redundantly, and the tap target keeps its size either way, so a
+/// disabled extension is still togglable from the sidebar.
 private struct ExtensionRow: View {
     let name: String
     let isEnabled: Bool
     let onToggle: (Bool) -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(isEnabled ? Color.green : .clear)
-                .frame(width: 6, height: 6)
-                .frame(width: 16, height: 16)   // wider invisible tap target than the visible dot
-                .contentShape(Rectangle())
-                .onTapGesture { onToggle(!isEnabled) }
-                .accessibilityLabel(isEnabled ? "Enabled" : "Disabled")
-                .accessibilityAddTraits(.isButton)
-
-            Text(name)
-                .foregroundStyle(isEnabled ? .primary : .secondary)
-        }
+        Text(name)
+            .foregroundStyle(isEnabled ? .primary : .secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .leading) {
+                Circle()
+                    .fill(isEnabled ? Color.green : .clear)
+                    .frame(width: 6, height: 6)
+                    // A tap target wider than the visible dot, still narrow
+                    // enough to stay inside the list's own left padding.
+                    .frame(width: 14, height: 18)
+                    .contentShape(Rectangle())
+                    // Placed in the gutter the row insets leave before the name
+                    // (8pt of `listRowInsets` plus the ~7pt a plain List adds of
+                    // its own). Measured, not guessed: centering it in that
+                    // gutter left only 0.5pt between the dot and the first
+                    // letter, so it sits left of center — ~5pt of air after the
+                    // dot, and still ~6pt clear of the box border.
+                    .offset(x: -13)
+                    .onTapGesture { onToggle(!isEnabled) }
+                    .accessibilityLabel(isEnabled ? "Enabled" : "Disabled")
+                    .accessibilityAddTraits(.isButton)
+            }
     }
 }
 
