@@ -260,6 +260,13 @@ public struct EditorTheme: Equatable, Sendable {
 extension NSColor {
 
     /// Create a color from a hex string like "#3366E6" or "3366E6".
+    ///
+    /// sRGB, not the calibrated space: a hex literal means the same thing in CSS
+    /// (Read mode, PDF export) as it does here, and calibrated RGB composites
+    /// visibly lighter than that — every project hex drifted, most obviously the
+    /// `warning` callout's orange (#EC7500 painted as #F28900 in the editor while
+    /// Read mode showed the literal). Decoding as sRGB makes the two agree and
+    /// makes hex → NSColor → `hexString` round-trip exactly.
     public convenience init?(hex: String) {
         var h = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if h.hasPrefix("#") { h.removeFirst() }
@@ -267,7 +274,7 @@ extension NSColor {
         let r = CGFloat((rgb >> 16) & 0xFF) / 255.0
         let g = CGFloat((rgb >> 8) & 0xFF) / 255.0
         let b = CGFloat(rgb & 0xFF) / 255.0
-        self.init(calibratedRed: r, green: g, blue: b, alpha: 1.0)
+        self.init(srgbRed: r, green: g, blue: b, alpha: 1.0)
     }
 
     /// Returns the hex string representation (e.g. "#3366E6").
