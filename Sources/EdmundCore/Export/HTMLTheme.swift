@@ -260,7 +260,13 @@ enum HTMLTheme {
     .callout-body > ul, .callout-body > ol { margin: 1.3em 0; padding-left: 2.25em; }
     li > ul, li > ol { margin: 0; }
     ul { list-style-type: disc; }
-    li { margin: 0.35em 0; }
+    /* No inter-item margin: the editor's list paragraph style sets both
+       paragraphSpacing and paragraphSpacingBefore to 0 (see listParagraphStyle in
+       EditorTextView+ListRendering.swift), so consecutive items there are one
+       line pitch apart — same as a wrapped line inside an item. Any margin here
+       makes Read mode's lists looser than the text you typed them into; measured,
+       0.35em put items 31.5pt apart against the editor's 26.0pt. */
+    li { margin: 0; }
     li::marker { color: var(--marker); font-size: 0.85em; }
     /* Numbers read as text, not as a glyph: keep them at the item's own size so
        Read mode matches Edit mode, where the "N." keeps the body font. */
