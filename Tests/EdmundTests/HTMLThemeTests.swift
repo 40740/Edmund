@@ -19,8 +19,15 @@ struct HTMLThemeTests {
         #expect(out.contains("--accent: #3366E6;"))
         #expect(out.contains("--code: #8A2425;"))
         #expect(out.contains("--body-size: 16px;"))
-        // 1.2 + 4/16 = 1.45
-        #expect(out.contains("--line-height: 1.45;"))
+        // Natural line height is measured from the font, not assumed: derive the
+        // expectation the same way rather than pinning a literal that silently
+        // encodes whichever body face happens to be installed.
+        let font = NSFont(name: "Iowan Old Style", size: 16) ?? .systemFont(ofSize: 16)
+        let expected = (NSLayoutManager().defaultLineHeight(for: font) + 4) / 16
+        #expect(out.contains("--line-height: \(String(format: "%g", expected));"))
+        // …and it must be materially looser than the old hardcoded 1.2 base,
+        // which is what made Read mode ~11% tighter than the editor.
+        #expect(expected > 1.5)
         // Multi-word family is quoted with a fallback stack.
         #expect(out.contains("\"Iowan Old Style\""))
     }
