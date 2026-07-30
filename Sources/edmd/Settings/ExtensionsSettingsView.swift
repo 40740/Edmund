@@ -16,6 +16,12 @@ struct ExtensionsSettingsView: View {
         ExtensionRegistry.all.first { $0.id == selectedID }
     }
 
+    /// Leading inset shared by the sidebar's section headers and its rows, so
+    /// both start at the same margin. Wider than the 8pt the Key Bindings rows
+    /// use: the enabled dot hangs left of the name into this gutter, and needs
+    /// room there to sit clear of both the box border and the first letter.
+    private static let rowInset: CGFloat = 16
+
     private var installed: [EdmundExtension] { ExtensionRegistry.all.filter(\.isInstalled) }
     private var recommended: [EdmundExtension] { ExtensionRegistry.all.filter { !$0.isInstalled } }
 
@@ -39,7 +45,10 @@ struct ExtensionsSettingsView: View {
                 }
             }
         }
-        .padding(20)
+        // Less at the bottom than the other edges: the footer button sits 10pt
+        // under the boxes (the stack's spacing), so a full 20pt beneath it left
+        // the row looking pushed up rather than centred in its own margin.
+        .padding(EdgeInsets(top: 20, leading: 20, bottom: 12, trailing: 20))
         // Every settings pane is 600 wide, so switching tabs only ever resizes
         // the window vertically.
         .frame(width: 600)
@@ -121,7 +130,7 @@ struct ExtensionsSettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+            .listRowInsets(EdgeInsets(top: 2, leading: Self.rowInset, bottom: 2, trailing: 8))
             .listRowSeparator(.hidden)
             .selectionDisabled()
 
@@ -131,8 +140,7 @@ struct ExtensionsSettingsView: View {
                         setEnabled(enabled, for: ext.id)
                     }
                     .tag(ext.id)
-                    // Leading inset matches the Key Bindings rows' `rowInset`.
-                    .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                    .listRowInsets(EdgeInsets(top: 0, leading: Self.rowInset, bottom: 0, trailing: 8))
                     .listRowSeparator(.hidden)
                 }
             }

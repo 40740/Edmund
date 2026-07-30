@@ -13,6 +13,25 @@ import Foundation
 // optional features plug in without EditorTextView/DocumentHTML needing to
 // know about them.
 
+public extension AttributedString {
+    /// Parses an extension `summary` written as inline markdown, so links can be
+    /// written in place (`[RaTeX](https://ratex.lites.dev)`).
+    ///
+    /// Inline-only parsing is required, not a preference: full markdown reads a
+    /// leading `>` as a blockquote and would silently eat the `>` in a summary
+    /// that opens with something like ">99.5% coverage". It also keeps the
+    /// result a single paragraph, which is what the one-line pane expects.
+    ///
+    /// Falls back to the markdown as literal text — a summary that shows its
+    /// source is worse than one that renders, but better than an empty pane.
+    init(extensionSummaryMarkdown markdown: String) {
+        self = (try? AttributedString(
+            markdown: markdown,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(markdown)
+    }
+}
+
 /// An extension's author credit: a display name, and an optional link to
 /// their profile/site (rendered as plain text when there's no link).
 public struct ExtensionDeveloper: Sendable {
@@ -36,7 +55,11 @@ public protocol EdmundExtension: AnyObject {
     /// One-line description shown in the Extensions settings pane. Keep it
     /// to ≤30 words — this is a summary, not the README (see
     /// `longDescriptionURL` for the full thing).
-    var summary: String { get }
+    ///
+    /// Attributed so a summary can name the upstream project it wraps and link
+    /// straight to it; `SwiftUI.Text` renders link runs and opens them. Build
+    /// one with `AttributedString(extensionSummaryMarkdown:)`.
+    var summary: AttributedString { get }
     /// This extension's own packaging version (e.g. "1.0.0") — distinct from
     /// any upstream library version it wraps, which belongs in `summary`.
     var version: String { get }
@@ -109,7 +132,9 @@ public final class AdvancedMathExtension: EdmundExtension {
     /// This is Edmund's packaging version, not RaTeX's — RaTeX's own version
     /// is called out in `summary` instead (mirrors how Obsidian plugins
     /// version themselves separately from any library they wrap).
-    public let summary = ">99.5% KaTeX syntax coverage via RaTeX (Rust)."
+    public let summary = AttributedString(
+        extensionSummaryMarkdown:
+            ">99.5% KaTeX syntax coverage via [RaTeX](https://ratex.lites.dev) (Rust).")
     public let version = "1.0.0"
     public var isInstalled: Bool { renderer.isReady }
     public var mathRenderer: MathRenderer? { renderer }
