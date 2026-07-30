@@ -30,6 +30,7 @@ extension EditorTextView {
         var width = rendered.image.size.width
         var height = rendered.image.size.height
         var descent = rendered.descent
+        let backingScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         // Interim until SwiftMath line-wrapping ships: if the equation is wider
         // than the text area, scale it down to fit (otherwise leave it natural
         // size). The baseline descent scales with it.
@@ -39,6 +40,24 @@ extension EditorTextView {
             width *= scale
             height *= scale
             descent *= scale
+        } else {
+            // A math bitmap is rasterized at the backing scale, but its NSImage
+            // *point* size is computed independently of its rounded pixel count
+            // (RaTeX: 109 px shown at 54.264 pt — a ratio of 2.009, not 2). So
+            // drawing it at `image.size` covers a fractional number of device
+            // pixels and Core Graphics resamples the blit: the same ink spreads
+            // over ~39% more device pixels at 37% partial coverage (vs 14%),
+            // which is why equations looked slightly bolder here than the
+            // identical image in Read mode — that path already pins its <img>
+            // to the PNG's exact pixel count for this reason (DocumentHTML
+            // .fillMath). Snap the draw size onto the device grid so the blit is
+            // 1:1. The *position* is snapped where it's drawn (see
+            // `deviceAligned` in EditorTextView+TextKit2): both are needed —
+            // either misalignment alone resamples just as badly.
+            let snapped = (height * backingScale).rounded() / backingScale
+            descent *= snapped / height
+            width = (width * backingScale).rounded() / backingScale
+            height = snapped
         }
         // The rendered image's baseline sits exactly one device pixel below the
         // surrounding text baseline (measured constant across font sizes — it's a
@@ -46,7 +65,6 @@ extension EditorTextView {
         // image by one device pixel so the math rests on the text baseline. Done
         // here, not in the cached descent, so it tracks the window's scale if it
         // moves between a Retina and a non-Retina display.
-        let backingScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         descent -= 1 / backingScale
         // Drop the image so its baseline (descent above the image bottom) lands
         // on the text baseline.
