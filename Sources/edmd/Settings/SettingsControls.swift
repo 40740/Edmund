@@ -15,6 +15,21 @@ extension View {
     }
 }
 
+/// Draws the label and nothing else — no pressed-state dimming.
+///
+/// For buttons whose label *is* the whole control, like a section header: the
+/// built-in `.plain` style fades the entire label while the mouse is down, which
+/// on a header reads as the title flickering rather than as a press.
+struct StaticButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+    }
+}
+
+extension ButtonStyle where Self == StaticButtonStyle {
+    static var `static`: StaticButtonStyle { StaticButtonStyle() }
+}
+
 extension AttributedString {
     /// Recolors link runs to the app's accent, so a markdown link in Settings
     /// body text matches the `.foregroundStyle(.tint)` link buttons beside it —

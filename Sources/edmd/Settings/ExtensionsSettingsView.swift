@@ -42,6 +42,10 @@ struct ExtensionsSettingsView: View {
     /// `rowTrailing` needs 135. The rest is slack — a longer name truncates
     /// rather than widening the pane, whose 600pt total is fixed.
     private static let sidebarWidth: CGFloat = 140
+    /// The same curve and duration the Key Bindings pane animates its submenu
+    /// disclosure with, so the two panes open and close alike. `.snappy` — a
+    /// spring — was here first and read as abrupt next to it.
+    private static let disclosureAnimation: Animation = .easeInOut(duration: 0.2)
 
     private var installed: [EdmundExtension] { ExtensionRegistry.all.filter(\.isInstalled) }
     private var recommended: [EdmundExtension] { ExtensionRegistry.all.filter { !$0.isInstalled } }
@@ -207,7 +211,7 @@ struct ExtensionsSettingsView: View {
     /// indent their children under it, with no API to move it.
     private func sectionHeader(_ title: String, isExpanded: Binding<Bool>) -> some View {
         Button {
-            withAnimation(.snappy(duration: 0.18)) { isExpanded.wrappedValue.toggle() }
+            withAnimation(Self.disclosureAnimation) { isExpanded.wrappedValue.toggle() }
         } label: {
             HStack(spacing: 3) {
                 Text(title)
@@ -228,11 +232,15 @@ struct ExtensionsSettingsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        // A pinned header scrolls *over* the rows, so it needs its own opaque
-        // backing or they read through it. `.bar` is the frosted material Safari
-        // uses there, which keeps a hint of the row passing underneath.
-        .background(.bar)
+        // Not `.plain`: that style dims its whole label while the mouse is down,
+        // and this label is the entire header row — so every toggle flashed the
+        // title a lighter gray on the way down.
+        .buttonStyle(.static)
+        // A pinned header scrolls *over* the rows, so it needs its own backing or
+        // they read through it. Opaque, not the frosted `.bar` Safari uses: a
+        // translucent header takes its tint from whatever is behind it, so it
+        // visibly changed color as the rows left from under it on collapse.
+        .settingsSurfaceBackground()
         .onHover { inside in
             withAnimation(.easeOut(duration: 0.12)) {
                 hoveredSection = inside ? title : (hoveredSection == title ? nil : hoveredSection)
