@@ -52,7 +52,10 @@ enum DocumentHTML {
     private static let displayInlineMathPattern = "<span class=\"math-display-inline\" data-tex=\"([^\"]*)\"></span>"
 
     private static func fillMath(_ html: String, theme: EditorTheme, dark: Bool) -> String {
-        let color = NSColor(hex: dark ? "#e6e6e6" : "#1a1a1a") ?? .textColor
+        // Same ink as the editor draws its equations in — one definition for both
+        // modes (EditorTheme.bodyTextColor). Resolved against `dark` rather than
+        // the current appearance because an export can target either.
+        let color = EditorTheme.bodyTextColorResolved(dark: dark)
         var out = replaceMatches(html, pattern: displayMathPattern) { groups in
             let id = groups[1]
             let tex = unescapeAttr(groups[2])

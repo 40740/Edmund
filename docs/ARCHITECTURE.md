@@ -470,6 +470,19 @@ Notable subsystems:
 - **A selection taller than the viewport must be revealed at its *nearest*
   end** (`scrollRangeToVisible` override): always revealing the top fought
   drag-selection autoscroll and oscillated the viewport mid-drag.
+- **A bitmap overlay must land on the device grid or it gets resampled** —
+  and a resampled bitmap reads as *bolder*, not blurrier, because the same
+  ink spreads over more pixels. Both halves matter: the destination size
+  must be a whole number of device pixels (an `NSImage`'s point size is
+  rounded independently of its pixel count, so `image.size` usually is
+  *not*), and the origin must be a whole device pixel (a text baseline, or
+  a centered x, never is). `mathOverlay` snaps the size; `deviceAligned`
+  (EditorTextView+TextKit2) snaps the origin in *device* space, since a
+  scrolled clip view can leave the CTM's translation on a fraction of a
+  point. Measured on RaTeX equations before the fix: +32–38% inked device
+  pixels at the same total ink, with solid-coverage pixels collapsing
+  (173 → 31). Read mode pins its `<img>` to the PNG's exact pixel count for
+  the same reason (`DocumentHTML.fillMath`).
 
 ### Edit, selection & storage integrity
 
@@ -736,7 +749,11 @@ only with reason):
    one-off shell: `ui-harness.sh` + `ui-measure.py` in
    `.claude/skills/edmund-live-repro-and-diagnostics/scripts/`. **Keep and
    extend those tools** — they're checked-in fixtures, and the setup cost is
-   otherwise paid again every visual task.
+   otherwise paid again every visual task. `ui-measure.py weight` compares
+   stroke weight/sharpness between two captures (ink, spread, solidity) —
+   that's how the math-overlay resample was proven. No python here has
+   numpy/Pillow; run it as
+   `uv run --with numpy --with pillow ui-measure.py …`.
 3. **Frequent, small, logical commits** — one feature/fix each. Don't
    discard uncommited changes.
 4. **Don't autopush, PR, or merge unless asked.** Branch off `main` (don't
