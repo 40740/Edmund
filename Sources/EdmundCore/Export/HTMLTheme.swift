@@ -32,7 +32,11 @@ enum HTMLTheme {
                     dark: Bool,
                     maxContentWidthPoints: Double = .greatestFiniteMagnitude) -> String {
         let bg = backgroundHex(dark: dark)
-        let fg = dark ? "#e6e6e6" : "#1a1a1a"
+        // Body ink comes from the editor's own definition, not a second hex, so
+        // Edit and Read mode can never drift apart again (EditorTheme
+        // .bodyTextColor). This was `#1a1a1a` in light mode, 10% lighter than
+        // what the editor paints.
+        let fg = EditorTheme.bodyTextColorResolved(dark: dark).hexString
         let faint = dark ? "#9a9a9a" : "#6a6a6a"
         let rule = dark ? "#3a3a3a" : "#e0e0e0"
         // Markers, rules and table borders in dark mode: the same gray the editor

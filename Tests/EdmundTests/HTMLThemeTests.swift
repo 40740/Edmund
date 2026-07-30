@@ -25,6 +25,23 @@ struct HTMLThemeTests {
         #expect(out.contains("\"Iowan Old Style\""))
     }
 
+    /// Read mode and Edit mode must paint text — and the math bitmaps that flow
+    /// with it — in the identical ink. They used to disagree in light mode (Read
+    /// mode hard-coded #1a1a1a against the editor's `textColor`), which made the
+    /// same equation visibly lighter in Read mode.
+    @Test("--fg is the editor's own body ink, in both appearances")
+    func bodyInkMatchesEditor() {
+        for dark in [false, true] {
+            let ink = EditorTheme.bodyTextColorResolved(dark: dark).hexString
+            #expect(css(dark: dark).contains("--fg: \(ink);"))
+        }
+        // Light mode is the system text color (pure black in Aqua); dark mode is
+        // the softened near-white, because `textColor`'s pure white glares on
+        // the #292929 page.
+        #expect(EditorTheme.bodyTextColorResolved(dark: false).hexString == "#000000")
+        #expect(EditorTheme.bodyTextColorResolved(dark: true).hexString == "#E6E6E6")
+    }
+
     @Test("Reading column max-width matches the editor's physical cap; uncapped by default")
     func pageMaxWidth() {
         let theme = EditorTheme(fontName: "Iowan Old Style", fontSize: 16,

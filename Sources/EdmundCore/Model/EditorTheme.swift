@@ -122,6 +122,39 @@ public struct EditorTheme: Equatable, Sendable {
         return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
     }
 
+    /// Body-text ink — **the** definition, read by both Edit mode
+    /// (`EditorTextView.foregroundColor`) and Read mode (`HTMLTheme`'s `--fg`,
+    /// and the math bitmaps `DocumentHTML` embeds). It lives here because the two
+    /// modes had drifted: Edit mode painted the system `textColor` while Read
+    /// mode hard-coded `#1a1a1a`, so in light mode the identical equation was
+    /// pure black in one mode and 10% lighter in the other (measured off
+    /// screenshots: peak ink coverage 1.000 vs 0.863).
+    ///
+    /// Light mode keeps the system color: Edit mode is a real `NSTextView`, and
+    /// `textColor` is what every native text surface paints — it also tracks
+    /// Increase Contrast, which a hex cannot. On white the difference from
+    /// `#1a1a1a` is perceptually tiny (21:1 vs 18.9:1 contrast), so matching the
+    /// system costs nothing. Dark mode is the exception, and it predates this:
+    /// `textColor` is pure white there, which glares against the `#292929` page,
+    /// so both modes use Read mode's long-standing `#e6e6e6` instead.
+    @MainActor public static func bodyTextColor(dark: Bool) -> NSColor {
+        dark ? NSColor(srgbRed: 230 / 255, green: 230 / 255, blue: 230 / 255, alpha: 1)
+             : .textColor
+    }
+
+    /// `bodyTextColor(dark:)` resolved against that appearance rather than
+    /// whichever one happens to be current. Read mode needs this: its CSS and its
+    /// math bitmaps are generated for an explicit light/dark target (an export, or
+    /// a preview while the app sits in the other appearance), and a dynamic
+    /// `textColor` resolved at the wrong moment would bake in the wrong ink.
+    @MainActor public static func bodyTextColorResolved(dark: Bool) -> NSColor {
+        var color = bodyTextColor(dark: dark)
+        NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
+            color = color.usingColorSpace(.deviceRGB) ?? color
+        }
+        return color
+    }
+
     @MainActor public var linkBlueColor: NSColor {
         NSColor(hex: linkBlueHex) ?? .systemBlue
     }

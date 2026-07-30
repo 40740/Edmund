@@ -26,6 +26,7 @@ struct SettingsPaneWidthTests {
         #expect(fittingWidth(EditSettingsView()) == general)
         #expect(fittingWidth(SyntaxSettingsView()) == general)
         #expect(fittingWidth(KeyBindingsSettingsView()) == general)
+        #expect(fittingWidth(ExtensionsSettingsView()) == general)
         #expect(fittingWidth(AdvancedSettingsView()) == general)
     }
 }

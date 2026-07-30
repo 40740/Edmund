@@ -370,6 +370,17 @@ Notable subsystems:
 
 ### Build, signing & packaging
 
+- **A green local `swift test` does not mean CI compiles.** The local CLI runs
+  a swift.org toolchain (`TOOLCHAINS` in `~/.zshrc` — 6.3.3); CI is macos-14 +
+  `latest-stable` Xcode (6.0.3). Concurrency *inference* differs between them:
+  SwiftUI's `View` is `@MainActor @preconcurrency`, so on 6.0.3 a `static func`
+  on a `View` is inferred main-actor-isolated and a synchronous test suite
+  cannot call it — an error 6.3.3 never emits (cost PR #249 a red `test` run).
+  Mark such helpers `nonisolated`. Before pushing anything that touches
+  isolation or a SwiftUI type's members, check parity:
+  `env -u TOOLCHAINS xcrun swift test --build-path .build-xcode`
+  (separate build path so it can't poison the normal `.build`; delete it after —
+  it is not gitignored).
 - **SwiftMath fonts**: `build-app.sh` must copy `*.bundle` into the `.app`
   root (it does). Without it the app **crashes the instant it renders any
   LaTeX**.
@@ -470,6 +481,19 @@ Notable subsystems:
 - **A selection taller than the viewport must be revealed at its *nearest*
   end** (`scrollRangeToVisible` override): always revealing the top fought
   drag-selection autoscroll and oscillated the viewport mid-drag.
+- **A bitmap overlay must land on the device grid or it gets resampled** —
+  and a resampled bitmap reads as *bolder*, not blurrier, because the same
+  ink spreads over more pixels. Both halves matter: the destination size
+  must be a whole number of device pixels (an `NSImage`'s point size is
+  rounded independently of its pixel count, so `image.size` usually is
+  *not*), and the origin must be a whole device pixel (a text baseline, or
+  a centered x, never is). `mathOverlay` snaps the size; `deviceAligned`
+  (EditorTextView+TextKit2) snaps the origin in *device* space, since a
+  scrolled clip view can leave the CTM's translation on a fraction of a
+  point. Measured on RaTeX equations before the fix: +32–38% inked device
+  pixels at the same total ink, with solid-coverage pixels collapsing
+  (173 → 31). Read mode pins its `<img>` to the PNG's exact pixel count for
+  the same reason (`DocumentHTML.fillMath`).
 
 ### Edit, selection & storage integrity
 
@@ -616,6 +640,17 @@ Notable subsystems:
   Substitutions menu back — it re-exposes exactly those toggles. Same reason
   "Correct Spelling Automatically" is left out of Spelling and Grammar.
 
+- **Edit-mode math looks "heavier" than read-mode math because it *is* a
+  different color, not a rendering defect.** Edit mode colors math (and all
+  text) with `.textColor` (pure black in light appearance); read mode uses
+  the softer `#1a1a1a`/`#e6e6e6` `--fg` palette for everything. Both are
+  working as designed — math just matches its ambient text color in each
+  mode. See `docs/investigations/math-ratex-weight-investigation.md`.
+- **A `//` line comment inside `HTMLTheme.swift`'s CSS string literal is
+  invalid CSS and silently drops the whole rule** (CSS has no `//` syntax;
+  the parser chokes past it until the next `{`). Use `/* */`. Cost a whole
+  round of "why doesn't this CSS change do anything" — see
+  `docs/investigations/math-ratex-weight-investigation.md` Round 1.
 
 ---
 
@@ -627,6 +662,30 @@ Notable subsystems:
   constraint still holds for any *new* overlay that could share a line with
   wrapping text. Full investigation:
   `docs/investigations/archives/callout-title-wrap-investigation.md`.
+- **RaTeX rendered inline math in display style until 0.1.14**, because
+  `renderLatex`'s `displayMode` argument didn't exist yet and the engine
+  defaults to display — so `$\sum_{i=1}^{n}$` stacked its limits above and
+  below mid-sentence. Fixed by passing the argument explicitly
+  (`WasmMathHost.render`). Prefixing `\displaystyle` was never the lever it
+  appeared to be: with the default already display, it measured identically
+  with and without.
+- **The recorded "RaTeX `aligned` row-spacing" defect did not survive
+  re-testing and is not a known bug.** It was filed against 0.1.12 by
+  comparing two *different* equations rather than one equation across two
+  versions. Head-to-head on identical input, 0.1.12 and 0.1.14 both stack
+  multi-row `aligned` correctly (four `\lim`/`\frac` rows: 4 clean
+  y-clusters, ~10em total, both versions). Nothing upstream was ever waiting
+  to be fixed here. If multi-row math ever collapses again, the escaping
+  round-trip is the thing to suspect first, not RaTeX's layout — see the next
+  entry. Full write-up: `docs/investigations/math-ratex-multirow-investigation.md`.
+- **swift-markdown unescapes `\\` before you ever see the LaTeX.** A `Text`
+  node's `.string` has Markdown backslash-unescaping applied (`\\`→`\`,
+  `\$`→`$`), which silently turns an `aligned` block's row separators into
+  nothing — every row lands on one line. Read mode therefore parses math from
+  the *raw* source (`sourceText(paragraph)` in `HTMLRenderer.visitParagraph`),
+  exactly as edit mode reads by range. The `?? Self.plainText(of:)` fallback
+  on that line is the mangled path — anything that makes `sourceText` return
+  nil reintroduces the collapse.
 - *(Add new ones here as you find them — with a one-line repro and a
   pointer to any deeper write-up in `docs/`.)*
 
@@ -701,7 +760,11 @@ only with reason):
    one-off shell: `ui-harness.sh` + `ui-measure.py` in
    `.claude/skills/edmund-live-repro-and-diagnostics/scripts/`. **Keep and
    extend those tools** — they're checked-in fixtures, and the setup cost is
-   otherwise paid again every visual task.
+   otherwise paid again every visual task. `ui-measure.py weight` compares
+   stroke weight/sharpness between two captures (ink, spread, solidity) —
+   that's how the math-overlay resample was proven. No python here has
+   numpy/Pillow; run it as
+   `uv run --with numpy --with pillow ui-measure.py …`.
 3. **Frequent, small, logical commits** — one feature/fix each. Don't
    discard uncommited changes.
 4. **Don't autopush, PR, or merge unless asked.** Branch off `main` (don't

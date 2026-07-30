@@ -581,7 +581,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
                 NSGraphicsContext.saveGraphicsState()
                 NSGraphicsContext.current = nsContext
-                image.draw(in: drawRect, from: .zero, operation: .sourceOver,
+                image.draw(in: deviceAligned(drawRect, in: context), from: .zero,
+                           operation: .sourceOver,
                            fraction: 1, respectFlipped: true, hints: nil)
                 NSGraphicsContext.restoreGraphicsState()
             } else if let path = overlay.path, let color = overlay.pathColor {
@@ -683,6 +684,21 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             .font: codeBlockLabelFont, .foregroundColor: NSColor.secondaryLabelColor,
         ]).draw(at: drawRect.origin)
         NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// `rect` with its origin moved to the nearest whole device pixel, leaving
+    /// its size alone. An overlay is anchored to a text baseline (and display
+    /// math to a centered x), so its origin is essentially never pixel-aligned —
+    /// and a bitmap blitted to a fractional device offset gets resampled, which
+    /// spread the same ink over ~39% more device pixels and made equations look
+    /// bolder in Edit mode than in Read mode. Rounding happens in *device* space,
+    /// not user space, because a scrolled clip view can leave the CTM's own
+    /// translation on a fraction of a point.
+    private func deviceAligned(_ rect: CGRect, in context: CGContext) -> CGRect {
+        var device = context.convertToDeviceSpace(rect.origin)
+        device.x.round()
+        device.y.round()
+        return CGRect(origin: context.convertToUserSpace(device), size: rect.size)
     }
 
     /// Fragment-local rect for an overlay image, anchored to the character at

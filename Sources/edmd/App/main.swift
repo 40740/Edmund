@@ -41,6 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Log.info("Edmund launched", category: .app)
         AppSettings.applyAppearance()
         AppSettings.applyCodeSyntax()
+        AppSettings.applyExtensionStates()
         setupMenuBar()
 
         // Right-click ▸ Services entries (see Info.plist NSServices). Held
