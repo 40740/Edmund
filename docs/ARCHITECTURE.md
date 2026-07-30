@@ -370,6 +370,17 @@ Notable subsystems:
 
 ### Build, signing & packaging
 
+- **A green local `swift test` does not mean CI compiles.** The local CLI runs
+  a swift.org toolchain (`TOOLCHAINS` in `~/.zshrc` — 6.3.3); CI is macos-14 +
+  `latest-stable` Xcode (6.0.3). Concurrency *inference* differs between them:
+  SwiftUI's `View` is `@MainActor @preconcurrency`, so on 6.0.3 a `static func`
+  on a `View` is inferred main-actor-isolated and a synchronous test suite
+  cannot call it — an error 6.3.3 never emits (cost PR #249 a red `test` run).
+  Mark such helpers `nonisolated`. Before pushing anything that touches
+  isolation or a SwiftUI type's members, check parity:
+  `env -u TOOLCHAINS xcrun swift test --build-path .build-xcode`
+  (separate build path so it can't poison the normal `.build`; delete it after —
+  it is not gitignored).
 - **SwiftMath fonts**: `build-app.sh` must copy `*.bundle` into the `.app`
   root (it does). Without it the app **crashes the instant it renders any
   LaTeX**.

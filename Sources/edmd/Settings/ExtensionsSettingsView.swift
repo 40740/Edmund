@@ -139,7 +139,13 @@ struct ExtensionsSettingsView: View {
     /// The row an arrow key should land on. Clamps at both ends rather than
     /// wrapping — a sidebar selection doesn't cycle — and enters from the near
     /// end when nothing is selected yet.
-    static func neighbor(of current: String?, in ids: [String], step: Int) -> String? {
+    ///
+    /// `nonisolated` because it is a pure function of its arguments, and because
+    /// SwiftUI's `View` is `@MainActor @preconcurrency`: on the toolchain CI uses
+    /// that isolation is inferred for this static too, so the (synchronous,
+    /// nonisolated) test suite couldn't call it — a build failure that does not
+    /// reproduce under a newer local toolchain.
+    nonisolated static func neighbor(of current: String?, in ids: [String], step: Int) -> String? {
         guard !ids.isEmpty else { return nil }
         guard let current, let index = ids.firstIndex(of: current) else {
             return step > 0 ? ids.first : ids.last
