@@ -71,6 +71,9 @@ struct VersionOutline: NSViewRepresentable {
         outline.rowHeight = 22
         outline.usesAlternatingRowBackgroundColors = true
         outline.indentationPerLevel = 14
+        // Item absorbs the slack; the two value columns are capped, so the
+        // default (last-column) autoresizing would leave a dead strip.
+        outline.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         outline.dataSource = context.coordinator
         outline.delegate = context.coordinator
 

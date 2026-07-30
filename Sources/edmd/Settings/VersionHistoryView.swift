@@ -139,12 +139,10 @@ struct VersionHistoryView: View {
                 Text("Total: \(byteString(totalSize))").foregroundStyle(.secondary)
                 Spacer()
                 Button("Done") { dismiss() }
-                // Count in the title makes the date cutoff visible: checked
-                // versions newer than it aren't included.
-                Button(deleteTargets.isEmpty ? "Delete…" : "Delete \(deleteTargets.count)…") {
-                    confirm(deleteTargets)
+                    .keyboardShortcut(.defaultAction)
+                Button { confirm(deleteTargets) } label: {
+                    Text("Delete…").foregroundStyle(.red)
                 }
-                .keyboardShortcut(.defaultAction)
                 .disabled(deleteTargets.isEmpty)
             }
         }
