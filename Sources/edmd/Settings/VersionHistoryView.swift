@@ -17,8 +17,6 @@ private func candidateDocumentURLs() -> [URL] {
     return urls.filter { FileManager.default.fileExists(atPath: $0.path) && seen.insert($0).inserted }
 }
 
-private enum CheckState { case on, off, mixed }
-
 struct VersionHistoryView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -29,16 +27,23 @@ struct VersionHistoryView: View {
     @State private var scannedURLs: [URL] = []
     @State private var isLoading = false
     @State private var refreshToken = 0
+    @State private var showingCalendar = false
+
+    /// Outline rows, rebuilt only when the data or the search query changes —
+    /// NSOutlineView keys off object identity, so rebuilding per body pass
+    /// would collapse the tree on every checkbox click.
+    @State private var roots: [VersionOutlineItem] = []
 
     @State private var pendingTargets: [VersionInfo] = []
     @State private var confirmClear = false
     @State private var errorMessage: String?
 
-    private var displayed: [FolderNode] { filterVersionTree(folders, query: query) }
     private var allInfos: [VersionInfo] { folders.flatMap { $0.files.flatMap { $0.versions.map(\.info) } } }
     private var selectedInfos: [VersionInfo] { allInfos.filter { selection.contains($0.id) } }
     private var totalSize: Int64 { allInfos.reduce(0) { $0 + $1.size } }
     private var selectedSize: Int64 { selectedInfos.reduce(0) { $0 + $1.size } }
+    /// Checked versions older than the cutoff — exactly what Delete removes.
+    private var deleteTargets: [VersionInfo] { selectedInfos.filter { $0.date < beforeDate } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -52,6 +57,7 @@ struct VersionHistoryView: View {
         }
         .frame(width: 720, height: 560)
         .task(id: refreshToken) { await reload() }
+        .onChange(of: query) { rebuildRoots() }
         .confirmationDialog(
             "Delete \(pendingTargets.count) version\(pendingTargets.count == 1 ? "" : "s")?",
             isPresented: $confirmClear, titleVisibility: .visible
@@ -101,38 +107,30 @@ struct VersionHistoryView: View {
     @ViewBuilder private var content: some View {
         if isLoading {
             centered { ProgressView() }
-        } else if displayed.isEmpty {
+        } else if roots.isEmpty {
             centered {
                 Text(folders.isEmpty ? "No version history found for these documents."
                                      : "No matches.")
                     .foregroundStyle(.secondary)
             }
         } else {
-            List {
-                ForEach(displayed) { folder in
-                    DisclosureGroup {
-                        ForEach(folder.files) { file in
-                            DisclosureGroup {
-                                ForEach(file.versions) { v in versionRow(v) }
-                            } label: { fileRow(file) }
-                        }
-                    } label: { folderRow(folder) }
-                }
-            }
-            .listStyle(.inset)
+            VersionOutline(roots: roots, selection: $selection)
         }
     }
 
     private var footer: some View {
         VStack(spacing: 10) {
-            HStack {
-                DatePicker("Delete versions before", selection: $beforeDate, displayedComponents: .date)
-                    .datePickerStyle(.compact)
-                    .fixedSize()
-                Button("Delete Before Date…") {
-                    confirm(versions(olderThan: beforeDate, in: allInfos))
+            HStack(spacing: 8) {
+                Text("Delete versions before")
+                Button(beforeDate.formatted(.dateTime.month(.twoDigits).day(.twoDigits).year())) {
+                    showingCalendar = true
                 }
-                .disabled(allInfos.allSatisfy { $0.date >= beforeDate })
+                .popover(isPresented: $showingCalendar, arrowEdge: .bottom) {
+                    DatePicker("", selection: $beforeDate, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                        .padding(12)
+                }
                 Spacer()
             }
             HStack {
@@ -141,81 +139,20 @@ struct VersionHistoryView: View {
                 Text("Total: \(byteString(totalSize))").foregroundStyle(.secondary)
                 Spacer()
                 Button("Done") { dismiss() }
-                Button("Delete Selected…") { confirm(selectedInfos) }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(selection.isEmpty)
+                // Count in the title makes the date cutoff visible: checked
+                // versions newer than it aren't included.
+                Button(deleteTargets.isEmpty ? "Delete…" : "Delete \(deleteTargets.count)…") {
+                    confirm(deleteTargets)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(deleteTargets.isEmpty)
             }
         }
         .padding(16)
     }
 
-    // MARK: Rows
-
-    private func folderRow(_ folder: FolderNode) -> some View {
-        let all = folder.files.flatMap { $0.versions.map(\.id) }
-        return row(check: checkState(all),
-                   toggle: { toggle(all) },
-                   icon: "folder",
-                   title: folder.name,
-                   subtitle: folder.displayPath,
-                   size: folder.size)
-    }
-
-    private func fileRow(_ file: FileNode) -> some View {
-        let ids = file.versions.map(\.id)
-        return row(check: checkState(ids),
-                   toggle: { toggle(ids) },
-                   icon: "doc.text",
-                   title: file.name,
-                   subtitle: "\(file.versions.count) version\(file.versions.count == 1 ? "" : "s")",
-                   size: file.size)
-    }
-
-    private func versionRow(_ v: VersionNode) -> some View {
-        row(check: selection.contains(v.id) ? .on : .off,
-            toggle: { toggle([v.id]) },
-            icon: "clock",
-            title: v.date.formatted(date: .abbreviated, time: .shortened),
-            subtitle: nil,
-            size: v.size)
-    }
-
-    private func row(check: CheckState, toggle: @escaping () -> Void,
-                     icon: String, title: String, subtitle: String?, size: Int64) -> some View {
-        HStack(spacing: 8) {
-            checkbox(check, toggle)
-            Image(systemName: icon).foregroundStyle(.secondary).frame(width: 16)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
-            }
-            Spacer()
-            Text(byteString(size)).foregroundStyle(.secondary).monospacedDigit()
-        }
-    }
-
-    private func checkbox(_ s: CheckState, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: s == .on ? "checkmark.square.fill"
-                            : s == .mixed ? "minus.square.fill" : "square")
-                .foregroundStyle(s == .off ? Color.secondary : Color.accentColor)
-        }
-        .buttonStyle(.plain)
-    }
-
     private func centered<V: View>(@ViewBuilder _ v: () -> V) -> some View {
         VStack { Spacer(); v(); Spacer() }.frame(maxWidth: .infinity)
-    }
-
-    // MARK: Selection
-
-    private func checkState(_ ids: [URL]) -> CheckState {
-        let n = ids.filter(selection.contains).count
-        return n == 0 ? .off : (n == ids.count ? .on : .mixed)
-    }
-
-    private func toggle(_ ids: [URL]) {
-        if checkState(ids) == .on { selection.subtract(ids) } else { selection.formUnion(ids) }
     }
 
     // MARK: Actions
@@ -226,7 +163,12 @@ struct VersionHistoryView: View {
         let infos = await Task.detached { VersionHistoryStore.gather(urls: urls) }.value
         folders = buildVersionTree(infos)
         selection.formIntersection(Set(infos.map(\.id)))   // drop ids that no longer exist
+        rebuildRoots()
         isLoading = false
+    }
+
+    private func rebuildRoots() {
+        roots = versionOutlineItems(filterVersionTree(folders, query: query))
     }
 
     private func confirm(_ targets: [VersionInfo]) {

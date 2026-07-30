@@ -43,6 +43,7 @@ public struct FileNode: Identifiable, Hashable, Sendable {
     public let versions: [VersionNode]
     public var id: URL { url }
     public var name: String { url.lastPathComponent }
+    public var versionCount: Int { versions.count }
     public var size: Int64 { versions.reduce(0) { $0 + $1.size } }
     public init(url: URL, versions: [VersionNode]) {
         self.url = url
@@ -58,6 +59,7 @@ public struct FolderNode: Identifiable, Hashable, Sendable {
     public var name: String { url.lastPathComponent }
     /// Path with a leading `~` for the home directory, for display.
     public var displayPath: String { abbreviatingHome(url.path) }
+    public var versionCount: Int { files.reduce(0) { $0 + $1.versionCount } }
     public var size: Int64 { files.reduce(0) { $0 + $1.size } }
     public init(url: URL, files: [FileNode]) {
         self.url = url

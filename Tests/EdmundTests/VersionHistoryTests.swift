@@ -31,6 +31,7 @@ struct VersionHistoryTests {
         #expect(tree.count == 2)                       // Work + Notes
         let workFolder = try! #require(tree.first { $0.name == "Work" })
         #expect(workFolder.files.count == 2)           // spec.md + notes.md
+        #expect(workFolder.versionCount == 3)          // 2 of spec.md + 1 of notes.md
         #expect(workFolder.size == 350)                // 100 + 200 + 50
 
         let spec = try! #require(workFolder.files.first { $0.name == "spec.md" })
