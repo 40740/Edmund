@@ -34,8 +34,12 @@ struct SyntaxSettingsView: View {
                     Toggle("Enable extended Markdown syntax (non-GFM)", isOn: $enableNonGFM)
                         .onChange(of: enableNonGFM) { applyFeatures() }
                         .padding(.top, -8)
-                    // Markdown/link syntax auto-parses from the string literal.
-                    Text("Opt-in support for [Obsidian-flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown).")
+                    // Parsed rather than left to `Text`'s own literal markdown
+                    // handling, so `settingsLinkTinted()` can bring the link in
+                    // line with every other link in Settings.
+                    Text(AttributedString(
+                        inlineMarkdown: "Opt-in support for [Obsidian-flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown)."
+                    ).settingsLinkTinted())
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

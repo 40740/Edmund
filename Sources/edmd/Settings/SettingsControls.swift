@@ -15,6 +15,25 @@ extension View {
     }
 }
 
+extension AttributedString {
+    /// Recolors link runs to the app's accent, so a markdown link in Settings
+    /// body text matches the `.foregroundStyle(.tint)` link buttons beside it —
+    /// the Extensions pane's Author and Repository rows, say.
+    ///
+    /// `.tint` on the surrounding `Text` does not do this: a link run carries
+    /// its own platform-blue foreground, and only setting the run's
+    /// `foregroundColor` outright replaces it.
+    func settingsLinkTinted() -> AttributedString {
+        var copy = self
+        // Ranges are collected before mutating: writing to `copy` inside a loop
+        // over `copy.runs` mutates the collection being iterated.
+        for range in copy.runs.filter({ $0.link != nil }).map(\.range) {
+            copy[range].foregroundColor = .accentColor
+        }
+        return copy
+    }
+}
+
 extension View {
     /// Consistent pane padding: CotEditor-style breathing room (scene padding at
     /// the top, a little more on the sides and bottom).

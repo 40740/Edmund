@@ -14,8 +14,8 @@ import Foundation
 // know about them.
 
 public extension AttributedString {
-    /// Parses an extension `summary` written as inline markdown, so links can be
-    /// written in place (`[RaTeX](https://ratex.lites.dev)`).
+    /// Parses inline markdown — an extension `summary`, a Settings note — so links
+    /// can be written in place (`[RaTeX](https://ratex.lites.dev)`).
     ///
     /// Inline-only parsing is required, not a preference: full markdown reads a
     /// leading `>` as a blockquote and would silently eat the `>` in a summary
@@ -24,7 +24,7 @@ public extension AttributedString {
     ///
     /// Falls back to the markdown as literal text — a summary that shows its
     /// source is worse than one that renders, but better than an empty pane.
-    init(extensionSummaryMarkdown markdown: String) {
+    init(inlineMarkdown markdown: String) {
         self = (try? AttributedString(
             markdown: markdown,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
@@ -58,7 +58,7 @@ public protocol EdmundExtension: AnyObject {
     ///
     /// Attributed so a summary can name the upstream project it wraps and link
     /// straight to it; `SwiftUI.Text` renders link runs and opens them. Build
-    /// one with `AttributedString(extensionSummaryMarkdown:)`.
+    /// one with `AttributedString(inlineMarkdown:)`.
     var summary: AttributedString { get }
     /// This extension's own packaging version (e.g. "1.0.0") — distinct from
     /// any upstream library version it wraps, which belongs in `summary`.
@@ -133,7 +133,7 @@ public final class AdvancedMathExtension: EdmundExtension {
     /// is called out in `summary` instead (mirrors how Obsidian plugins
     /// version themselves separately from any library they wrap).
     public let summary = AttributedString(
-        extensionSummaryMarkdown:
+        inlineMarkdown:
             ">99.5% KaTeX syntax coverage via [RaTeX](https://ratex.lites.dev) (Rust).")
     public let version = "1.0.0"
     public var isInstalled: Bool { renderer.isReady }
