@@ -101,23 +101,31 @@ extension EditorTextView {
     /// attributes, so a restyle wouldn't re-consult the layout delegate;
     /// invalidating layout forces the plain ↔ decorated swap and a redraw.
     /// Call after every such assignment.
+    /// Anchored, and it re-lays the viewport itself: invalidating the whole
+    /// document drops every fragment back to a height estimate, so without the
+    /// anchor the visible band slides (measured on a 2000-line file), and
+    /// nothing forces a viewport layout afterward — the editor sat blank until
+    /// a click supplied the missing event. Same repair as `swapToEditor`.
     @MainActor public func refreshOverdraw() {
-        if let tlm = textLayoutManager {
-            tlm.invalidateLayout(for: tlm.documentRange)
+        preservingViewportAnchor {
+            if let tlm = textLayoutManager {
+                tlm.invalidateLayout(for: tlm.documentRange)
+            }
+            // Invalidating layout is not enough on its own: the layout manager
+            // keeps its fragments and hands the cached ones back, so a paragraph
+            // that was vended plain stays plain and the new overdraw never appears
+            // (measured — a live toggle drew nothing until the next edit). Only the
+            // content storage re-offering its elements re-vends them, and an
+            // attributes-only edit is the cheapest way to ask for that: no text
+            // changes, no restyle, no undo entry — the same call every `setAttributes`
+            // already makes (EditorTextStorage).
+            if let storage = textStorage, storage.length > 0 {
+                storage.edited(.editedAttributes,
+                               range: NSRange(location: 0, length: storage.length),
+                               changeInLength: 0)
+            }
         }
-        // Invalidating layout is not enough on its own: the layout manager
-        // keeps its fragments and hands the cached ones back, so a paragraph
-        // that was vended plain stays plain and the new overdraw never appears
-        // (measured — a live toggle drew nothing until the next edit). Only the
-        // content storage re-offering its elements re-vends them, and an
-        // attributes-only edit is the cheapest way to ask for that: no text
-        // changes, no restyle, no undo entry — the same call every `setAttributes`
-        // already makes (EditorTextStorage).
-        if let storage = textStorage, storage.length > 0 {
-            storage.edited(.editedAttributes,
-                           range: NSRange(location: 0, length: storage.length),
-                           changeInLength: 0)
-        }
+        textLayoutManager?.textViewportLayoutController.layoutViewport()
         needsDisplay = true
     }
 }

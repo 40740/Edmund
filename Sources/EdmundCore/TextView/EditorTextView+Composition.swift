@@ -188,11 +188,19 @@ extension EditorTextView {
     /// Restyles every block in place (attribute-only). For theme and
     /// appearance changes: the string is unchanged but every attribute
     /// derives from the new theme/appearance.
+    ///
+    /// Anchored: marking every block unstyled drops the whole document back to
+    /// base-height estimates, so the content *above* the viewport re-measures
+    /// and the same clip origin lands somewhere else entirely — measured at +64
+    /// lines on a 2000-line file when the appearance switched. Pinning the
+    /// viewport top keeps the user looking at what they were looking at.
     func recomposeAllDirty() {
-        for i in blocks.indices { blocks[i].isStyled = false }
-        recomposeDirty(IndexSet(blocks.indices),
-                       cursorInRaw: currentCursorInRaw(),
-                       settingSelection: true)
+        preservingViewportAnchor {
+            for i in blocks.indices { blocks[i].isStyled = false }
+            recomposeDirty(IndexSet(blocks.indices),
+                           cursorInRaw: currentCursorInRaw(),
+                           settingSelection: true)
+        }
     }
 
     /// Attribute-only restyle of the whole document, for the app layer to call
