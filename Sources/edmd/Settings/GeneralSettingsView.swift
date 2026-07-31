@@ -36,7 +36,7 @@ struct GeneralSettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("Enable Auto Save with Versions", isOn: $autoSave)
                         .onChange(of: autoSave) { AppSettings.applyAutosaving() }
-                    Text("A system feature that automatically overwrites your files while editing. Even if turned off, Edmund creates a backup in case it unexpectedly quits.")
+                    Text("Files are backed up even when auto-save is off.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -44,6 +44,7 @@ struct GeneralSettingsView: View {
                         .padding(.leading, 20)
                     Button("Manage Version History…") { showingVersionHistory = true }
                         .padding(.leading, 20)
+                        .padding(.top, 3)
                 }
             }
 
