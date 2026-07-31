@@ -43,7 +43,6 @@ struct EditSettingsView: View {
             GridRow {
                 Text("Indentation:")
                     .gridColumnAlignment(.trailing)
-                    .padding(.top, -6)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("Prefer using")
@@ -63,9 +62,8 @@ struct EditSettingsView: View {
                             .labelsHidden()
                         Text("spaces")
                     }
-                    Toggle("Detect and learn indent style on document opening", isOn: $detectIndent)
+                    Toggle("Detect indent style on document opening", isOn: $detectIndent)
                 }
-                .padding(.top, -6)
                 .onChange(of: indentStyle) { AppSettings.applyEditSettingsToOpenDocuments() }
                 .onChange(of: indentWidth) { AppSettings.applyEditSettingsToOpenDocuments() }
             }
@@ -73,7 +71,7 @@ struct EditSettingsView: View {
             GridRow {
                 Text("Words:")
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Automatically insert closing parentheses and quotes", isOn: $autoCloseBrackets)
+                    Toggle("Automatically close parentheses and quotes", isOn: $autoCloseBrackets)
                     Toggle("Check spelling while typing", isOn: $spellCheck)
                     // AppKit checks grammar as part of the continuous
                     // spell-checking pass (hence the menu's "Check Grammar With
