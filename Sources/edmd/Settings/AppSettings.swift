@@ -287,6 +287,20 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: Key.autoSaveWithVersions) }
     }
 
+    /// Autosave interval for the "elsewhere" backup AppKit keeps when Auto Save with
+    /// Versions is off — a recovery copy in ~/Library/Autosave Information/ that it
+    /// offers back after an unexpected quit, without ever touching the document or
+    /// the version store. TextEdit behaves the same way. Zero is AppKit's "no timer"
+    /// value: with autosave-in-place on, it drives its own change-count schedule.
+    static var autosavingDelay: TimeInterval { autoSaveWithVersions ? 0 : 30 }
+
+    /// Pushes the autosave interval into the document controller. Called at launch
+    /// and whenever the Auto Save toggle changes.
+    @MainActor
+    static func applyAutosaving() {
+        NSDocumentController.shared.autosavingDelay = autosavingDelay
+    }
+
     static var conflictResolution: ConflictResolution {
         get {
             guard let raw = UserDefaults.standard.string(forKey: Key.conflictResolution),

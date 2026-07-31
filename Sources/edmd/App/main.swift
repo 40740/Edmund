@@ -38,6 +38,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppSettings.applyLogging()
+        AppSettings.applyAutosaving()
         Log.info("Edmund launched", category: .app)
         AppSettings.applyAppearance()
         AppSettings.applyCodeSyntax()
