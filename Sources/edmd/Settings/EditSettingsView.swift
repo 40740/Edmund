@@ -6,8 +6,6 @@ import AppKit
 import EdmundCore
 
 struct EditSettingsView: View {
-    @AppStorage(AppSettings.Key.showToolbar)     private var showToolbar = true
-    @AppStorage(AppSettings.Key.autoHideToolbar) private var autoHideToolbar = true
     @AppStorage(AppSettings.Key.sourceMode)      private var sourceMode = false
     @AppStorage(AppSettings.Key.showInvisibles) private var showInvisibles = false
     // Parked with the rest of the Always mode — see the "Characters:" row.
@@ -36,24 +34,11 @@ struct EditSettingsView: View {
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
             // MARK: - Window-level settings
-            GridRow {
-                // Cancel the extra space .leadingFirstTextBaseline adds above
-                // the first row (both cells, so they stay aligned).
-                Text("Toolbar:")
-                    .gridColumnAlignment(.trailing)
-                    .padding(.top, -6)
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Show toolbar", isOn: $showToolbar)
-                    Toggle("Automatically hide toolbar in full screen", isOn: autoHideInFullScreen)
-                        .padding(.leading, 20)
-                        .disabled(!showToolbar)
-                }
-                .padding(.top, 2)
-                .onChange(of: showToolbar) { AppSettings.applyEditSettingsToOpenDocuments() }
-            }
-            
-            // TODO: Move Max Content Width here, after Settings ▸ Themes 
-            
+            // Toolbar visibility and its full-screen auto-hide live in the
+            // View menu, not here.
+
+            // TODO: Move Max Content Width here, after Settings ▸ Themes
+
             GridRow {
                 Text("Editor:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
@@ -210,15 +195,6 @@ struct EditSettingsView: View {
             }
         }
         .settingsPanePadding()
-    }
-
-    /// With the toolbar hidden outright there is nothing left to auto-hide, so
-    /// the checkbox reads as on and greys out. It reports `true` rather than
-    /// writing it, so whatever the user actually picked comes back untouched
-    /// when the toolbar returns.
-    private var autoHideInFullScreen: Binding<Bool> {
-        Binding(get: { showToolbar ? autoHideToolbar : true },
-                set: { autoHideToolbar = $0 })
     }
 
     private var invisibleCharacterGrid: some View {
