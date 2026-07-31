@@ -229,12 +229,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                          action: #selector(AppDelegate.openDocumentManually(_:)),
                          keyEquivalent: "o")
 
-        // Recent documents submenu
+        // Recent documents submenu. AppKit fills this in by itself only for a
+        // menu that came out of a nib marked systemMenu="recentDocuments" —
+        // there is no API to say the same thing about a menu built in code, so
+        // a hand-made one just sits there empty (the documents *are* recorded;
+        // it's only the menu that never hears about them). Fill it on open
+        // instead, from NSDocumentController's own list.
         let recentMenuItem = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
         let recentMenu = NSMenu(title: "Open Recent")
-        recentMenu.addItem(withTitle: "Clear Menu",
-                           action: #selector(NSDocumentController.clearRecentDocuments(_:)),
-                           keyEquivalent: "")
+        recentMenu.delegate = self
         recentMenuItem.submenu = recentMenu
         fileMenu.addItem(recentMenuItem)
 
@@ -398,6 +401,41 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApplication.shared.windowsMenu = windowMenuItem.submenu
 
         NSApplication.shared.mainMenu = mainMenu
+    }
+}
+
+// MARK: - Open Recent
+
+/// Rebuilds the Open Recent menu each time it opens (see the note where the
+/// menu is created). The list itself is macOS's — every open goes through
+/// `NSDocumentController.openDocument(withContentsOf:)`, which records it.
+extension AppDelegate: NSMenuDelegate {
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        for url in NSDocumentController.shared.recentDocumentURLs {
+            let item = menu.addItem(withTitle: url.lastPathComponent,
+                                    action: #selector(openRecentDocument(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = url
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            icon.size = NSSize(width: 16, height: 16)
+            item.image = icon
+        }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
+        // nil target → the document controller picks it up off the responder
+        // chain, same as every other standard document action here.
+        menu.addItem(withTitle: "Clear Menu",
+                     action: #selector(NSDocumentController.clearRecentDocuments(_:)),
+                     keyEquivalent: "")
+    }
+
+    @MainActor @objc private func openRecentDocument(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
+            // A recent file can be gone or renamed; AppKit's own alert says so.
+            if let error { NSAlert(error: error).runModal() }
+        }
     }
 }
 
