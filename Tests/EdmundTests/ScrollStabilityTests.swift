@@ -173,4 +173,37 @@ struct ScrollStabilityTests {
         #expect(editor.topmostVisibleCharacterOffset() == before,
                 "top line moved from \(before ?? -1) to \(editor.topmostVisibleCharacterOffset() ?? -1)")
     }
+
+    // Narrowing the text re-wraps every paragraph, so the content above the
+    // viewport changes height — the same drift as a whole-document restyle,
+    // reached through the column width instead. Both settings are reachable
+    // live: the Appearance pane's width slider (and zoom), and Settings ▸ Edit.
+
+    @Test("Narrowing the content column keeps the viewport put")
+    @MainActor func maxContentWidthKeepsViewport() {
+        let (editor, _) = scrolledEditor()
+        let before = editor.topmostVisibleCharacterOffset()
+        #expect(before ?? 0 > 0)
+
+        editor.maxContentWidthPoints = 260
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        editor.layoutSubtreeIfNeeded()
+
+        #expect(editor.topmostVisibleCharacterOffset() == before,
+                "top line moved from \(before ?? -1) to \(editor.topmostVisibleCharacterOffset() ?? -1)")
+    }
+
+    @Test("Turning on line numbers keeps the viewport put")
+    @MainActor func lineNumbersKeepViewport() {
+        let (editor, _) = scrolledEditor()
+        let before = editor.topmostVisibleCharacterOffset()
+        #expect(before ?? 0 > 0)
+
+        editor.showLineNumbers = true
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        editor.layoutSubtreeIfNeeded()
+
+        #expect(editor.topmostVisibleCharacterOffset() == before,
+                "top line moved from \(before ?? -1) to \(editor.topmostVisibleCharacterOffset() ?? -1)")
+    }
 }

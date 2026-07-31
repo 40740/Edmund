@@ -223,7 +223,13 @@ public class EditorTextView: NSTextView {
     public var maxContentWidthPoints: CGFloat = .greatestFiniteMagnitude {
         didSet {
             guard oldValue != maxContentWidthPoints else { return }
-            updateContentInset()
+            // Anchored: a narrower column re-wraps every paragraph, so the
+            // content above the viewport changes height and the unchanged clip
+            // origin lands elsewhere (measured at 1641 characters on a
+            // 120-paragraph file). Only here, not in `updateContentInset`
+            // itself — that also runs from `setFrameSize` during a live window
+            // resize, which must not scroll the clip view from inside layout.
+            preservingViewportAnchor { updateContentInset() }
         }
     }
 
@@ -319,7 +325,9 @@ public class EditorTextView: NSTextView {
     public var showLineNumbers = false {
         didSet {
             guard oldValue != showLineNumbers else { return }
-            updateLineNumberRuler()
+            // Anchored for the same reason as `maxContentWidthPoints`: adding
+            // or removing the gutter narrows the text and re-wraps it.
+            preservingViewportAnchor { updateLineNumberRuler() }
         }
     }
 
