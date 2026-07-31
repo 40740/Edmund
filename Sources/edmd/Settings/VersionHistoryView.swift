@@ -1,4 +1,4 @@
-// The Clear Version History popup: browse macOS Auto Save versions grouped by
+// The Manage Version History popup: browse macOS Auto Save versions grouped by
 // folder → file → version, and clear them (by selection or older than a date),
 // with filename/path search. See EdmundCore/Model/VersionHistory.swift for the model.
 
@@ -27,7 +27,6 @@ struct VersionHistoryView: View {
     @State private var scannedURLs: [URL] = []
     @State private var isLoading = false
     @State private var refreshToken = 0
-    @State private var showingCalendar = false
 
     /// Outline rows, rebuilt only when the data or the search query changes —
     /// NSOutlineView keys off object identity, so rebuilding per body pass
@@ -121,16 +120,11 @@ struct VersionHistoryView: View {
     private var footer: some View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
-                Text("Delete versions before")
-                Button(beforeDate.formatted(.dateTime.month(.twoDigits).day(.twoDigits).year())) {
-                    showingCalendar = true
-                }
-                .popover(isPresented: $showingCalendar, arrowEdge: .bottom) {
-                    DatePicker("", selection: $beforeDate, displayedComponents: .date)
-                        .datePickerStyle(.graphical)
-                        .labelsHidden()
-                        .padding(12)
-                }
+                // Stock NSDatePicker field: mm/dd/yyyy in en_US, keyboard-editable,
+                // localized elsewhere for free.
+                DatePicker("Delete versions before", selection: $beforeDate,
+                           displayedComponents: .date)
+                    .fixedSize()
                 Spacer()
             }
             HStack {
@@ -141,7 +135,7 @@ struct VersionHistoryView: View {
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
                 Button { confirm(deleteTargets) } label: {
-                    Text("Delete…").foregroundStyle(.red)
+                    Text("Delete").foregroundStyle(.red)
                 }
                 .disabled(deleteTargets.isEmpty)
             }

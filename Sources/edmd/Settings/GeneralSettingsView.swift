@@ -35,7 +35,7 @@ struct GeneralSettingsView: View {
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("Enable Auto Save with Versions", isOn: $autoSave)
-                    Button("Clear Version History…") { showingVersionHistory = true }
+                    Button("Manage Version History…") { showingVersionHistory = true }
                         .padding(.leading, 20)
                 }
             }
