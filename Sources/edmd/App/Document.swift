@@ -660,8 +660,7 @@ class Document: NSDocument, HeadingNavigable {
     }
 
     /// Swaps the editing view to whatever the source-mode setting now says.
-    /// Called after the menu item toggles it, and by Settings ▸ Edit ▸ Display
-    /// (which writes the setting itself, via @AppStorage).
+    /// Called after `toggleSourceMode` flips it.
     func applySourceMode() {
         if editor.viewMode != .reading { setViewMode(editingMode) }
     }

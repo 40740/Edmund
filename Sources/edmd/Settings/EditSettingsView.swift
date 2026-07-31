@@ -6,7 +6,6 @@ import AppKit
 import EdmundCore
 
 struct EditSettingsView: View {
-    @AppStorage(AppSettings.Key.sourceMode)      private var sourceMode = false
     @AppStorage(AppSettings.Key.showInvisibles) private var showInvisibles = false
     // Parked with the rest of the Always mode — see the "Characters:" row.
     // @AppStorage(AppSettings.Key.invisiblesMode)
@@ -18,8 +17,6 @@ struct EditSettingsView: View {
     @AppStorage(AppSettings.Key.invisibleControl)    private var otherControl = true
     @AppStorage(AppSettings.Key.showListIndentGuides) private var showListIndentGuides = false
     @AppStorage(AppSettings.Key.showLineNumbers)      private var showLineNumbers = false
-    @AppStorage(AppSettings.Key.typewriterMode) private var typewriterScroll = true
-    @AppStorage(AppSettings.Key.focusMode) private var focusMode = false
     @AppStorage(AppSettings.Key.indentStyle)
     private var indentStyle = AppSettings.IndentStyle.spaces
     @AppStorage(AppSettings.Key.indentWidth)       private var indentWidth = 2
@@ -33,30 +30,14 @@ struct EditSettingsView: View {
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
-            // MARK: - Window-level settings
-            // Toolbar visibility and its full-screen auto-hide live in the
-            // View menu, not here.
+            // Window- and view-level state isn't configured here: toolbar
+            // visibility and its full-screen auto-hide, typewriter scroll,
+            // focus mode and source mode are all things you flip while working
+            // and see immediately, so they live in the View menu. This pane is
+            // for the defaults you set once — how text is indented, checked and
+            // displayed.
 
             // TODO: Move Max Content Width here, after Settings ▸ Themes
-
-            GridRow {
-                Text("Editor:").gridColumnAlignment(.trailing)
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Typewriter scroll", isOn: $typewriterScroll)
-                        .onChange(of: typewriterScroll) { AppSettings.applyEditSettingsToOpenDocuments() }
-                    Toggle("Focus mode", isOn: $focusMode)
-                        .onChange(of: focusMode) { AppSettings.applyEditSettingsToOpenDocuments() }
-                }
-            }
-            
-            GridRow {
-                Text("Source mode:").gridColumnAlignment(.trailing)
-                // The same setting as View ▸ Show Source in Editor
-                Toggle("Show raw source in editor", isOn: $sourceMode)
-                    .onChange(of: sourceMode) { applySourceMode() }
-            }
-            
-            GridRow { Divider().gridCellColumns(2) }
 
             // MARK: - Content-level editing settings
             GridRow {
@@ -218,14 +199,6 @@ struct EditSettingsView: View {
         Toggle(label, isOn: binding)
             .fixedSize()
             .gridColumnAlignment(.leading)
-    }
-
-    /// The setting is already written by @AppStorage; each open document just
-    /// needs to swap its editing view over.
-    private func applySourceMode() {
-        for case let document as Document in NSDocumentController.shared.documents {
-            document.applySourceMode()
-        }
     }
 
     /// Strict line breaks changes Read-mode output, so re-render every open
