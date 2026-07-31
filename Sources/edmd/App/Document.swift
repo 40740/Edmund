@@ -204,6 +204,14 @@ class Document: NSDocument, HeadingNavigable {
             self, selector: #selector(windowDidChangeScreen(_:)),
             name: NSWindow.didChangeScreenNotification, object: window
         )
+        // Auto-hide is a full-screen-only affair, and applyToolbarAutoHide may
+        // have hidden the toolbar outright to honour it. Put it back on the way
+        // out, or a window that left full screen with auto-hide on keeps a
+        // toolbar that Show/Hide Toolbar says is showing.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidExitFullScreen(_:)),
+            name: NSWindow.didExitFullScreenNotification, object: window
+        )
 
         // Restore the last window's frame size (the toolbar is now installed, so
         // the frame is final). Applied as a frame, not a contentRect, so it
@@ -215,6 +223,15 @@ class Document: NSDocument, HeadingNavigable {
 
         let wc = DocumentWindowController(window: window)
         addWindowController(wc)
+        // Assigned by hand: NSWindowController only makes itself the window's
+        // delegate on the nib-loading path, and this window is built in code, so
+        // `init(window:)` leaves `delegate` nil — which silently killed the
+        // full-screen toolbar auto-hide (the delegate method below was never
+        // called). Safe to point at the controller: NSWindowController itself
+        // implements none of NSWindowDelegate, so nothing else changes hands —
+        // in particular the undo manager still comes from the window, not the
+        // document.
+        window.delegate = wc
         window.makeFirstResponder(editor)
         applyToolbarVisibility()
         // Honor the persisted source-mode preference for the editing view.
@@ -235,6 +252,10 @@ class Document: NSDocument, HeadingNavigable {
         guard let window = notification.object as? NSWindow,
               let screen = window.screen else { return }
         editor?.maxContentWidthPoints = screen.cmToPoints(AppSettings.maxContentWidthCm) * zoomFactor
+    }
+
+    @objc private func windowDidExitFullScreen(_ notification: Notification) {
+        applyToolbarVisibility()
     }
 
     // MARK: - Zoom (View ▸ Actual Size / Zoom In / Zoom Out)
@@ -659,6 +680,35 @@ class Document: NSDocument, HeadingNavigable {
         window?.toolbar?.isVisible = AppSettings.showToolbar
     }
 
+    /// View ▸ Auto-Hide Toolbar: in full screen, slide the toolbar away with the
+    /// menu bar until the pointer reaches the top of the screen.
+    @objc func toggleAutoHideToolbar(_ sender: Any?) {
+        AppSettings.autoHideToolbar.toggle()
+        for case let document as Document in NSDocumentController.shared.documents {
+            document.applyToolbarAutoHide()
+        }
+    }
+
+    /// Applies the setting to a window that is *already* full screen.
+    ///
+    /// The presentation-option route does not work here, which is worth knowing
+    /// before anyone tries it again: full screen is window-managed, so the
+    /// window's own options — fixed when it entered, from the delegate method
+    /// below — outrank the app's. Measured live while full screen with
+    /// auto-hide on: `currentSystemPresentationOptions` reads
+    /// `fullScreen|autoHideToolbar` (3072), and assigning `NSApp
+    /// .presentationOptions` a set without `.autoHideToolbar` leaves it at
+    /// 3072 — the flag is simply re-imposed.
+    ///
+    /// So show or hide the toolbar outright instead. That is the visible half
+    /// of the setting; the reveal-on-pointer behaviour itself is whatever the
+    /// window picked up on entry, and follows on the next one.
+    func applyToolbarAutoHide() {
+        guard let window = windowControllers.first?.window,
+              window.styleMask.contains(.fullScreen) else { return }
+        window.toolbar?.isVisible = AppSettings.showToolbar && !AppSettings.autoHideToolbar
+    }
+
     /// Keeps the View-menu "Show Source in Editor" checkmark and the
     /// Show/Hide Toolbar title in sync with the settings.
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -667,6 +717,11 @@ class Document: NSDocument, HeadingNavigable {
         }
         if item.action == #selector(toggleToolbarShown(_:)) {
             item.title = AppSettings.showToolbar ? "Hide Toolbar" : "Show Toolbar"
+        }
+        if item.action == #selector(toggleAutoHideToolbar(_:)) {
+            item.state = AppSettings.autoHideToolbar ? .on : .off
+            // Nothing to auto-hide with the toolbar switched off entirely.
+            return AppSettings.showToolbar
         }
         return super.validateMenuItem(item)
     }
@@ -816,8 +871,9 @@ final class DocumentWindow: NSWindow {
 // MARK: - Document Window Controller
 
 /// The document window's controller. Exists only to answer the full-screen
-/// presentation query — NSWindowController makes itself the window's delegate,
-/// and `.autoHideToolbar` can only be requested from there.
+/// presentation query — `.autoHideToolbar` can only be requested from the
+/// window's delegate, which `makeWindowControllers` wires to this object by
+/// hand (see the note there).
 final class DocumentWindowController: NSWindowController, NSWindowDelegate {
     func window(_ window: NSWindow,
                 willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions)

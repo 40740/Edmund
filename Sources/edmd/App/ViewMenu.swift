@@ -20,6 +20,12 @@ enum ViewMenu {
         viewMenu.addItem(MenuCommand(id: "view.toggleToolbar", group: "View", title: "Hide Toolbar",
                                      action: #selector(Document.toggleToolbarShown(_:))).makeItem())
 
+        // Full-screen auto-hide. Lives here rather than in Settings, next to
+        // the switch it qualifies.
+        viewMenu.addItem(MenuCommand(id: "view.autoHideToolbar", group: "View",
+                                     title: autoHideToolbarTitle,
+                                     action: #selector(Document.toggleAutoHideToolbar(_:))).makeItem())
+
         // Routes through the responder chain to the key window's toolbar.
         // AppKit auto-inserts "Show Tab Bar"/"Show All Tabs" above this at
         // runtime (window tabbing is on by default) — that position isn't
@@ -68,6 +74,12 @@ enum ViewMenu {
         viewMenuItem.submenu = viewMenu
         return viewMenuItem
     }
+
+    /// Title case, like every other menu item. Only in the View menu — the
+    /// toolbar's own context menu is AppKit's (Icon and Text / … / Customize
+    /// Toolbar…) and Apple's apps put this setting in View, the way Safari
+    /// carries "Always Show Toolbar in Full Screen".
+    static let autoHideToolbarTitle = "Auto-Hide Toolbar"
 
     private static let zoomCommands: [MenuCommand] = [
         MenuCommand(id: "view.actualSize", group: "View", title: "Actual Size",
