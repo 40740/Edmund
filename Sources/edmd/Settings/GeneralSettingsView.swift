@@ -24,7 +24,7 @@ struct GeneralSettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("Quit when all windows are closed", isOn: $quitWhenAllClosed)
                         .onChange(of: quitWhenAllClosed) { if quitWhenAllClosed { reopenWindows = false } }
-                    Text("Mutually exclusive with \"Reopen windows from last session\"")
+                    Text("Mutually exclusive with “Reopen windows from last session”")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
