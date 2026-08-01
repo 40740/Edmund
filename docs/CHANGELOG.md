@@ -4,6 +4,29 @@ All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.3.1] - 2026-08-01
+
+Fixed table misalignment (#251). Added Settings > Extensions and Advanced Math extension. Various UI improvements. 
+
+### Added
+- Settings > General > Manage Version History...
+- Settings > Extensions
+- Advanced Math extension via [RaTeX](https://ratex.lites.dev)
+
+### Changed
+- Read mode styling now better aligns with edit mode (header size, line height, callout color and padding)
+- Removed document change settings from Settings > General to follow AppKit conventions
+- Removed redundant configs from Settings > Edit and reworded some settings
+
+### Fixed
+- Table misalignment #251
+- Table text alignment in edit mode
+- Auto-hide toolbar now works
+- Open Recent now populates
+- Edmund now actually creates backups when auto-save is off
+- Finder services
+
+
 ## [0.3.0] - 2026-07-27
 
 Settings stuff. 
@@ -29,9 +52,9 @@ Thanks to @CaliLuke for his first contribution (#236) and for being the first co
 - Format > Comments now wraps selection in `<!-- selection -->`
 
 ### Fixed
-- Headers render spaces after `#...`
+- Headers don't render spaces after `#...`
 - Indented code block renders as monospace
-- Replace right-click "Font" menu in edit mode with our Format > Font menu
+- Replaced right-click "Font" menu in edit mode with our custom Format > Font menu
 
 
 ## [0.2.1] - 2026-07-17
