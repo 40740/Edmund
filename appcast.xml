@@ -227,5 +227,16 @@
                        length="13636661"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 0.4.0</title>
+            <pubDate>Sat, 01 Aug 2026 19:35:49 +0000</pubDate>
+
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.4.0/Edmund-0.4.0.dmg"
+                       sparkle:version="9"
+                       sparkle:shortVersionString="0.4.0"
+                       sparkle:edSignature="Q7MjjRa8bmmjRtJFDq6Y6jbDJRYheSeoNuX1TulVBT4Q2eLqn4DhN/RO1VppzraqMg+Zg1DyIk91uSlSUPf5Bw=="
+                       length="14005880"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
