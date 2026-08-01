@@ -78,12 +78,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         CommandLine.arguments.count <= 1 && AppSettings.startupAction == .createNewDocument
     }
 
+    // Declares that our restorable state is archived with secure coding — not a
+    // switch for whether windows come back. Wiring it to the "Reopen windows"
+    // preference only opted the app into legacy insecure archiving.
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
-        AppSettings.reopenWindows
+        true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         AppSettings.quitWhenAllWindowsClosed
+    }
+
+    // Document windows stay restorable all session so a crash can hand back
+    // unsaved work (Document.makeWindowControllers). On a clean quit, honor
+    // "Reopen windows from last session" instead: drop the flag before AppKit
+    // archives the window state, so the next launch has nothing to restore.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if !AppSettings.reopenWindows {
+            for window in NSApp.windows { window.isRestorable = false }
+        }
+        return .terminateNow
     }
 
     // Reopen a new untitled document when the app is activated with no windows.

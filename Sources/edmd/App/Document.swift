@@ -36,8 +36,13 @@ class Document: NSDocument, HeadingNavigable {
 
     /// Content loaded from disk before the editor window exists.
     /// `nonisolated(unsafe)` because `read(from:ofType:)` may be called
-    /// off the main actor, but the value is only consumed on main via `showWindows`.
+    /// off the main actor, but the value is only consumed on main via
+    /// `adoptPendingContent`.
     nonisolated(unsafe) var pendingContent: String?
+
+    /// Content already in the editor but not yet checked for mixed line endings —
+    /// the check shows a sheet, so it waits until the window is on screen.
+    private var contentPendingWarning: String?
 
     // MARK: - Type Registration
     //
@@ -105,10 +110,14 @@ class Document: NSDocument, HeadingNavigable {
         window.titleVisibility = .visible
         window.titlebarAppearsTransparent = false
         window.isMovableByWindowBackground = true
-        // Don't persist/restore document windows: macOS state restoration
-        // otherwise reopens the last-edited file on the next launch, so a fresh
-        // start (or File ▸ New) shows that document instead of a blank Untitled.
-        window.isRestorable = AppSettings.reopenWindows
+        // Restorable for the whole session, whatever "Reopen windows from last
+        // session" says: state restoration is also how AppKit hands back a
+        // document that was open when the app died, and unsaved work should
+        // survive a crash regardless of that preference. A *clean* quit is where
+        // the preference applies — AppDelegate.applicationShouldTerminate turns
+        // this off before terminating when it is disabled, so nothing is archived
+        // and the next launch starts fresh.
+        window.isRestorable = true
         window.minSize = NSSize(width: 320, height: 400)
         window.backgroundColor = NSColor.textBackgroundColor
 
@@ -234,6 +243,8 @@ class Document: NSDocument, HeadingNavigable {
         window.delegate = wc
         window.makeFirstResponder(editor)
         applyToolbarVisibility()
+        // Before the source-mode switch below, which reads the editor's text.
+        adoptPendingContent()
         // Honor the persisted source-mode preference for the editing view.
         if AppSettings.sourceMode { setViewMode(.source) }
         updateStatusBar()
@@ -325,18 +336,36 @@ class Document: NSDocument, HeadingNavigable {
         pendingContent = contents
     }
 
+    /// Moves what `read(from:)` parked in `pendingContent` into the editor.
+    ///
+    /// Called from `makeWindowControllers`, not only from `showWindows`: window
+    /// restoration reopens a document with `display: false` and never calls
+    /// `showWindows`, so hanging the load off that alone left restored — and
+    /// crash-recovered — windows showing an empty buffer while the text sat
+    /// unread in `pendingContent`. Saving such a window wrote that emptiness back
+    /// over the file, since `data(ofType:)` serializes `editor.rawSource`.
+    /// Idempotent: whichever path reaches it first does the work.
+    private func adoptPendingContent() {
+        guard let content = pendingContent, let editor else { return }
+        editor.loadContent(content, unwrapHardWrapping: AppSettings.hardWrapLongLines)
+        // Learn this document's indent from what it actually uses, overriding
+        // the global style for this window only (never writes the setting).
+        if AppSettings.detectIndent, let detected = EditorTextView.detectIndent(in: content) {
+            editor.indentUsesTabs = detected.usesTabs
+            if !detected.usesTabs { editor.indentWidth = detected.width }
+        }
+        pendingContent = nil
+        contentPendingWarning = content
+    }
+
     /// Called after makeWindowControllers when opening an existing file.
     override func showWindows() {
         super.showWindows()
-        if let content = pendingContent {
-            editor?.loadContent(content, unwrapHardWrapping: AppSettings.hardWrapLongLines)
-            // Learn this document's indent from what it actually uses, overriding
-            // the global style for this window only (never writes the setting).
-            if AppSettings.detectIndent, let detected = EditorTextView.detectIndent(in: content) {
-                editor?.indentUsesTabs = detected.usesTabs
-                if !detected.usesTabs { editor?.indentWidth = detected.width }
-            }
-            pendingContent = nil
+        adoptPendingContent()
+        // Deferred to here because the warning is a sheet: by the time the content
+        // is adopted (in makeWindowControllers) there is no window to attach it to.
+        if let content = contentPendingWarning {
+            contentPendingWarning = nil
             warnIfInconsistentLineEndings(in: content)
         }
         updateStatusBar()
