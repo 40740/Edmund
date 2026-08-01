@@ -83,7 +83,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        AppSettings.quitWhenAllWindowsClosed
     }
 
     // Reopen a new untitled document when the app is activated with no windows.

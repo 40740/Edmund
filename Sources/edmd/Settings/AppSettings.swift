@@ -18,20 +18,6 @@ enum AppSettings {
         }
     }
 
-    enum ConflictResolution: String, CaseIterable, Identifiable {
-        case keepCurrent
-        case ask
-        case updateToModified
-        var id: Self { self }
-        var label: String {
-            switch self {
-            case .keepCurrent: return "Keep Edmund’s edition"
-            case .ask: return "Ask how to resolve"
-            case .updateToModified: return "Update to modified edition"
-            }
-        }
-    }
-
 
     enum AppearanceMode: String, CaseIterable, Identifiable {
         case matchSystem
@@ -97,7 +83,7 @@ enum AppSettings {
         static let automaticallyChecksForUpdates = "SUAutomaticallyChecksForUpdates"
         static let startupAction = "settings.general.startupAction"
         static let autoSaveWithVersions = "settings.general.autoSaveWithVersions"
-        static let conflictResolution = "settings.general.conflictResolution"
+        static let quitWhenAllWindowsClosed = "settings.general.quitWhenAllWindowsClosed"
         static let appearanceMode = "settings.appearance.mode"
         static let maxContentWidthCm = "settings.appearance.maxContentWidthCm"
         // "cm" / "in" override the locale default for the content-width control.
@@ -301,15 +287,12 @@ enum AppSettings {
         NSDocumentController.shared.autosavingDelay = autosavingDelay
     }
 
-    static var conflictResolution: ConflictResolution {
-        get {
-            guard let raw = UserDefaults.standard.string(forKey: Key.conflictResolution),
-                  let resolution = ConflictResolution(rawValue: raw) else {
-                return .ask
-            }
-            return resolution
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.conflictResolution) }
+    /// Whether closing the last window quits the app. Off by default, the way
+    /// most document apps behave — the app stays running and File ▸ New reopens
+    /// a window. Mutually exclusive with `reopenWindows` (see GeneralSettingsView).
+    static var quitWhenAllWindowsClosed: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.quitWhenAllWindowsClosed) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.quitWhenAllWindowsClosed) }
     }
 
     static var appearanceMode: AppearanceMode {
