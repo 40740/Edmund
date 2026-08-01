@@ -280,22 +280,32 @@ public final class FragmentOverlay: NSObject, @unchecked Sendable {
 /// this holds what to draw instead. `x` is text-relative (same coordinate
 /// space as `BlockDecoration.tableRow`'s `columnXOffsets`) — the cell's
 /// content start. `contentWidth` is the column's clamped content width (the
-/// width the cell's text must wrap within).
+/// width the cell's text must wrap within). `align` is the column's declared
+/// alignment, applied per drawn line. `charStart` is the cell's first character
+/// as an offset within its row's paragraph, which is what maps a click inside
+/// the drawn text back to a real character (see `cellWrapCharacterIndex`).
 public final class TableCellWrap: NSObject, @unchecked Sendable {
     public let styled: NSAttributedString
     public let x: CGFloat
     public let contentWidth: CGFloat
+    public let align: ColumnAlign
+    public let charStart: Int
     private let cachedHash: Int
 
-    public init(styled: NSAttributedString, x: CGFloat, contentWidth: CGFloat) {
+    public init(styled: NSAttributedString, x: CGFloat, contentWidth: CGFloat,
+                align: ColumnAlign = .left, charStart: Int = 0) {
         let frozenStyled = styled.copy() as! NSAttributedString
         self.styled = frozenStyled
         self.x = x
         self.contentWidth = contentWidth
+        self.align = align
+        self.charStart = charStart
         var hasher = Hasher()
         Self.combine(frozenStyled, into: &hasher)
         hasher.combine(x)
         hasher.combine(contentWidth)
+        hasher.combine(align)
+        hasher.combine(charStart)
         self.cachedHash = hasher.finalize()
     }
 
@@ -303,6 +313,7 @@ public final class TableCellWrap: NSObject, @unchecked Sendable {
         guard let other = object as? TableCellWrap else { return false }
         return other.styled.isEqual(to: styled)
             && other.x == x && other.contentWidth == contentWidth
+            && other.align == align && other.charStart == charStart
     }
 
     public override var hash: Int { cachedHash }
@@ -327,6 +338,25 @@ public final class TableCellWrap: NSObject, @unchecked Sendable {
             }
         }
     }
+}
+
+/// How far one line of a wrapped cell shifts inside its column for the column's
+/// alignment. Trailing whitespace is left out of the line's visual width — a
+/// wrapped line ends with the space it broke on, and counting it would hang a
+/// right-aligned line a space past its column edge.
+func cellWrapLineOffset(_ line: NSTextLineFragment,
+                        contentWidth: CGFloat,
+                        align: ColumnAlign) -> CGFloat {
+    guard align != .left else { return 0 }
+    let text = line.attributedString.attributedSubstring(from: line.characterRange)
+    let trimmed = (text.string as NSString)
+        .rangeOfCharacter(from: CharacterSet.whitespacesAndNewlines.inverted, options: .backwards)
+    guard trimmed.location != NSNotFound else { return 0 }
+    let visible = text.attributedSubstring(
+        from: NSRange(location: 0, length: trimmed.upperBound)).size().width
+    let slack = contentWidth - visible
+    guard slack > 0 else { return 0 }
+    return align == .center ? (slack / 2).rounded() : slack
 }
 
 /// A table row's overflowing cells, one `TableCellWrap` per overflowing cell.
@@ -364,7 +394,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// Each overflowing cell's x and pre-laid-out lines, from a detached
     /// scratch text stack sized to the column's content width. The stack
     /// itself is retained (`scratchStacks`) so the line fragments stay valid.
-    private let resolvedCellWraps: [(x: CGFloat, lines: [NSTextLineFragment])]
+    private let resolvedCellWraps: [(wrap: TableCellWrap, lines: [NSTextLineFragment])]
     private let scratchStacks: [(NSTextContentStorage, NSTextLayoutManager, NSTextContainer)]
 
     /// A fenced code block's display language, present only on the block's
@@ -413,7 +443,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         self.codeBlockLabelAnchor = codeBlockLabelAnchor
         self.codeBlockLabelFont = codeBlockLabelFont
         self.invisibles = invisibles
-        var resolved: [(x: CGFloat, lines: [NSTextLineFragment])] = []
+        var resolved: [(wrap: TableCellWrap, lines: [NSTextLineFragment])] = []
         var stacks: [(NSTextContentStorage, NSTextLayoutManager, NSTextContainer)] = []
         for wrap in cellWraps {
             let contentStorage = NSTextContentStorage()
@@ -431,12 +461,54 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 lines.append(contentsOf: frag.textLineFragments)
                 return true
             }
-            resolved.append((wrap.x, lines))
+            resolved.append((wrap, lines))
             stacks.append((contentStorage, layoutManager, container))
         }
         self.resolvedCellWraps = resolved
         self.scratchStacks = stacks
         super.init(textElement: textElement, range: range)
+    }
+
+    /// Where a wrapped cell's first line starts, relative to the fragment's
+    /// top: the row's own line box does not start at the fragment's edge (the
+    /// row paragraph reserves `paragraphSpacingBefore` above it), and a wrapped
+    /// cell has to sit on that same line, not above it.
+    private var cellWrapTopInset: CGFloat {
+        textLineFragments.first?.typographicBounds.minY ?? 0
+    }
+
+    /// The paragraph-relative character index under `point` (fragment
+    /// coordinates) when it lands on a wrapped cell's drawn text, else nil.
+    ///
+    /// The cell's real characters are hidden at ~zero advance and one of them
+    /// carries the column's whole kern pad, so the layout manager's own
+    /// hit-testing maps every point in the cell to that single character. The
+    /// scratch layout holds the very characters the document has (styling never
+    /// changes characters — storage == rawSource), so resolving the point
+    /// against it instead is exact.
+    func cellWrapCharacterIndex(for point: CGPoint) -> Int? {
+        for (wrap, lines) in resolvedCellWraps {
+            guard point.x >= wrap.x, point.x <= wrap.x + wrap.contentWidth,
+                  !lines.isEmpty else { continue }
+            var top = cellWrapTopInset
+            for (li, line) in lines.enumerated() {
+                let height = line.typographicBounds.height
+                // Past the last line means the click was in the row's bottom
+                // padding — that still belongs to the last line.
+                guard point.y < top + height || li == lines.count - 1 else {
+                    top += height
+                    continue
+                }
+                let dx = cellWrapLineOffset(line, contentWidth: wrap.contentWidth, align: wrap.align)
+                // The line's own bounds carry the scratch container's stacking
+                // offset; only its x matters here, so probe at its own midY.
+                let local = CGPoint(x: point.x - wrap.x - dx, y: line.typographicBounds.midY)
+                let index = line.characterIndex(for: local)
+                guard index >= 0 else { return nil }
+                return wrap.charStart + index
+            }
+        }
+        return nil
     }
 
     /// Extra row height needed to fit the tallest wrapped cell, beyond the
@@ -604,13 +676,12 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         }
         // Overflowing table cells: the real characters are hidden, so draw
         // each cell's pre-wrapped lines here instead, stacked top-down at the
-        // cell's column x. Left-aligned regardless of the column's declared
-        // alignment (ponytail: not requested; upgrade path is the same
-        // per-line x-shift math the kern-based alignment above already uses).
-        for cellWrap in resolvedCellWraps {
-            var y = point.y
-            for line in cellWrap.lines {
-                line.draw(at: CGPoint(x: point.x + cellWrap.x, y: y), in: context)
+        // cell's column x, each line shifted for the column's alignment.
+        for (wrap, lines) in resolvedCellWraps {
+            var y = point.y + cellWrapTopInset
+            for line in lines {
+                let dx = cellWrapLineOffset(line, contentWidth: wrap.contentWidth, align: wrap.align)
+                line.draw(at: CGPoint(x: point.x + wrap.x + dx, y: y), in: context)
                 y += line.typographicBounds.height
             }
         }

@@ -596,9 +596,22 @@ public class EditorTextView: NSTextView {
                 return
             }
         }
+        // A wrapped table cell is drawn from a detached layout, so AppKit's own
+        // hit-testing can only ever land on the hidden characters underneath it
+        // (all of which sit at one x). Resolve the click against the drawn text
+        // instead — before `super`, while the table is still rendered — and put
+        // the caret there once the gesture is over. The offset stays valid
+        // across the click's activate-the-table restyle because it is a raw
+        // source offset (storage == rawSource).
+        let wrappedCellCaret = wrappedCellCharIndex(at: event)
         suppressTypewriterCentering = true
         super.mouseDown(with: event)
         suppressTypewriterCentering = false
+        // Only a plain click: a drag or a double-click made a real selection,
+        // and honouring those would collapse it.
+        if let wrappedCellCaret, selectedRange().length == 0 {
+            setSelectedRange(NSRange(location: wrappedCellCaret, length: 0))
+        }
         // `super.mouseDown` returns only after the whole tracking loop (drag +
         // mouse-up) finishes; `sel` in this line is the gesture's net result.
         traceEdit("mouseDown done")
@@ -655,6 +668,27 @@ public class EditorTextView: NSTextView {
               let paraStart = fragment.textElement?.elementRange?.location else { return nil }
         let charIndex = tlm.offset(from: tlm.documentRange.location, to: paraStart) + indexInParagraph
         return charIndex < storage.length ? charIndex : nil
+    }
+
+    /// The storage character index under a mouse event when it lands on the
+    /// drawn text of a wrapped (overflowing) table cell, else nil — see
+    /// `DecoratedTextLayoutFragment.cellWrapCharacterIndex`.
+    func wrappedCellCharIndex(at event: NSEvent) -> Int? {
+        guard let tlm = textLayoutManager,
+              let storage = textStorage, storage.length > 0 else { return nil }
+
+        var point = convert(event.locationInWindow, from: nil)
+        point.x -= textContainerOrigin.x
+        point.y -= textContainerOrigin.y
+
+        guard let fragment = tlm.textLayoutFragment(for: point)
+                as? DecoratedTextLayoutFragment else { return nil }
+        let frame = fragment.layoutFragmentFrame
+        let inFragment = CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
+        guard let indexInParagraph = fragment.cellWrapCharacterIndex(for: inFragment),
+              let paraStart = fragment.textElement?.elementRange?.location else { return nil }
+        let charIndex = tlm.offset(from: tlm.documentRange.location, to: paraStart) + indexInParagraph
+        return charIndex <= storage.length ? charIndex : nil
     }
 
     /// The raw destination string of the regular link under a mouse event, or

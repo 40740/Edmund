@@ -718,8 +718,20 @@ Notable subsystems:
   the visual yourself" pattern as `.fragmentOverlay`, needed because TK2
   only wraps a whole paragraph at the container edge and has no per-cell
   flow region (that's NSTextTable/NSTextBlock, banned per §2).
-  Click-to-caret inside a wrapped, non-active cell is approximate as a
-  result. Interior data rows draw a full-width bottom grid line (`.tableRow`'s
+  Such a cell still kerns out its full column: its hidden characters
+  advance ~nothing, so without that pad every cell after it in the row slid
+  left onto its neighbour (#251). Its drawn lines carry the column's
+  alignment individually, and a click inside one is resolved against the
+  scratch layout (`cellWrapCharacterIndex`, used from `mouseDown`) rather
+  than the hidden characters — all of which sit at one x, so AppKit's own
+  hit-testing would answer the same character everywhere in the cell. Two
+  geometry traps: the fragment's draw point is the row's *text* start
+  (already indented by the cell pad, like `.tableRow`'s `leftInset`), and a
+  row's own line box starts below its `paragraphSpacingBefore` — a wrapped
+  cell has to match both or it draws a pad right of, and a hair above, the
+  in-line cells beside it. Column widths also leave the row a little slack
+  at the container edge, or a right-aligned column's glyphs reach the edge
+  and force-wrap the row. Interior data rows draw a full-width bottom grid line (`.tableRow`'s
   `bottomBorder`) — the header/body boundary already gets its line from
   `separator`, and the last row draws none, so the table's bottom edge is open
   like its left and right edges.

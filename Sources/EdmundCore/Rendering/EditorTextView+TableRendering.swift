@@ -90,7 +90,15 @@ extension EditorTextView {
             // screen — the overflow gets wrapped (below) instead. Columns
             // that already fit their fair share keep their natural width.
             let minColWidth = bodyFont.pointSize * 3
-            let available = max(0, availableContentWidth - CGFloat(numCols) * 2 * cellHPad)
+            // Leave the row some slack at the container edge. A right- or
+            // center-aligned column kerns its pad *before* its text, so the
+            // cell's real glyphs sit at the very end of the row's advance;
+            // filling the container exactly then force-wraps the row, because
+            // a trailing pad may hang past the edge but glyphs may not. Same
+            // reason `applyOverlay` caps its kern short of the full width.
+            let rowSlack: CGFloat = 8
+            let available = max(0, availableContentWidth
+                - CGFloat(numCols) * 2 * cellHPad - rowSlack)
             let clamped = distributeColumnWidths(natural: natural, available: available,
                                                  minWidth: minColWidth)
             // Add horizontal padding to each column (space after cell text).
@@ -107,7 +115,12 @@ extension EditorTextView {
             var colStartX: [CGFloat] = []
             var cumX: CGFloat = 0
             for ci in 0..<numCols {
-                colStartX.append(cumX + cellHPad)
+                // Relative to the row's *text* start, which is where a wrapped
+                // cell is drawn from — and that already includes this row's
+                // firstLineHeadIndent (= cellHPad), so the left pad must not be
+                // added again here or the cell sits a pad right of the in-line
+                // cells above and below it.
+                colStartX.append(cumX)
                 cumX += colWidths[ci]
                 if ci < numCols - 1 { borderXOffsets.append(cumX - cellHPad) }
             }
@@ -189,7 +202,8 @@ extension EditorTextView {
                             result.addAttribute(.font, value: hiddenFont, range: hideRange)
                             result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
                             wraps.append(TableCellWrap(styled: cell.styled, x: colStartX[ci],
-                                                       contentWidth: colWidths[ci] - 2 * cellHPad))
+                                                       contentWidth: colWidths[ci] - 2 * cellHPad,
+                                                       align: aligns[ci], charStart: cell.start))
                         } else {
                             cell.styled.enumerateAttributes(
                                 in: NSRange(location: 0, length: cell.styled.length)
@@ -230,9 +244,21 @@ extension EditorTextView {
                 // "before" kern goes on the char preceding the cell content.
                 if i != 1, i < rowCells.count {
                     for ci in 0..<min(rowCells[i].count, numCols) {
-                        guard !overflowsCol[ci] else { continue }
                         let cr = rowCells[i][ci]
-                        let cellWidth = cr.styled.size().width
+                        // An overflowing cell is redrawn wrapped from its own
+                        // column x, but its real characters still sit in the
+                        // line at `hiddenFont` — so it must kern out its whole
+                        // column too, or every cell after it in the row slides
+                        // left onto its neighbour (#251). Its hidden run is
+                        // measured rather than assumed zero: 0.01 pt advances
+                        // over a long cell would otherwise push the row past
+                        // the container edge and force-wrap the paragraph.
+                        let cellWidth = overflowsCol[ci]
+                            ? NSAttributedString(
+                                string: lineNS.substring(
+                                    with: NSRange(location: cr.start, length: cr.end - cr.start)),
+                                attributes: [.font: hiddenFont]).size().width
+                            : cr.styled.size().width
                         let padding = colWidths[ci] - cellWidth
                         guard padding > 0.5 else { continue }
                         let leadingIdx = (cr.start - 1 >= 0 && lineNS.character(at: cr.start - 1) == 0x7C)
@@ -242,7 +268,12 @@ extension EditorTextView {
                             result.addAttribute(.kern, value: amount,
                                                 range: NSRange(location: lineOffset + idx, length: 1))
                         }
-                        switch aligns[ci] {
+                        // A wrapped cell's slack always goes after it: the pad
+                        // only reserves the column (its characters are hidden
+                        // and the visible text is drawn separately, aligned
+                        // per line), so keeping them at the column start keeps
+                        // them inside the column they belong to.
+                        switch overflowsCol[ci] ? .left : aligns[ci] {
                         case .left:   kern(padding, at: trailingIdx)
                         case .right:  kern(padding, at: leadingIdx)
                         case .center:

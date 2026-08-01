@@ -46,7 +46,7 @@ func distributeColumnWidths(natural: [CGFloat], available: CGFloat,
 // MARK: - Column Alignment
 
 /// GFM table column alignment, parsed from the separator row's `:` markers.
-enum ColumnAlign: Equatable { case left, center, right }
+public enum ColumnAlign: Hashable { case left, center, right }
 
 /// Parses per-column alignment from a table's separator row (`:--`/`:-:`/`--:`).
 /// `:` on both ends = center, trailing only = right, otherwise left. Padded to
