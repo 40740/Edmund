@@ -107,7 +107,12 @@ extension EditorTextView {
             var colStartX: [CGFloat] = []
             var cumX: CGFloat = 0
             for ci in 0..<numCols {
-                colStartX.append(cumX + cellHPad)
+                // Relative to the row's *text* start, which is where a wrapped
+                // cell is drawn from — and that already includes this row's
+                // firstLineHeadIndent (= cellHPad), so the left pad must not be
+                // added again here or the cell sits a pad right of the in-line
+                // cells above and below it.
+                colStartX.append(cumX)
                 cumX += colWidths[ci]
                 if ci < numCols - 1 { borderXOffsets.append(cumX - cellHPad) }
             }

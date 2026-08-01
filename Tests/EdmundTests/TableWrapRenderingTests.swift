@@ -82,6 +82,22 @@ struct TableWrapRenderingTests {
         #expect(abs(wrapped - plain) < 1)
     }
 
+    @Test("A wrapped cell draws from the same x its in-line characters would")
+    func wrapDrawXMatchesInlineCellX() {
+        let editor = makeEditor()
+        let longText = Array(repeating: "overflow", count: 30).joined(separator: " ")
+        let source = "| a | b | c |\n|---|---|---|\n| x | \(longText) | y |"
+        let styled = editor.styleBlock(source, cursorPosition: nil)
+        let rowStart = lastRowStart(styled)
+
+        // `x` is relative to the row's text start, which the drawing code
+        // passes in already indented by the cell padding.
+        let wraps = cellWraps(at: rowStart, in: styled)
+        #expect(wraps.count == 1)
+        guard let wrap = wraps.first else { return }
+        #expect(abs(wrap.x - cellStartX(styled, rowIndex: 2, cellIndex: 1)) < 0.5)
+    }
+
     @Test("Table storage stays byte-for-byte unchanged when a cell wraps")
     func storageUnchangedByWrapping() {
         let editor = makeEditor()
