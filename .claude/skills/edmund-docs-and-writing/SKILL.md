@@ -262,6 +262,13 @@ there is always fine, no permission needed, and it's the default home for any
 doc that doesn't have one yet (`misc/` is gitignored, so nothing you put
 there lands in a commit). Editing `misc/backlog.md` is still off-limits.
 
+The two named files are enforced, not just documented: a `PreToolUse` hook
+(`.claude/hooks/guard-maintainer-prose.sh`, wired in `.claude/settings.json`)
+denies `Edit`/`Write`/`NotebookEdit` on the repo-root `README.md` and
+`misc/backlog.md`. Reading them is untouched. If you get that denial, you are
+not blocked from *working* — report the edit you wanted and move on. The rest
+of the "maintainer's voice" column is on your judgment.
+
 Why this rule exists: a "small wording fix" to README lands in the file
 users read first, in a voice that isn't yours, and the maintainer usually
 can't tell it happened without diffing. A typo in `README.md` is worth one
