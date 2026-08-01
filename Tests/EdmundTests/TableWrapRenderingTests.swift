@@ -52,6 +52,36 @@ struct TableWrapRenderingTests {
         #expect(wrap.contentWidth > 0)
     }
 
+    /// Advance width from the start of `rowIndex`'s line to the start of its
+    /// `cellIndex`-th cell — i.e. where that cell's glyphs actually land.
+    private func cellStartX(_ styled: NSAttributedString,
+                            rowIndex: Int, cellIndex: Int) -> CGFloat {
+        let lines = styled.string.components(separatedBy: "\n")
+        var rowStart = 0
+        for i in 0..<rowIndex { rowStart += (lines[i] as NSString).length + 1 }
+        let cells = cellRanges(in: lines[rowIndex] as NSString)
+        let run = NSRange(location: rowStart, length: cells[cellIndex].start)
+        return styled.attributedSubstring(from: run).size().width
+    }
+
+    @Test("A cell after a wrapping cell still starts at its column's x (#251)")
+    func cellAfterWrapKeepsColumnX() {
+        let editor = makeEditor()
+        let longText = Array(repeating: "overflow", count: 30).joined(separator: " ")
+        let source = "| a | b | c |\n|---|---|---|\n| x | \(longText) | y |\n| p | q | r |"
+        let styled = editor.styleBlock(source, cursorPosition: nil)
+
+        // Row 2 wraps its middle cell; row 3 doesn't. Both must put their
+        // third cell at the same x — the wrapping cell's hidden characters
+        // still have to reserve their whole column.
+        let wrapRowStart = (source.components(separatedBy: "\n")[0...1]
+            .map { ($0 as NSString).length + 1 }).reduce(0, +)
+        #expect(!cellWraps(at: wrapRowStart, in: styled).isEmpty)
+        let wrapped = cellStartX(styled, rowIndex: 2, cellIndex: 2)
+        let plain = cellStartX(styled, rowIndex: 3, cellIndex: 2)
+        #expect(abs(wrapped - plain) < 1)
+    }
+
     @Test("Table storage stays byte-for-byte unchanged when a cell wraps")
     func storageUnchangedByWrapping() {
         let editor = makeEditor()

@@ -230,9 +230,21 @@ extension EditorTextView {
                 // "before" kern goes on the char preceding the cell content.
                 if i != 1, i < rowCells.count {
                     for ci in 0..<min(rowCells[i].count, numCols) {
-                        guard !overflowsCol[ci] else { continue }
                         let cr = rowCells[i][ci]
-                        let cellWidth = cr.styled.size().width
+                        // An overflowing cell is redrawn wrapped from its own
+                        // column x, but its real characters still sit in the
+                        // line at `hiddenFont` — so it must kern out its whole
+                        // column too, or every cell after it in the row slides
+                        // left onto its neighbour (#251). Its hidden run is
+                        // measured rather than assumed zero: 0.01 pt advances
+                        // over a long cell would otherwise push the row past
+                        // the container edge and force-wrap the paragraph.
+                        let cellWidth = overflowsCol[ci]
+                            ? NSAttributedString(
+                                string: lineNS.substring(
+                                    with: NSRange(location: cr.start, length: cr.end - cr.start)),
+                                attributes: [.font: hiddenFont]).size().width
+                            : cr.styled.size().width
                         let padding = colWidths[ci] - cellWidth
                         guard padding > 0.5 else { continue }
                         let leadingIdx = (cr.start - 1 >= 0 && lineNS.character(at: cr.start - 1) == 0x7C)
@@ -242,7 +254,9 @@ extension EditorTextView {
                             result.addAttribute(.kern, value: amount,
                                                 range: NSRange(location: lineOffset + idx, length: 1))
                         }
-                        switch aligns[ci] {
+                        // A wrapped cell always draws left-aligned from its
+                        // column start, so all of its slack goes after it.
+                        switch overflowsCol[ci] ? .left : aligns[ci] {
                         case .left:   kern(padding, at: trailingIdx)
                         case .right:  kern(padding, at: leadingIdx)
                         case .center:

@@ -719,7 +719,9 @@ Notable subsystems:
   only wraps a whole paragraph at the container edge and has no per-cell
   flow region (that's NSTextTable/NSTextBlock, banned per §2).
   Click-to-caret inside a wrapped, non-active cell is approximate as a
-  result. Interior data rows draw a full-width bottom grid line (`.tableRow`'s
+  result. Such a cell still kerns out its full column: its hidden characters
+  advance ~nothing, so without that pad every cell after it in the row slid
+  left onto its neighbour (#251). Interior data rows draw a full-width bottom grid line (`.tableRow`'s
   `bottomBorder`) — the header/body boundary already gets its line from
   `separator`, and the last row draws none, so the table's bottom edge is open
   like its left and right edges.
