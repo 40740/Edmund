@@ -21,8 +21,16 @@ struct GeneralSettingsView: View {
                 // Paired with "Reopen windows": quitting on the last close means
                 // the session ends there, so restoring it next launch is the
                 // opposite intent. Turning either on turns the other off.
-                Toggle("Quit when all windows are closed", isOn: $quitWhenAllClosed)
-                    .onChange(of: quitWhenAllClosed) { if quitWhenAllClosed { reopenWindows = false } }
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Quit when all windows are closed", isOn: $quitWhenAllClosed)
+                        .onChange(of: quitWhenAllClosed) { if quitWhenAllClosed { reopenWindows = false } }
+                    Text("Mutually exclusive with \"Reopen windows from last session\"")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 380, alignment: .leading)
+                        .padding(.leading, 20)
+                }
             }
 
             Divider().gridCellUnsizedAxes(.horizontal)
