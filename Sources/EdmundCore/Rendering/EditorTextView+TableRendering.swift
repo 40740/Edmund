@@ -90,7 +90,15 @@ extension EditorTextView {
             // screen — the overflow gets wrapped (below) instead. Columns
             // that already fit their fair share keep their natural width.
             let minColWidth = bodyFont.pointSize * 3
-            let available = max(0, availableContentWidth - CGFloat(numCols) * 2 * cellHPad)
+            // Leave the row some slack at the container edge. A right- or
+            // center-aligned column kerns its pad *before* its text, so the
+            // cell's real glyphs sit at the very end of the row's advance;
+            // filling the container exactly then force-wraps the row, because
+            // a trailing pad may hang past the edge but glyphs may not. Same
+            // reason `applyOverlay` caps its kern short of the full width.
+            let rowSlack: CGFloat = 8
+            let available = max(0, availableContentWidth
+                - CGFloat(numCols) * 2 * cellHPad - rowSlack)
             let clamped = distributeColumnWidths(natural: natural, available: available,
                                                  minWidth: minColWidth)
             // Add horizontal padding to each column (space after cell text).
@@ -194,7 +202,8 @@ extension EditorTextView {
                             result.addAttribute(.font, value: hiddenFont, range: hideRange)
                             result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
                             wraps.append(TableCellWrap(styled: cell.styled, x: colStartX[ci],
-                                                       contentWidth: colWidths[ci] - 2 * cellHPad))
+                                                       contentWidth: colWidths[ci] - 2 * cellHPad,
+                                                       align: aligns[ci], charStart: cell.start))
                         } else {
                             cell.styled.enumerateAttributes(
                                 in: NSRange(location: 0, length: cell.styled.length)
@@ -259,8 +268,11 @@ extension EditorTextView {
                             result.addAttribute(.kern, value: amount,
                                                 range: NSRange(location: lineOffset + idx, length: 1))
                         }
-                        // A wrapped cell always draws left-aligned from its
-                        // column start, so all of its slack goes after it.
+                        // A wrapped cell's slack always goes after it: the pad
+                        // only reserves the column (its characters are hidden
+                        // and the visible text is drawn separately, aligned
+                        // per line), so keeping them at the column start keeps
+                        // them inside the column they belong to.
                         switch overflowsCol[ci] ? .left : aligns[ci] {
                         case .left:   kern(padding, at: trailingIdx)
                         case .right:  kern(padding, at: leadingIdx)

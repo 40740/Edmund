@@ -98,6 +98,116 @@ struct TableWrapRenderingTests {
         #expect(abs(wrap.x - cellStartX(styled, rowIndex: 2, cellIndex: 1)) < 0.5)
     }
 
+    /// The editor with `source` styled and the caret parked outside the table,
+    /// so its rows are rendered (not shown as raw monospace), plus the layout
+    /// fragment of the table row at `rowIndex`.
+    private func laidOutRow(_ source: String, rowIndex: Int)
+        -> (editor: EditorTextView, fragment: DecoratedTextLayoutFragment, rowStart: Int)? {
+        let editor = makeEditor()
+        let full = source + "\n\nafter"
+        editor.loadContent(full)
+        editor.recompose(cursorInRaw: (full as NSString).length)
+        editor.layoutSubtreeIfNeeded()
+        guard let tlm = editor.textLayoutManager else { return nil }
+        tlm.ensureLayout(for: tlm.documentRange)
+
+        let rowStart = source.components(separatedBy: "\n")[0..<rowIndex]
+            .reduce(0) { $0 + ($1 as NSString).length + 1 }
+        var found: DecoratedTextLayoutFragment?
+        tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location,
+                                         options: [.ensuresLayout]) { fragment in
+            let offset = tlm.offset(from: tlm.documentRange.location,
+                                    to: fragment.rangeInElement.location)
+            if offset == rowStart { found = fragment as? DecoratedTextLayoutFragment }
+            return found == nil
+        }
+        guard let found else { return nil }
+        return (editor, found, rowStart)
+    }
+
+    /// `styled` laid out into lines at `width`, the same way the fragment lays
+    /// a wrapped cell out for drawing.
+    private func scratchLines(_ styled: NSAttributedString, width: CGFloat) -> [NSTextLineFragment] {
+        let contentStorage = NSTextContentStorage()
+        contentStorage.textStorage = NSTextStorage(attributedString: styled)
+        let layoutManager = NSTextLayoutManager()
+        contentStorage.addTextLayoutManager(layoutManager)
+        let container = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        layoutManager.textContainer = container
+        var lines: [NSTextLineFragment] = []
+        layoutManager.enumerateTextLayoutFragments(
+            from: layoutManager.documentRange.location, options: [.ensuresLayout]
+        ) { fragment in
+            lines.append(contentsOf: fragment.textLineFragments)
+            return true
+        }
+        return lines
+    }
+
+    @Test("A click inside a wrapped cell resolves to the character it landed on")
+    func clickInsideWrappedCellIsExact() throws {
+        let long = Array(repeating: "overflow", count: 30).joined(separator: " ")
+        let source = "| a | b | c |\n|---|---|---|\n| x | \(long) | y |"
+        let row = try #require(laidOutRow(source, rowIndex: 2))
+        let storage = try #require(row.editor.textStorage)
+        let wrap = try #require(
+            (storage.attribute(.tableCellWraps, at: row.rowStart, effectiveRange: nil)
+                as? TableCellWrapList)?.wraps.first)
+
+        // Sweep the cell's drawn width: without the wrap-aware mapping every
+        // one of these lands on the single character carrying the column's
+        // kern pad, so the indices must both move and stay inside the cell.
+        var indices: [Int] = []
+        for x in stride(from: wrap.x + 2, to: wrap.x + wrap.contentWidth, by: 20) {
+            let point = CGPoint(x: x, y: row.fragment.layoutFragmentFrame.height / 4)
+            if let index = row.fragment.cellWrapCharacterIndex(for: point) {
+                indices.append(index)
+            }
+        }
+        #expect(indices.count > 5)
+        #expect(Set(indices).count > 5)
+        #expect(indices == indices.sorted())
+        // Every hit is inside the cell, and the text there is the cell's.
+        let cellRange = NSRange(location: wrap.charStart, length: wrap.styled.length)
+        #expect(indices.allSatisfy { NSLocationInRange($0, cellRange) })
+    }
+
+    @Test("Wrapped cell lines shift for a centered or right-aligned column")
+    func wrappedCellHonorsColumnAlignment() throws {
+        let long = Array(repeating: "overflow", count: 30).joined(separator: " ")
+        for (separator, align) in [("|---|:-:|---|", ColumnAlign.center),
+                                   ("|---|--:|---|", ColumnAlign.right)] {
+            let source = "| a | b | c |\n\(separator)\n| x | \(long) | y |"
+            let row = try #require(laidOutRow(source, rowIndex: 2))
+            let storage = try #require(row.editor.textStorage)
+            let wrap = try #require(
+                (storage.attribute(.tableCellWraps, at: row.rowStart, effectiveRange: nil)
+                    as? TableCellWrapList)?.wraps.first)
+            #expect(wrap.align == align)
+
+            // The last line is the short one, so it has slack to distribute;
+            // a full line has none either way.
+            let last = try #require(scratchLines(wrap.styled, width: wrap.contentWidth).last)
+            let offset = cellWrapLineOffset(last, contentWidth: wrap.contentWidth, align: align)
+            #expect(offset > 0)
+            #expect(cellWrapLineOffset(last, contentWidth: wrap.contentWidth, align: .left) == 0)
+            if align == .right {
+                // Right-aligned means the line's *visible* text ends at the
+                // column edge. The cell's trailing space (`… |`) is excluded
+                // on purpose — counting it would push the text a space short.
+                let text = last.attributedString.attributedSubstring(from: last.characterRange)
+                let full = text.size().width
+                let lastInk = (text.string as NSString).rangeOfCharacter(
+                    from: CharacterSet.whitespacesAndNewlines.inverted, options: .backwards)
+                let visible = text.attributedSubstring(
+                    from: NSRange(location: 0, length: lastInk.upperBound)).size().width
+                #expect(abs(offset + visible - wrap.contentWidth) < 0.5)
+                #expect(full > visible)
+            }
+        }
+    }
+
     @Test("Table storage stays byte-for-byte unchanged when a cell wraps")
     func storageUnchangedByWrapping() {
         let editor = makeEditor()
