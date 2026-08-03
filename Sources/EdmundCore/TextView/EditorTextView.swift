@@ -207,7 +207,20 @@ public class EditorTextView: NSTextView {
     /// vertically centered (typewriter scrolling); when false, scrolling falls
     /// back to "keep the cursor visible". Toggled from the View menu. The
     /// scrolling logic lives in EditorTextView+TypewriterScroll.
-    public var typewriterModeEnabled: Bool = true
+    public var typewriterModeEnabled: Bool = true {
+        didSet {
+            guard oldValue != typewriterModeEnabled else { return }
+            // The mode's vertical padding is what makes centering reachable at
+            // the document's ends (see updateVerticalContentInset); apply it before
+            // centering, or the first center after switching on still clamps.
+            updateVerticalContentInset()
+            if typewriterModeEnabled { centerViewportOnCaret() }
+        }
+    }
+
+    /// Set while typewriter padding is grown into `textContainerInset.height`:
+    /// the inset to restore when the mode goes off. See updateVerticalContentInset.
+    var insetBeforeTypewriterPadding: CGFloat?
 
     /// Set to true for the duration of a mouse-down event so that the
     /// resulting selection change does not trigger typewriter centering.

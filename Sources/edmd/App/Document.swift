@@ -137,7 +137,8 @@ class Document: NSDocument, HeadingNavigable {
         editor.isVerticallyResizable = true
         editor.isHorizontallyResizable = false
         editor.autoresizingMask = [.width]
-        editor.textContainerInset = NSSize(width: 24, height: 18)
+        editor.textContainerInset = NSSize(width: 24,
+                                           height: EditorTextView.contentBaseVerticalInset)
         // Centered reading column (see EditorTextView+ContentWidth). Convert the
         // persisted cm value to points using the main screen PPI at window-creation
         // time; recomputed on resize (setFrameSize) and when the window moves to a
@@ -184,6 +185,10 @@ class Document: NSDocument, HeadingNavigable {
         scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
         scrollView.documentView = editor
+        // Typewriter scroll's vertical padding is half the clip view's height,
+        // so it can only be computed once the editor has an enclosing scroll
+        // view — the earlier call above ran before this line.
+        editor.updateContentInset()
 
         // Floating status bar: hidden by default, fades in when the pointer
         // enters its strip. Counts on the left, line ending on the right.

@@ -26,6 +26,12 @@ struct TypewriterCenteringTests {
         editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
                                 height: CGFloat.greatestFiniteMagnitude)
         editor.autoresizingMask = [.width]
+        // Mirror Document's setup: the app's own inset, then the content-inset
+        // pass. Typewriter padding is half the clip height, so it can't be
+        // computed before the editor has an enclosing scroll view.
+        editor.textContainerInset = NSSize(width: 24,
+                                           height: EditorTextView.contentBaseVerticalInset)
+        editor.updateContentInset()
         return (editor, scroll)
     }
 
@@ -81,5 +87,51 @@ struct TypewriterCenteringTests {
         let off = (editor.rawSource as NSString).range(of: "Line 20 ").location
         let delta = offFromCenter(editor, scroll, caretOffset: off)
         #expect(delta < 4, "off-screen line off-center by \(delta)pt")
+    }
+
+    /// The document's ends. Centering clamps the scroll to
+    /// [0, frame.height - viewportHeight], so without typewriter mode's
+    /// half-viewport padding the first and last screenful can't reach center —
+    /// the caret just sat wherever it was.
+    @Test("Caret centers on the first and last line")
+    @MainActor func centersAtDocumentEnds() {
+        let (editor, scroll) = makeWindowed()
+        var doc = ""
+        for i in 1...100 { doc += "Line \(i) content here for the document body.\n" }
+        editor.loadContent(doc)
+        ensureFullLayout(editor); editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
+
+        let ns = editor.rawSource as NSString
+        for marker in ["Line 1 ", "Line 100 "] {
+            let off = ns.range(of: marker).location
+            let delta = offFromCenter(editor, scroll, caretOffset: off)
+            #expect(delta < 4, "\(marker) off-center by \(delta)pt")
+        }
+    }
+
+    /// A document shorter than the window: with no padding the clamp range is
+    /// [0, 0] and centering could not move the viewport at all.
+    @Test("Caret centers in a document shorter than the viewport")
+    @MainActor func centersInShortDocument() {
+        let (editor, scroll) = makeWindowed()
+        editor.loadContent("Line 1 alpha\nLine 2 beta\nLine 3 gamma\nLine 4 delta\nLine 5 epsilon\n")
+        ensureFullLayout(editor); editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
+
+        let off = (editor.rawSource as NSString).range(of: "Line 3 ").location
+        let delta = offFromCenter(editor, scroll, caretOffset: off)
+        #expect(delta < 4, "short-document line off-center by \(delta)pt")
+    }
+
+    /// The padding is typewriter-only — normal scrolling keeps the plain inset.
+    @Test("Vertical padding exists only in typewriter mode")
+    @MainActor func paddingIsModeScoped() {
+        let (editor, _) = makeWindowed()
+        editor.loadContent("Body text.\n")
+        #expect(editor.textContainerInset.height > 100,
+                "typewriter padding missing: \(editor.textContainerInset.height)")
+
+        editor.typewriterModeEnabled = false
+        #expect(abs(editor.textContainerInset.height - EditorTextView.contentBaseVerticalInset) < 0.5,
+                "padding leaked into normal mode: \(editor.textContainerInset.height)")
     }
 }
