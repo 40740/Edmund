@@ -47,7 +47,18 @@ extension EditorTextView {
         }
         let base = insetBeforeTypewriterPadding ?? textContainerInset.height
         insetBeforeTypewriterPadding = base
-        apply(max(base, clip.bounds.height / 2))
+        let wanted = clip.bounds.height / 2
+        apply(max(base, wanted))
+
+        // What centering actually spends is `textContainerOrigin.y`, and AppKit
+        // does not hand back the inset it was given: it splits the leftover
+        // space between the frame and the text container, so the origin can
+        // land *below* the inset (measured on macOS 14 CI — inset 160 →
+        // origin 135, which clamped the first line 14pt low; macOS 15 returns
+        // the inset unchanged). Top the inset up by whatever the origin is
+        // short. Recomputed from `base` on every call, so this never compounds.
+        let short = wanted - textContainerOrigin.y
+        if short > 0.5 { apply(textContainerInset.height + short) }
     }
 
     /// The symmetric horizontal inset for a given view width and max-column width.

@@ -220,7 +220,19 @@ Notable subsystems:
   viewport↔caret span before measuring (else stale TK2 estimates);
   re-centers only on *typing* — a mouse-down sets
   `suppressTypewriterCentering` so click-placing the caret doesn't yank the
-  viewport.
+  viewport. Centering scrolls, and `centerViewportOnCaret` clamps to
+  `[0, frame.height - viewportHeight]`, so the mode also needs somewhere to
+  scroll *to*: `updateVerticalContentInset` grows `textContainerInset.height`
+  to half the clip height while it is on (additive — it remembers the inset it
+  grew from and restores that on toggle-off). Without that slack the first
+  screenful, the last screenful and any document shorter than the window can
+  never reach center, which is what made the feature read as "doesn't center
+  at all".
+- **Bottom overscroll**: with typewriter scroll *off*, `sizeToFit` adds half a
+  viewport to the text view's frame so the line being written is never pinned
+  to the window's bottom edge. Derived from the content height `super` just
+  computed, so repeated layout passes don't compound it. Typewriter mode skips
+  it — its container inset already pads that end.
 - **Content width** (`+ContentWidth.swift`): an **absolute physical**
   max-column width — set in cm/in in Settings, stored as cm, converted to
   points via the display's real PPI (`NSScreen.physicalPPI`, from
@@ -428,7 +440,16 @@ Notable subsystems:
 - **Screencapture for visual verification**: capture by window id (reliable
   even if not frontmost): `CGWindowListCopyWindowInfo` → find by
   `kCGWindowName` → `screencapture -x -o -l<id> out.png`. Crop by detected
-  window bounds (the wallpaper defeats brightness-based auto-crop). After
+  window bounds (the wallpaper defeats brightness-based auto-crop).
+  **Never `screencapture -R <rect>`** — it grabs whatever window is in front,
+  which on a machine the maintainer is using is their browser (this has
+  produced screenshots of Trello and of the agent's own terminal), and the
+  reflex fix — `osascript … set frontmost` plus `keystroke` — then types into
+  whoever holds focus. Use
+  `.claude/skills/edmund-live-repro-and-diagnostics/scripts/ui-harness.sh capture`
+  and drive input with `-debug.reproScript` (in-process, no focus steal).
+  A `PreToolUse` hook (`.claude/hooks/guard-focus-steal.sh`) denies both
+  patterns. After
   many rapid launch/kill cycles window-server state can glitch (tiny
   windows, state restoration) —
   `rm -rf ~/Library/"Saved Application State"/com.i7t5.edmund.savedState`
@@ -458,6 +479,14 @@ Notable subsystems:
   anything that bakes the content width (e.g. callout header images)
   renders at a fallback width until a width-settled re-render. Prefer real
   wrapping text over width-baked images.
+- **`textContainerOrigin.y` is not the inset you set.** AppKit splits the
+  leftover space between the view's frame and the text container's own height,
+  so the origin can come back *below* `textContainerInset.height` — and it
+  differs by OS: macOS 15 returned the inset unchanged where macos-14 CI
+  returned 135 for an inset of 160, which clamped typewriter scroll's first
+  line 14pt low (green locally, red on CI). Anything that budgets vertical
+  space must measure `textContainerOrigin.y` after setting the inset rather
+  than assume they are equal; `updateVerticalContentInset` tops itself up.
 - **Attribute-only changes don't re-measure geometry in TK2**: after
   restyling a block whose height/indent changed, `invalidateLayout(for:)`
   its range or the fragment keeps a stale frame (empty bands / clipped

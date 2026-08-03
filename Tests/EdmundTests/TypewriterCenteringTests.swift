@@ -131,6 +131,23 @@ struct TypewriterCenteringTests {
         #expect(delta < 4, "short-document line off-center by \(delta)pt")
     }
 
+    /// Centering spends `textContainerOrigin.y`, not the inset it was given:
+    /// AppKit splits leftover space between the frame and the text container,
+    /// so the origin can land below the inset (seen on macOS 14, not 15). The
+    /// padding tops itself up for that; if this fails, the first line clamps low.
+    @Test("Container origin carries a full half-viewport of slack")
+    @MainActor func originCarriesSlack() {
+        let (editor, scroll) = makeWindowed()
+        var doc = ""
+        for i in 1...100 { doc += "Line \(i) content here for the document body.\n" }
+        editor.loadContent(doc)
+        ensureFullLayout(editor); editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
+
+        let wanted = scroll.contentView.bounds.height / 2
+        #expect(editor.textContainerOrigin.y >= wanted - 1,
+                "origin \(editor.textContainerOrigin.y) short of \(wanted) (inset \(editor.textContainerInset.height))")
+    }
+
     /// The padding is typewriter-only — normal scrolling keeps the plain inset.
     @Test("Vertical padding exists only in typewriter mode")
     @MainActor func paddingIsModeScoped() {
