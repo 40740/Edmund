@@ -97,4 +97,25 @@ extension EditorTextView {
         super.setFrameSize(newSize)
         updateContentInset()
     }
+
+    /// Adds half a viewport of empty space past the last line, so the line
+    /// being written is never pinned to the bottom edge of the window.
+    ///
+    /// Typewriter scroll gets that space from its own container inset
+    /// (`updateVerticalContentInset`), which pads both ends, so the overscroll
+    /// applies only while the mode is off.
+    ///
+    /// Grown into the frame rather than set as `NSScrollView.contentInsets`:
+    /// AppKit's bottom content inset does not extend the scrollable range past
+    /// the document's end (measured — `constrainBoundsRect` caps at the same
+    /// maxY with and without it). Growing the frame is what NSTextView's own
+    /// sizing understands. The added height is derived from the content height
+    /// `super` just computed, so repeated calls don't compound.
+    public override func sizeToFit() {
+        super.sizeToFit()
+        guard !typewriterModeEnabled,
+              let clip = enclosingScrollView?.contentView, clip.bounds.height > 0
+        else { return }
+        setFrameSize(NSSize(width: frame.width, height: frame.height + clip.bounds.height / 2))
+    }
 }

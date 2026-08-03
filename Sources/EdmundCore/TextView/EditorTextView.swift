@@ -214,6 +214,9 @@ public class EditorTextView: NSTextView {
             // the document's ends (see updateVerticalContentInset); apply it before
             // centering, or the first center after switching on still clamps.
             updateVerticalContentInset()
+            // Off gains the bottom overscroll, on drops it again (the container
+            // inset covers that end instead). See sizeToFit.
+            sizeToFit()
             if typewriterModeEnabled { centerViewportOnCaret() }
         }
     }
