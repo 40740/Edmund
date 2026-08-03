@@ -30,9 +30,25 @@ extension EditorTextView {
         guard let beforeY, let afterY = lineRect(forCharacterAt: anchorOffset)?.minY else { return }
         let delta = afterY - beforeY
         guard abs(delta) > 0.5 else { return }
-        let newY = max(0, visible.origin.y + delta)
+        // Floor only, and deliberately not `clampedScrollY`: this runs while a
+        // restyle is re-tiling the scroll view, when the clip view's idea of
+        // the document height is momentarily stale — clamping against it
+        // yanked the viewport ~770pt (the line-number-ruler regression). The
+        // top inset is the one bound that is always valid.
+        let newY = max(-(scrollView.contentInsets.top), visible.origin.y + delta)
         scrollView.contentView.scroll(to: NSPoint(x: visible.origin.x, y: newY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    /// The scroll position `y` clamped to what the clip view will actually
+    /// accept. Asking the clip view (rather than `0...frame.height - clipH`)
+    /// is what lets the viewport reach into the overscroll that
+    /// `NSScrollView.contentInsets` reserves above the first line and past the
+    /// last — a hand-rolled clamp pins the caret at the document's edges.
+    func clampedScrollY(_ y: CGFloat) -> CGFloat {
+        guard let clip = enclosingScrollView?.contentView else { return max(0, y) }
+        return clip.constrainBoundsRect(NSRect(origin: NSPoint(x: clip.bounds.origin.x, y: y),
+                                               size: clip.bounds.size)).origin.y
     }
 
     /// Character offset of the first character of the topmost visible layout
@@ -89,9 +105,7 @@ extension EditorTextView {
         let cursorY = lineRect.midY + textContainerOrigin.y
 
         let visibleHeight = scrollView.contentView.bounds.height
-        let targetY = cursorY - visibleHeight / 2
-        let maxY = max(0, frame.height - visibleHeight)
-        let clampedY = min(max(0, targetY), maxY)
+        let clampedY = clampedScrollY(cursorY - visibleHeight / 2)
 
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -105,9 +119,7 @@ extension EditorTextView {
         for _ in 0..<3 {
             tlm.textViewportLayoutController.layoutViewport()
             guard let settled = caretLineRect() else { return }
-            let settledTarget = settled.midY + textContainerOrigin.y - visibleHeight / 2
-            let settledMaxY = max(0, frame.height - visibleHeight)
-            let settledY = min(max(0, settledTarget), settledMaxY)
+            let settledY = clampedScrollY(settled.midY + textContainerOrigin.y - visibleHeight / 2)
             guard abs(settledY - scrollView.contentView.bounds.origin.y) > 1 else { return }
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: settledY))
             scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -139,11 +151,8 @@ extension EditorTextView {
             scrollRangeToVisible(NSRange(location: offset, length: 0)); return
         }
         guard let rect = lineRect(forCharacterAt: offset) else { return }
-        let targetY = rect.minY + textContainerOrigin.y
-
         let visibleHeight = scrollView.contentView.bounds.height
-        let maxY = max(0, frame.height - visibleHeight)
-        let clampedY = min(max(0, targetY), maxY)
+        let clampedY = clampedScrollY(rect.minY + textContainerOrigin.y)
 
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -152,9 +161,7 @@ extension EditorTextView {
         for _ in 0..<6 {
             tlm.textViewportLayoutController.layoutViewport()
             guard let settled = lineRect(forCharacterAt: offset) else { return }
-            let settledTarget = settled.minY + textContainerOrigin.y
-            let settledMaxY = max(0, frame.height - visibleHeight)
-            let settledY = min(max(0, settledTarget), settledMaxY)
+            let settledY = clampedScrollY(settled.minY + textContainerOrigin.y)
             guard abs(settledY - scrollView.contentView.bounds.origin.y) > 1 else { return }
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: settledY))
             scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -293,8 +300,7 @@ extension EditorTextView {
         } else {
             return  // already visible
         }
-        let maxY = max(0, frame.height - visible.height)
-        let clampedY = min(max(0, targetY), maxY)
+        let clampedY = clampedScrollY(targetY)
         scrollView.contentView.scroll(to: NSPoint(x: visible.origin.x, y: clampedY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }

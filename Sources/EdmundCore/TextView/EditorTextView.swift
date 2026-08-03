@@ -207,7 +207,29 @@ public class EditorTextView: NSTextView {
     /// vertically centered (typewriter scrolling); when false, scrolling falls
     /// back to "keep the cursor visible". Toggled from the View menu. The
     /// scrolling logic lives in EditorTextView+TypewriterScroll.
-    public var typewriterModeEnabled: Bool = true
+    public var typewriterModeEnabled: Bool = true {
+        didSet {
+            guard oldValue != typewriterModeEnabled else { return }
+            // The space above the first line is what makes centering reachable
+            // at the document's start (see updateScrollOverscroll); reserve it
+            // before centering, or the first center after switching on clamps.
+            updateScrollOverscroll()
+            if typewriterModeEnabled { centerViewportOnCaret() }
+        }
+    }
+
+    /// Extra space the app layer needs above the text — the find bar's height
+    /// while it is showing. Added to the overscroll the editor reserves for
+    /// itself; see `updateScrollOverscroll`.
+    public var additionalTopInset: CGFloat = 0 {
+        didSet {
+            guard abs(oldValue - additionalTopInset) > 0.5 else { return }
+            updateScrollOverscroll()
+        }
+    }
+
+    /// Dedupe flag for `scheduleOverscrollUpdate`.
+    var overscrollUpdateScheduled = false
 
     /// Set to true for the duration of a mouse-down event so that the
     /// resulting selection change does not trigger typewriter centering.

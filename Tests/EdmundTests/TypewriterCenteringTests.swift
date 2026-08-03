@@ -26,6 +26,13 @@ struct TypewriterCenteringTests {
         editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
                                 height: CGFloat.greatestFiniteMagnitude)
         editor.autoresizingMask = [.width]
+        // Mirror Document's setup: the app's own inset, then the overscroll
+        // pass. The overscroll is half the clip height, so it can't be computed
+        // before the editor has an enclosing scroll view.
+        editor.textContainerInset = NSSize(width: 24,
+                                           height: EditorTextView.contentBaseVerticalInset)
+        editor.updateContentInset()
+        editor.updateScrollOverscroll()
         return (editor, scroll)
     }
 
@@ -81,5 +88,82 @@ struct TypewriterCenteringTests {
         let off = (editor.rawSource as NSString).range(of: "Line 20 ").location
         let delta = offFromCenter(editor, scroll, caretOffset: off)
         #expect(delta < 4, "off-screen line off-center by \(delta)pt")
+    }
+
+    /// The document's ends. Centering clamps the scroll to
+    /// [0, frame.height - viewportHeight], so without typewriter mode's
+    /// half-viewport padding the first and last screenful can't reach center —
+    /// the caret just sat wherever it was.
+    @Test("Caret centers on the first and last line")
+    @MainActor func centersAtDocumentEnds() {
+        let (editor, scroll) = makeWindowed()
+        var doc = ""
+        for i in 1...100 { doc += "Line \(i) content here for the document body.\n" }
+        editor.loadContent(doc)
+        ensureFullLayout(editor); editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
+
+        let ns = editor.rawSource as NSString
+        for marker in ["Line 1 ", "Line 100 "] {
+            let off = ns.range(of: marker).location
+            let delta = offFromCenter(editor, scroll, caretOffset: off)
+            let lr = editor.lineRect(forCharacterAt: off)
+            #expect(delta < 4, """
+                \(marker)off-center by \(delta)pt — \
+                clipH=\(scroll.contentView.bounds.height) \
+                inset=\(editor.textContainerInset.height) \
+                frameH=\(editor.frame.height) \
+                originY=\(editor.textContainerOrigin.y) \
+                lineRect=\(lr.map { "\($0)" } ?? "nil") \
+                scrollY=\(scroll.contentView.bounds.origin.y)
+                """)
+        }
+    }
+
+    /// A document shorter than the window: with no padding the clamp range is
+    /// [0, 0] and centering could not move the viewport at all.
+    @Test("Caret centers in a document shorter than the viewport")
+    @MainActor func centersInShortDocument() {
+        let (editor, scroll) = makeWindowed()
+        editor.loadContent("Line 1 alpha\nLine 2 beta\nLine 3 gamma\nLine 4 delta\nLine 5 epsilon\n")
+        ensureFullLayout(editor); editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
+
+        let off = (editor.rawSource as NSString).range(of: "Line 3 ").location
+        let delta = offFromCenter(editor, scroll, caretOffset: off)
+        #expect(delta < 4, "short-document line off-center by \(delta)pt")
+    }
+
+    /// Centering can only reach the first line if the clip view will scroll
+    /// above the document's start. That room comes from `contentInsets.top`,
+    /// which `constrainBoundsRect` honors directly — unlike container geometry,
+    /// whose frame-vs-container split differs by OS.
+    @Test("Viewport can scroll above the first line")
+    @MainActor func scrollRangeReachesAboveStart() {
+        let (editor, scroll) = makeWindowed()
+        var doc = ""
+        for i in 1...100 { doc += "Line \(i) content here for the document body.\n" }
+        editor.loadContent(doc)
+        ensureFullLayout(editor); editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
+
+        let clipH = scroll.contentView.bounds.height
+        let minY = editor.clampedScrollY(-99_999)
+        #expect(minY <= -clipH / 2 + 1,
+                "scroll stops at \(minY), wanted \(-clipH / 2) (top inset \(scroll.contentInsets.top))")
+    }
+
+    /// The space above the first line is typewriter-only — with the mode off
+    /// there is no blank band over the opening line.
+    @Test("Space above the first line exists only in typewriter mode")
+    @MainActor func topSpaceIsModeScoped() {
+        let (editor, scroll) = makeWindowed()
+        editor.loadContent("Body text.\n")
+        editor.updateScrollOverscroll()
+        #expect(scroll.contentInsets.top > 100,
+                "typewriter top overscroll missing: \(scroll.contentInsets.top)")
+
+        editor.typewriterModeEnabled = false
+        #expect(scroll.contentInsets.top < 0.5,
+                "top overscroll leaked into normal mode: \(scroll.contentInsets.top)")
+        #expect(scroll.contentInsets.bottom > 100,
+                "bottom overscroll should stay in both modes: \(scroll.contentInsets.bottom)")
     }
 }

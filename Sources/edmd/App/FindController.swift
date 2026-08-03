@@ -17,7 +17,6 @@ final class FindController: NSObject, EditorFindHandling {
 
     /// The scroll view's top content inset before we pushed content down for the
     /// bar (usually the toolbar overlap). Restored on hide.
-    private var savedTopInset: CGFloat = 0
     private var isShowing = false
 
     init(editor: EditorTextView, scrollView: NSScrollView, container: NSView, statusBar: NSView) {
@@ -77,8 +76,6 @@ final class FindController: NSObject, EditorFindHandling {
         guard let editor else { return }
         let firstShow = !isShowing
         if firstShow {
-            savedTopInset = scrollView?.contentInsets.top ?? 0
-            scrollView?.automaticallyAdjustsContentInsets = false
             isShowing = true
         }
         bar.showsReplaceRow = replace
@@ -104,7 +101,7 @@ final class FindController: NSObject, EditorFindHandling {
         isShowing = false
         bar.isHidden = true
         editor?.clearFindMatches()
-        scrollView?.automaticallyAdjustsContentInsets = true
+        editor?.additionalTopInset = 0
         editor?.window?.makeFirstResponder(editor)
     }
 
@@ -123,10 +120,13 @@ final class FindController: NSObject, EditorFindHandling {
     private func layoutBar() {
         guard let container, let scrollView else { return }
         let h = bar.preferredHeight
+        // The editor owns contentInsets (it reserves overscroll there); hand it
+        // the bar's height rather than writing the inset directly, so a resize
+        // recomputing the overscroll doesn't drop the bar's share.
         bar.frame = NSRect(x: 0,
-                           y: container.bounds.height - savedTopInset - h,
+                           y: container.bounds.height - h,
                            width: container.bounds.width, height: h)
-        scrollView.contentInsets.top = savedTopInset + h
+        editor?.additionalTopInset = h
     }
 
     // MARK: - Search
