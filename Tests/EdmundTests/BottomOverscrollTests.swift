@@ -27,6 +27,7 @@ struct BottomOverscrollTests {
                                            height: EditorTextView.contentBaseVerticalInset)
         editor.typewriterModeEnabled = typewriter
         editor.updateContentInset()
+        editor.updateScrollOverscroll()
         var doc = ""
         for i in 1...100 { doc += "Line \(i) content here for the document body.\n" }
         editor.loadContent(doc)
@@ -34,47 +35,37 @@ struct BottomOverscrollTests {
         return (editor, scroll)
     }
 
-    /// The scrollable range has to reach past the last line's own position.
+    /// The clip view must accept a scroll position half a viewport past where
+    /// the last line alone would allow.
     @Test("Scrolls half a viewport past the last line")
     @MainActor func overscrollsPastEnd() {
         let (editor, scroll) = makeWindowed(typewriter: false)
         let clipHeight = scroll.contentView.bounds.height
-        let lastLine = (editor.rawSource as NSString).range(of: "Line 100 ").location
-        guard let lastRect = editor.lineRect(forCharacterAt: lastLine) else {
-            Issue.record("no line rect for the last line"); return
-        }
-        // Empty space below the last line, in document coordinates: what the
-        // viewport can still scroll into once the last line is at its top.
-        let contentBottom = lastRect.maxY + editor.textContainerOrigin.y
-        let blankBelow = editor.frame.height - contentBottom
-        #expect(blankBelow >= clipHeight / 2,
-                "only \(blankBelow)pt below the last line, wanted \(clipHeight / 2)")
+        let withoutOverscroll = max(0, editor.frame.height - clipHeight)
+        let maxY = editor.clampedScrollY(99_999)
+        #expect(maxY >= withoutOverscroll + clipHeight / 2 - 1,
+                "scroll stops at \(maxY), document alone allows \(withoutOverscroll)")
     }
 
-    /// The pad is derived from the content height, not added to the current
-    /// frame — otherwise every layout pass would grow the document further.
-    @Test("Re-sizing doesn't compound the overscroll")
+    /// Re-running the pass must not accumulate — it sets an absolute inset
+    /// rather than adding to the current one.
+    @Test("Re-running the overscroll pass doesn't compound it")
     @MainActor func idempotent() {
-        let (editor, _) = makeWindowed(typewriter: false)
-        let first = editor.frame.height
-        editor.sizeToFit()
-        editor.sizeToFit()
-        #expect(abs(editor.frame.height - first) < 1,
-                "frame grew from \(first) to \(editor.frame.height) on re-size")
+        let (editor, scroll) = makeWindowed(typewriter: false)
+        let first = scroll.contentInsets.bottom
+        editor.updateScrollOverscroll()
+        editor.updateScrollOverscroll()
+        #expect(abs(scroll.contentInsets.bottom - first) < 1,
+                "bottom inset grew from \(first) to \(scroll.contentInsets.bottom)")
     }
 
-    /// Typewriter scroll pads both ends inside the text container; adding the
-    /// overscroll on top would double the space below the last line.
-    @Test("No overscroll while typewriter scroll is on")
-    @MainActor func offInTypewriterMode() {
-        let (editor, scroll) = makeWindowed(typewriter: true)
+    /// The bottom room is wanted in both modes — typewriter scroll needs it to
+    /// center the last line, plain scrolling to write past the end.
+    @Test("Bottom room is reserved in typewriter mode too")
+    @MainActor func alsoInTypewriterMode() {
+        let (_, scroll) = makeWindowed(typewriter: true)
         let clipHeight = scroll.contentView.bounds.height
-        // The container inset (half a viewport at each end) accounts for the
-        // whole difference between the frame and the laid-out text.
-        let padded = 2 * editor.textContainerInset.height
-        let text = editor.frame.height - padded
-        #expect(editor.textContainerInset.height >= clipHeight / 2 - 1,
-                "typewriter padding missing: \(editor.textContainerInset.height)")
-        #expect(text > 0)
+        #expect(scroll.contentInsets.bottom >= clipHeight / 2 - 1,
+                "bottom overscroll missing in typewriter mode: \(scroll.contentInsets.bottom)")
     }
 }

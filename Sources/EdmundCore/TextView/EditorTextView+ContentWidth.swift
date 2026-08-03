@@ -18,47 +18,58 @@ extension EditorTextView {
     /// scroll. `Document` seeds the text view with this value.
     public static let contentBaseVerticalInset: CGFloat = 18
 
-    /// Grows the vertical inset to half a viewport while typewriter scroll is
-    /// on, and restores the configured inset when it goes off.
+    /// Reserves scrolling room past the document's ends: half a viewport below
+    /// the last line always (so the line being written is never pinned to the
+    /// window's bottom edge), and half a viewport above the first line while
+    /// typewriter scroll is on (so the opening screenful can reach center).
     ///
-    /// Typewriter scroll centers the caret by scrolling, and
-    /// `centerViewportOnCaret` can only scroll within
-    /// [0, frame.height - viewportHeight]. Without half a viewport of slack at
-    /// each end there is nowhere to scroll to, so the first screenful, the last
-    /// screenful, and any document shorter than the window never center at all.
+    /// Held in `NSScrollView.contentInsets` rather than grown into
+    /// `textContainerInset` or the frame, because the clip view's own
+    /// `constrainBoundsRect` honors it directly: the scroll range becomes
+    /// `-top ... documentHeight + bottom - clipHeight` (measured on a flipped
+    /// document view, which NSTextView is). Container geometry can't be
+    /// budgeted against instead — `textContainerOrigin.y` comes back as
+    /// AppKit's split of the frame-vs-container leftover, not the inset it was
+    /// given, and the split differs by OS (macOS 15 returned inset 160 as
+    /// origin 160; macos-14 returned 135, clamping the first line 14pt low).
     ///
-    /// Purely additive: it remembers the inset it grew from rather than
-    /// assuming a value, so turning the mode off restores exactly what was
-    /// configured. Only the vertical component is touched — re-applying the
-    /// column inset here would re-wrap text for no reason.
-    func updateVerticalContentInset() {
-        func apply(_ height: CGFloat) {
-            guard abs(textContainerInset.height - height) > 0.5 else { return }
-            textContainerInset = NSSize(width: textContainerInset.width, height: height)
-        }
-        guard typewriterModeEnabled,
-              let clip = enclosingScrollView?.contentView, clip.bounds.height > 0
-        else {
-            if let restore = insetBeforeTypewriterPadding {
-                insetBeforeTypewriterPadding = nil
-                apply(restore)
-            }
-            return
-        }
-        let base = insetBeforeTypewriterPadding ?? textContainerInset.height
-        insetBeforeTypewriterPadding = base
-        let wanted = clip.bounds.height / 2
-        apply(max(base, wanted))
+    /// The find bar adds its height on top via `additionalTopInset`.
+    public func updateScrollOverscroll() {
+        guard let scrollView = enclosingScrollView else { return }
+        let clipHeight = scrollView.contentView.bounds.height
+        guard clipHeight > 0 else { return }
+        let top = (typewriterModeEnabled ? clipHeight / 2 : 0) + additionalTopInset
+        let bottom = clipHeight / 2
+        guard abs(scrollView.contentInsets.top - top) > 0.5
+                || abs(scrollView.contentInsets.bottom - bottom) > 0.5 else { return }
+        // We own the insets from here on; AppKit's automatic pass sets them
+        // from the window chrome and would drop both.
+        scrollView.automaticallyAdjustsContentInsets = false
+        // Changing the insets re-anchors the clip view against the new edge,
+        // which slides the reader's position (measured: ~770pt on a scrolled
+        // document when the pass first ran). The insets only change the
+        // scrollable *range*, never the layout, so putting the origin back
+        // where it was is exact.
+        let origin = scrollView.contentView.bounds.origin
+        scrollView.contentInsets = NSEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
+        guard abs(scrollView.contentView.bounds.origin.y - origin.y) > 0.5 else { return }
+        scrollView.contentView.scroll(to: NSPoint(x: origin.x, y: clampedScrollY(origin.y)))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
 
-        // What centering actually spends is `textContainerOrigin.y`, and AppKit
-        // does not hand back the inset it was given: it splits the leftover
-        // space between the frame and the text container, so the origin can
-        // land *below* the inset (measured on macOS 14 CI — inset 160 →
-        // origin 135, which clamped the first line 14pt low; macOS 15 returns
-        // the inset unchanged). Top the inset up by whatever the origin is
-        // short. Recomputed from `base` on every call, so this never compounds.
-        let short = wanted - textContainerOrigin.y
-        if short > 0.5 { apply(textContainerInset.height + short) }
+    /// `updateScrollOverscroll` on the next run-loop hop. Changing
+    /// `contentInsets` re-tiles the scroll view, which must not happen from
+    /// inside the layout pass `setFrameSize` runs in.
+    func scheduleOverscrollUpdate() {
+        guard enclosingScrollView != nil, !overscrollUpdateScheduled else { return }
+        overscrollUpdateScheduled = true
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.overscrollUpdateScheduled = false
+                self.updateScrollOverscroll()
+            }
+        }
     }
 
     /// The symmetric horizontal inset for a given view width and max-column width.
@@ -84,8 +95,10 @@ extension EditorTextView {
         if widthChanged {
             textContainerInset = NSSize(width: target, height: textContainerInset.height)
         }
-        // Tracks the clip height, so it has to be rechecked on every resize.
-        updateVerticalContentInset()
+        // Tracks the clip height, so it has to be rechecked on every resize —
+        // but scheduled, for the same reason as the ruler below: this runs
+        // inside `setFrameSize`, and contentInsets re-tile the scroll view.
+        scheduleOverscrollUpdate()
         // This margin is where the line numbers live, so resizing it can push
         // them out to the window-edge gutter or bring them back beside the text.
         // Checked even when the inset held steady: the document's digit count
@@ -109,24 +122,4 @@ extension EditorTextView {
         updateContentInset()
     }
 
-    /// Adds half a viewport of empty space past the last line, so the line
-    /// being written is never pinned to the bottom edge of the window.
-    ///
-    /// Typewriter scroll gets that space from its own container inset
-    /// (`updateVerticalContentInset`), which pads both ends, so the overscroll
-    /// applies only while the mode is off.
-    ///
-    /// Grown into the frame rather than set as `NSScrollView.contentInsets`:
-    /// AppKit's bottom content inset does not extend the scrollable range past
-    /// the document's end (measured — `constrainBoundsRect` caps at the same
-    /// maxY with and without it). Growing the frame is what NSTextView's own
-    /// sizing understands. The added height is derived from the content height
-    /// `super` just computed, so repeated calls don't compound.
-    public override func sizeToFit() {
-        super.sizeToFit()
-        guard !typewriterModeEnabled,
-              let clip = enclosingScrollView?.contentView, clip.bounds.height > 0
-        else { return }
-        setFrameSize(NSSize(width: frame.width, height: frame.height + clip.bounds.height / 2))
-    }
 }

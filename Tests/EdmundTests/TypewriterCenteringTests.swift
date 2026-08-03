@@ -26,12 +26,13 @@ struct TypewriterCenteringTests {
         editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
                                 height: CGFloat.greatestFiniteMagnitude)
         editor.autoresizingMask = [.width]
-        // Mirror Document's setup: the app's own inset, then the content-inset
-        // pass. Typewriter padding is half the clip height, so it can't be
-        // computed before the editor has an enclosing scroll view.
+        // Mirror Document's setup: the app's own inset, then the overscroll
+        // pass. The overscroll is half the clip height, so it can't be computed
+        // before the editor has an enclosing scroll view.
         editor.textContainerInset = NSSize(width: 24,
                                            height: EditorTextView.contentBaseVerticalInset)
         editor.updateContentInset()
+        editor.updateScrollOverscroll()
         return (editor, scroll)
     }
 
@@ -131,33 +132,38 @@ struct TypewriterCenteringTests {
         #expect(delta < 4, "short-document line off-center by \(delta)pt")
     }
 
-    /// Centering spends `textContainerOrigin.y`, not the inset it was given:
-    /// AppKit splits leftover space between the frame and the text container,
-    /// so the origin can land below the inset (seen on macOS 14, not 15). The
-    /// padding tops itself up for that; if this fails, the first line clamps low.
-    @Test("Container origin carries a full half-viewport of slack")
-    @MainActor func originCarriesSlack() {
+    /// Centering can only reach the first line if the clip view will scroll
+    /// above the document's start. That room comes from `contentInsets.top`,
+    /// which `constrainBoundsRect` honors directly — unlike container geometry,
+    /// whose frame-vs-container split differs by OS.
+    @Test("Viewport can scroll above the first line")
+    @MainActor func scrollRangeReachesAboveStart() {
         let (editor, scroll) = makeWindowed()
         var doc = ""
         for i in 1...100 { doc += "Line \(i) content here for the document body.\n" }
         editor.loadContent(doc)
         ensureFullLayout(editor); editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
 
-        let wanted = scroll.contentView.bounds.height / 2
-        #expect(editor.textContainerOrigin.y >= wanted - 1,
-                "origin \(editor.textContainerOrigin.y) short of \(wanted) (inset \(editor.textContainerInset.height))")
+        let clipH = scroll.contentView.bounds.height
+        let minY = editor.clampedScrollY(-99_999)
+        #expect(minY <= -clipH / 2 + 1,
+                "scroll stops at \(minY), wanted \(-clipH / 2) (top inset \(scroll.contentInsets.top))")
     }
 
-    /// The padding is typewriter-only — normal scrolling keeps the plain inset.
-    @Test("Vertical padding exists only in typewriter mode")
-    @MainActor func paddingIsModeScoped() {
-        let (editor, _) = makeWindowed()
+    /// The space above the first line is typewriter-only — with the mode off
+    /// there is no blank band over the opening line.
+    @Test("Space above the first line exists only in typewriter mode")
+    @MainActor func topSpaceIsModeScoped() {
+        let (editor, scroll) = makeWindowed()
         editor.loadContent("Body text.\n")
-        #expect(editor.textContainerInset.height > 100,
-                "typewriter padding missing: \(editor.textContainerInset.height)")
+        editor.updateScrollOverscroll()
+        #expect(scroll.contentInsets.top > 100,
+                "typewriter top overscroll missing: \(scroll.contentInsets.top)")
 
         editor.typewriterModeEnabled = false
-        #expect(abs(editor.textContainerInset.height - EditorTextView.contentBaseVerticalInset) < 0.5,
-                "padding leaked into normal mode: \(editor.textContainerInset.height)")
+        #expect(scroll.contentInsets.top < 0.5,
+                "top overscroll leaked into normal mode: \(scroll.contentInsets.top)")
+        #expect(scroll.contentInsets.bottom > 100,
+                "bottom overscroll should stay in both modes: \(scroll.contentInsets.bottom)")
     }
 }

@@ -220,19 +220,24 @@ Notable subsystems:
   viewport↔caret span before measuring (else stale TK2 estimates);
   re-centers only on *typing* — a mouse-down sets
   `suppressTypewriterCentering` so click-placing the caret doesn't yank the
-  viewport. Centering scrolls, and `centerViewportOnCaret` clamps to
-  `[0, frame.height - viewportHeight]`, so the mode also needs somewhere to
-  scroll *to*: `updateVerticalContentInset` grows `textContainerInset.height`
-  to half the clip height while it is on (additive — it remembers the inset it
-  grew from and restores that on toggle-off). Without that slack the first
-  screenful, the last screenful and any document shorter than the window can
-  never reach center, which is what made the feature read as "doesn't center
-  at all".
-- **Bottom overscroll**: with typewriter scroll *off*, `sizeToFit` adds half a
-  viewport to the text view's frame so the line being written is never pinned
-  to the window's bottom edge. Derived from the content height `super` just
-  computed, so repeated layout passes don't compound it. Typewriter mode skips
-  it — its container inset already pads that end.
+  viewport. Centering scrolls, so the mode also needs somewhere to scroll
+  *to*: `updateScrollOverscroll` reserves half a clip height of
+  `NSScrollView.contentInsets.top` while it is on. Without that slack the
+  first screenful, the last screenful and any document shorter than the window
+  can never reach center, which is what made the feature read as "doesn't
+  center at all".
+- **Overscroll past the ends** (`updateScrollOverscroll`): half a clip height
+  of `contentInsets.bottom` in both modes (so the line being written is never
+  pinned to the window's bottom edge, and typewriter scroll can center the
+  last line), plus the `contentInsets.top` above. The scroll code must ask the
+  clip view for its limits — `clampedScrollY` wraps `constrainBoundsRect` —
+  because a hand-rolled `[0, frame.height - clipHeight]` clamp ignores the
+  insets and pins the caret at the document's edges. Two exceptions to that
+  rule: `preservingViewportAnchor` floors at `-contentInsets.top` only, since
+  it runs mid-re-tile when the clip view's idea of the document height is
+  stale (clamping there yanked the viewport ~770pt), and the find bar adds its
+  height through `editor.additionalTopInset` rather than writing the inset
+  itself, so a resize recomputing the overscroll can't drop the bar's share.
 - **Content width** (`+ContentWidth.swift`): an **absolute physical**
   max-column width — set in cm/in in Settings, stored as cm, converted to
   points via the display's real PPI (`NSScreen.physicalPPI`, from
@@ -479,14 +484,18 @@ Notable subsystems:
   anything that bakes the content width (e.g. callout header images)
   renders at a fallback width until a width-settled re-render. Prefer real
   wrapping text over width-baked images.
-- **`textContainerOrigin.y` is not the inset you set.** AppKit splits the
-  leftover space between the view's frame and the text container's own height,
-  so the origin can come back *below* `textContainerInset.height` — and it
-  differs by OS: macOS 15 returned the inset unchanged where macos-14 CI
-  returned 135 for an inset of 160, which clamped typewriter scroll's first
-  line 14pt low (green locally, red on CI). Anything that budgets vertical
-  space must measure `textContainerOrigin.y` after setting the inset rather
-  than assume they are equal; `updateVerticalContentInset` tops itself up.
+- **`textContainerOrigin.y` is not the inset you set, and the difference is
+  OS-dependent.** AppKit splits the leftover space between the view's frame
+  and the text container's own height, so the origin comes back as
+  `(frameHeight - containerHeight)/2` — the inset cancels out, which means you
+  cannot buy vertical slack by growing `textContainerInset.height`. macOS 15
+  returned 160 for an inset of 160; macos-14 CI returned 135 and clamped
+  typewriter scroll's first line 14pt low (green locally, red on CI, twice).
+  Reserve space with `NSScrollView.contentInsets` instead: the clip view's
+  `constrainBoundsRect` honors those directly and the resulting range is
+  `-top ... documentHeight + bottom - clipHeight`. **Measure inset behavior on
+  a flipped document view** — probing with a plain `NSView` inverts which end
+  each inset extends and produced exactly the wrong conclusion here.
 - **Attribute-only changes don't re-measure geometry in TK2**: after
   restyling a block whose height/indent changed, `invalidateLayout(for:)`
   its range or the fragment keeps a stale frame (empty bands / clipped

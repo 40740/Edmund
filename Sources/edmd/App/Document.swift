@@ -185,10 +185,10 @@ class Document: NSDocument, HeadingNavigable {
         scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
         scrollView.documentView = editor
-        // Typewriter scroll's vertical padding is half the clip view's height,
-        // so it can only be computed once the editor has an enclosing scroll
-        // view — the earlier call above ran before this line.
-        editor.updateContentInset()
+        // The overscroll past the document's ends is half the clip view's
+        // height, so it can only be computed once the editor has an enclosing
+        // scroll view — the content-inset call above ran before this line.
+        editor.updateScrollOverscroll()
 
         // Floating status bar: hidden by default, fades in when the pointer
         // enters its strip. Counts on the left, line ending on the right.

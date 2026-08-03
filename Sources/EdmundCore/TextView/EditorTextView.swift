@@ -210,20 +210,26 @@ public class EditorTextView: NSTextView {
     public var typewriterModeEnabled: Bool = true {
         didSet {
             guard oldValue != typewriterModeEnabled else { return }
-            // The mode's vertical padding is what makes centering reachable at
-            // the document's ends (see updateVerticalContentInset); apply it before
-            // centering, or the first center after switching on still clamps.
-            updateVerticalContentInset()
-            // Off gains the bottom overscroll, on drops it again (the container
-            // inset covers that end instead). See sizeToFit.
-            sizeToFit()
+            // The space above the first line is what makes centering reachable
+            // at the document's start (see updateScrollOverscroll); reserve it
+            // before centering, or the first center after switching on clamps.
+            updateScrollOverscroll()
             if typewriterModeEnabled { centerViewportOnCaret() }
         }
     }
 
-    /// Set while typewriter padding is grown into `textContainerInset.height`:
-    /// the inset to restore when the mode goes off. See updateVerticalContentInset.
-    var insetBeforeTypewriterPadding: CGFloat?
+    /// Extra space the app layer needs above the text — the find bar's height
+    /// while it is showing. Added to the overscroll the editor reserves for
+    /// itself; see `updateScrollOverscroll`.
+    public var additionalTopInset: CGFloat = 0 {
+        didSet {
+            guard abs(oldValue - additionalTopInset) > 0.5 else { return }
+            updateScrollOverscroll()
+        }
+    }
+
+    /// Dedupe flag for `scheduleOverscrollUpdate`.
+    var overscrollUpdateScheduled = false
 
     /// Set to true for the duration of a mouse-down event so that the
     /// resulting selection change does not trigger typewriter centering.
