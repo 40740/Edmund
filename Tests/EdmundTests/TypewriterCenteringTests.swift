@@ -105,7 +105,16 @@ struct TypewriterCenteringTests {
         for marker in ["Line 1 ", "Line 100 "] {
             let off = ns.range(of: marker).location
             let delta = offFromCenter(editor, scroll, caretOffset: off)
-            #expect(delta < 4, "\(marker) off-center by \(delta)pt")
+            let lr = editor.lineRect(forCharacterAt: off)
+            #expect(delta < 4, """
+                \(marker)off-center by \(delta)pt — \
+                clipH=\(scroll.contentView.bounds.height) \
+                inset=\(editor.textContainerInset.height) \
+                frameH=\(editor.frame.height) \
+                originY=\(editor.textContainerOrigin.y) \
+                lineRect=\(lr.map { "\($0)" } ?? "nil") \
+                scrollY=\(scroll.contentView.bounds.origin.y)
+                """)
         }
     }
 
