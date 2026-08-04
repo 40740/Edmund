@@ -15,10 +15,12 @@
 #                silently — the description is dropped and the whole `---` block
 #                leaks into the prompt. So regenerate with a description-only
 #                whitelist rather than copying.
-#   hooks/       CANNOT be synced. The guards are hand-ported matcher logic in
-#                .opencode/plugin/edmund-guards.mjs, not a format transform of
-#                these shell scripts. Best available is to say so out loud when
-#                one side moves.
+#   hooks/       nothing to do either, as of the guard-bridge change.
+#                .opencode/plugin/edmund-guards.mjs no longer re-implements the
+#                guards, it executes guard-*.sh directly, so an edit to one is
+#                live on both sides immediately. A new guard-*.sh is picked up
+#                by OpenCode automatically; Claude Code needs one line in
+#                .claude/settings.json, having no auto-discovery.
 #
 # Writes only into .opencode/, which is gitignored — no tracked churn.
 
@@ -32,14 +34,7 @@ root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 
 case "$path" in
   "$root"/.claude/commands/*.md) ;;
-  "$root"/.claude/settings.json | "$root"/.claude/hooks/*)
-    # Drift notice, not a block: the mjs mirrors these rules by hand.
-    echo "Changed $(basename "$path"), which .opencode/plugin/edmund-guards.mjs mirrors by hand \
-(guards: branch-create, focus-steal, maintainer-prose, commit gate). OpenCode has no settings.json \
-hooks, so this does NOT propagate on its own — check whether the plugin needs the same change, then \
-re-run its self-check: node .opencode/plugin/edmund-guards.mjs" >&2
-    exit 2 ;;
-  *) exit 0 ;;
+  *) exit 0 ;;   # guards need no sync — see the header
 esac
 
 src="$root/.claude/commands"
