@@ -40,6 +40,19 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/sync-opencode.sh\"",
+            "timeout": 15,
+            "statusMessage": "Syncing OpenCode config…"
+          }
+        ]
+      }
     ]
   }
 }
