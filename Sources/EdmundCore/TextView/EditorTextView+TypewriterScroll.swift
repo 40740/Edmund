@@ -31,20 +31,20 @@ extension EditorTextView {
         let delta = afterY - beforeY
         guard abs(delta) > 0.5 else { return }
         // Floor only, and deliberately not `clampedScrollY`: this runs while a
-        // restyle is re-tiling the scroll view, when the clip view's idea of
-        // the document height is momentarily stale — clamping against it
-        // yanked the viewport ~770pt (the line-number-ruler regression). The
-        // top inset is the one bound that is always valid.
-        let newY = max(-(scrollView.contentInsets.top), visible.origin.y + delta)
+        // restyle is resizing the text view, when the clip view's idea of the
+        // document height is momentarily stale — clamping against it yanked
+        // the viewport ~770pt (the line-number-ruler regression). The top of
+        // the document is the one bound that is always valid.
+        let newY = max(0, visible.origin.y + delta)
         scrollView.contentView.scroll(to: NSPoint(x: visible.origin.x, y: newY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
     /// The scroll position `y` clamped to what the clip view will actually
-    /// accept. Asking the clip view (rather than `0...frame.height - clipH`)
-    /// is what lets the viewport reach into the overscroll that
-    /// `NSScrollView.contentInsets` reserves above the first line and past the
-    /// last — a hand-rolled clamp pins the caret at the document's edges.
+    /// accept — which includes the overscroll the text view reserves inside
+    /// its own frame above the first line and past the last (see
+    /// `updateScrollOverscroll`). Asking the clip view rather than clamping by
+    /// hand also keeps this correct if the scroll view grows insets of its own.
     func clampedScrollY(_ y: CGFloat) -> CGFloat {
         guard let clip = enclosingScrollView?.contentView else { return max(0, y) }
         return clip.constrainBoundsRect(NSRect(origin: NSPoint(x: clip.bounds.origin.x, y: y),
@@ -151,7 +151,6 @@ extension EditorTextView {
             scrollRangeToVisible(NSRange(location: offset, length: 0)); return
         }
         guard let rect = lineRect(forCharacterAt: offset) else { return }
-        let visibleHeight = scrollView.contentView.bounds.height
         let clampedY = clampedScrollY(rect.minY + textContainerOrigin.y)
 
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))

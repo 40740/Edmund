@@ -221,23 +221,31 @@ Notable subsystems:
   re-centers only on *typing* — a mouse-down sets
   `suppressTypewriterCentering` so click-placing the caret doesn't yank the
   viewport. Centering scrolls, so the mode also needs somewhere to scroll
-  *to*: `updateScrollOverscroll` reserves half a clip height of
-  `NSScrollView.contentInsets.top` while it is on. Without that slack the
-  first screenful, the last screenful and any document shorter than the window
-  can never reach center, which is what made the feature read as "doesn't
-  center at all".
+  *to*: `updateScrollOverscroll` reserves half a clip height of blank space
+  above the first line while it is on. Without that slack the first screenful,
+  the last screenful and any document shorter than the window can never reach
+  center, which is what made the feature read as "doesn't center at all".
 - **Overscroll past the ends** (`updateScrollOverscroll`): half a clip height
-  of `contentInsets.bottom` in both modes (so the line being written is never
-  pinned to the window's bottom edge, and typewriter scroll can center the
-  last line), plus the `contentInsets.top` above. The scroll code must ask the
-  clip view for its limits — `clampedScrollY` wraps `constrainBoundsRect` —
-  because a hand-rolled `[0, frame.height - clipHeight]` clamp ignores the
-  insets and pins the caret at the document's edges. Two exceptions to that
-  rule: `preservingViewportAnchor` floors at `-contentInsets.top` only, since
-  it runs mid-re-tile when the clip view's idea of the document height is
-  stale (clamping there yanked the viewport ~770pt), and the find bar adds its
-  height through `editor.additionalTopInset` rather than writing the inset
-  itself, so a resize recomputing the overscroll can't drop the bar's share.
+  below the last line in both modes (so the line being written is never pinned
+  to the window's bottom edge, and typewriter scroll can center the last
+  line), plus the typewriter-only room above. The space is bought **inside the
+  document view** — `textContainerInset.height` grows the frame by twice its
+  height and the overridden `textContainerOrigin` decides how that splits
+  between the ends (`overscrollTopPad` / `overscrollBottomPad`), followed by an
+  explicit `sizeToFit()`, since the frame doesn't track the inset otherwise.
+  Not `NSScrollView.contentInsets`: AppKit restricts hit-testing to the scroll
+  view's frame *minus* its insets, so half a viewport at each end left a
+  zero-height live area and no click anywhere in the window moved the caret
+  (§8). `setFrameSize` also floors the view at the clip height, so a document
+  shorter than the window still covers it — the area below a short text view
+  belongs to the clip view, which swallows clicks. The scroll code still asks
+  the clip view for its limits (`clampedScrollY` wraps `constrainBoundsRect`)
+  rather than hand-rolling a clamp; `preservingViewportAnchor` is the
+  exception and floors at 0 only, since it runs mid-re-tile when the clip
+  view's idea of the document height is stale (clamping there yanked the
+  viewport ~770pt). The find bar adds its height through
+  `editor.additionalTopInset` rather than writing the inset itself, so a
+  resize recomputing the overscroll can't drop the bar's share.
 - **Content width** (`+ContentWidth.swift`): an **absolute physical**
   max-column width — set in cm/in in Settings, stored as cm, converted to
   points via the display's real PPI (`NSScreen.physicalPPI`, from
@@ -484,18 +492,28 @@ Notable subsystems:
   anything that bakes the content width (e.g. callout header images)
   renders at a fallback width until a width-settled re-render. Prefer real
   wrapping text over width-baked images.
-- **`textContainerOrigin.y` is not the inset you set, and the difference is
+- **`NSScrollView.contentInsets` kill hit-testing.** AppKit restricts the
+  scroll view's content area — and with it every click — to the frame *minus*
+  its insets. Reserving half a viewport at each end for typewriter scroll left
+  a zero-height live area: the caret stopped following clicks anywhere in the
+  window, with nothing wrong in the mouse or selection code. Reserve blank
+  space **inside the document view** instead, so every point of the window is
+  still over the text view and a click in a blank band lands on the nearest
+  character.
+- **`textContainerOrigin.y` is not the inset you set, and the default is
   OS-dependent.** AppKit splits the leftover space between the view's frame
   and the text container's own height, so the origin comes back as
-  `(frameHeight - containerHeight)/2` — the inset cancels out, which means you
-  cannot buy vertical slack by growing `textContainerInset.height`. macOS 15
+  `(frameHeight - containerHeight)/2` — the inset cancels out. macOS 15
   returned 160 for an inset of 160; macos-14 CI returned 135 and clamped
   typewriter scroll's first line 14pt low (green locally, red on CI, twice).
-  Reserve space with `NSScrollView.contentInsets` instead: the clip view's
-  `constrainBoundsRect` honors those directly and the resulting range is
-  `-top ... documentHeight + bottom - clipHeight`. **Measure inset behavior on
-  a flipped document view** — probing with a plain `NSView` inverts which end
-  each inset extends and produced exactly the wrong conclusion here.
+  `textContainerOrigin` is a documented override point, so Edmund owns the
+  value (`EditorTextView.swift`): the pad is exact, identical on every OS, and
+  can be asymmetric — which the symmetric `textContainerInset` alone can't
+  express. TextKit 2 lays fragments out against the override. Note the frame
+  follows an inset change only after an explicit `sizeToFit()`;
+  `layoutIfNeeded` leaves it stale. **Measure inset behavior on a flipped
+  document view** — probing with a plain `NSView` inverts which end each inset
+  extends and produced exactly the wrong conclusion here.
 - **Attribute-only changes don't re-measure geometry in TK2**: after
   restyling a block whose height/indent changed, `invalidateLayout(for:)`
   its range or the fragment keeps a stale frame (empty bands / clipped
