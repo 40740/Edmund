@@ -369,6 +369,26 @@ Notable subsystems:
 - **Window size** persists as the last window's full **frame** size
   (`settings.window.lastWidth`/`lastHeight`) — §8 on why frame, not content
   size.
+- **"Reopen windows from last session" (`reopenWindows`) has to be enforced in
+  two places**, because AppKit brings work back by two independent routes:
+  1. *Window restoration.* Document windows are `isRestorable = true` for the
+     whole session so a crash can hand back unsaved work;
+     `AppDelegate.applicationShouldTerminate` clears the flag on a **clean**
+     quit when the preference is off, so nothing is archived.
+  2. *Drafts.* With autosave-in-place on (`Document.autosavesInPlace` =
+     `autoSaveWithVersions`, default on), every unsaved **untitled** document is
+     kept by AppKit as a draft in `~/Library/Autosave Information/Unsaved edmd
+     Document N.md` (`edmd` = the executable name) and reopened at the next
+     launch through
+     `NSDocumentController.reopenDocument(for:withContentsOf:display:)`. That
+     route ignores `isRestorable` entirely, so route 1 never reached it: stale
+     drafts came back at *every* launch and stacked up as "Untitled",
+     "Untitled 2", … on top of the blank launch document.
+     `DocumentController.reopenDocument` overrides it and skips drafts
+     (`urlOrNil == nil`) when the preference is off. It only skips the reopen —
+     the draft files are never deleted. Once skipped, AppKit drops the draft
+     from its restore record, so turning the preference back on later does not
+     resurrect old drafts; the file is still on disk.
 - **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): always-on
   (opt-out) file logger. `Log.{debug,info,error}(_:category:)` and
   `Log.measure(_:) { … }` (single-line durations) write to
@@ -467,6 +487,33 @@ Notable subsystems:
   windows, state restoration) —
   `rm -rf ~/Library/"Saved Application State"/com.i7t5.edmund.savedState`
   and relaunch.
+- **Counting an app's windows is the flakiest measurement in this repo — don't
+  trust one source.** `CGWindowListCopyWindowInfo(.optionAll)` (what
+  `winid.swift` uses) lists windows the app has already *closed*, so a stale
+  entry reads as a window that is still open — enough to invent a bug that
+  isn't there. `.optionOnScreenOnly` fixes that but lists nothing for an app
+  launched with `open -g` (backgrounded), and System Events' `name of every
+  window` is intermittently empty for a process that was never activated or was
+  started by exec'ing the binary. Cross-check at least two, and when the answer
+  actually matters, ask the app: a temporary probe that appends to a file from
+  `Document.makeWindowControllers` counts documents exactly, needs no focus, and
+  works before `Log.configure` has run (the logger silently drops everything
+  emitted earlier in launch, including from `applicationShouldOpenUntitledFile`).
+  `Thread.callStackSymbols` in that probe is what names the *creator* of a
+  surprise window — the AppKit frames say whether it came from restoration,
+  draft reopening, or the delegate.
+- **State restoration needs a signed bundle.** An unsigned debug build never
+  restores anything, so restoration bugs are invisible in the usual
+  `build/EdmundDbg.app` loop. Reproduce with a *signed* release clone under its
+  own bundle id (`scripts/build-app.sh`, then `PlistBuddy` the
+  `CFBundleIdentifier` to e.g. `com.i7t5.edmundrepro` and `codesign -s -`) so
+  the run has its own defaults and its own saved state and can never disturb the
+  maintainer's installed Edmund. `codesign --deep` fails with "unsealed contents
+  present in the bundle root" until the SwiftPM `*.bundle` resources at the
+  `.app` root are moved aside and put back after signing. Note the isolated
+  clone still shares `~/Library/Autosave Information` and the "Unsaved edmd
+  Document" namespace with the real app — a draft it reopens may be the
+  maintainer's.
 - **Visual work is measured, not eyeballed — and the measuring rig is
   reusable.** Aligning chrome takes a dozen launch/state/capture/measure cycles;
   `.claude/skills/edmund-live-repro-and-diagnostics/scripts/ui-harness.sh` and
