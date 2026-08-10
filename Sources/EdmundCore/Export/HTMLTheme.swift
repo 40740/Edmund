@@ -54,6 +54,15 @@ enum HTMLTheme {
         let darkChrome = "#696969"
         // Rules and table borders sit a step dimmer (EditorTextView.darkRuleGray).
         let darkRule = "#555555"
+        // ColaMD accent colors: strong ink, quote bar/fill/text, and the table
+        // header rule. Each falls back to the neutral default when the preset
+        // doesn't override it (only Elegant tints bold/quote/table-head).
+        let strong = theme.preset.strongColorHex ?? "inherit"
+        let quoteBar = theme.preset.quoteBarHex ?? (dark ? darkChrome : rule)
+        let quoteBg = theme.preset.quoteBackgroundHex ?? "transparent"
+        let quoteText = theme.preset.quoteTextHex ?? faint
+        let tableHeadAccent = theme.preset.tableHeadAccentHex
+            ?? (dark ? darkRule : rule)
         // #2a2a2a sat one level above the #292929 page background — code blocks
         // and table header rows had no visible tint at all in dark mode.
         let codeBg = dark ? "#333333" : "#f4f4f4"
@@ -100,7 +109,12 @@ enum HTMLTheme {
           --table-border: \(dark ? darkRule : rule);
           --table-zebra: \(zebra);
           --hr: \(dark ? "#4a4a4a" : rule);
-          --quote-bar: \(dark ? darkChrome : rule);
+          --quote-bar: \(quoteBar);
+          --quote-bg: \(quoteBg);
+          --quote-text: \(quoteText);
+          --strong: \(strong);
+          --inline-code-ink: \(theme.preset.codeColorHex ?? fg);
+          --table-head-accent: \(tableHeadAccent);
           --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
@@ -197,13 +211,15 @@ enum HTMLTheme {
        none here either. */
     h1 { font-size: 1.5em; } h2 { font-size: 1.3em; } h3 { font-size: 1.15em; }
     h4 { font-size: 1em; } h5 { font-size: 1em; } h6 { font-size: 1em; }
+    /* ColaMD's signature: h1/h2 carry a hairline rule under the text. */
+    h1, h2 { border-bottom: 1px solid var(--rule); padding-bottom: 0.3em; }
     :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
     a { color: var(--accent); text-decoration: underline; }
     /* Body color, not --code: the editor draws inline code in the body color
        too, and the two views must agree. --code still tints block code. */
     /* Radii are em, not px, so the chip's corners keep their proportion as the
        font-size stepper moves — a fixed 4px reads as square at large sizes. */
-    code { font-family: var(--mono-font); font-size: 0.92em; color: var(--fg);
+    code { font-family: var(--mono-font); font-size: 0.92em; color: var(--inline-code-ink);
            background: var(--inline-code-bg); padding: 0.1em 0.35em; border-radius: 0.25em; }
     pre { background: var(--code-bg); padding: 12px 14px; border-radius: 0.5em; overflow-x: auto;
           /* tab-size: browsers default to 8; match the common editor convention of 4. */
@@ -214,19 +230,26 @@ enum HTMLTheme {
        button can be positioned absolutely inside it without moving `pre`. */
     .code-block-wrap { position: relative; margin: 1em 0; }
     .code-block-wrap pre { margin: 0; }
+    /* ColaMD-style pill: code-block background, hairline border, small radius.
+       The icon + "复制" label sit on one row; the whole thing is hidden until
+       the block is hovered, so it never reserves visible space at rest. */
     .code-copy-btn { position: absolute; top: 8px; right: 10px; display: flex; align-items: center;
-                      gap: 4px; font-family: var(--mono-font); font-size: 11px; font-weight: 500;
-                      color: var(--faint); background: transparent; padding: 3px 6px;
-                      border-radius: 5px; text-decoration: none; cursor: pointer; }
-    .code-copy-btn:hover { background: rgba(128, 128, 128, 0.16); }
-    .code-copy-btn svg { width: 13px; height: 13px; stroke: var(--faint); }
-    /* Hidden until the block is hovered, so it never reserves visible space
-       at rest. */
+                      gap: 4px; font-family: inherit; font-size: 12px; font-weight: 500;
+                      color: var(--faint); background: var(--code-bg); border: 1px solid var(--rule);
+                      padding: 2px 10px; border-radius: 6px; text-decoration: none;
+                      cursor: pointer; line-height: 1.6; }
+    .code-copy-btn:hover { color: var(--fg); border-color: var(--accent); }
+    .code-copy-btn svg { width: 12px; height: 12px; stroke: var(--faint); }
+    .code-copy-btn:hover svg { stroke: var(--fg); }
+    .code-copy-btn.copied { color: var(--fg); border-color: var(--accent); }
     .code-copy-icon { opacity: 0; transition: opacity .15s; }
     .code-block-wrap:hover .code-copy-icon { opacity: 1; }
-    /* Dark mode lifts the bar to the marker gray (--rule is nearly invisible
-       there); light mode keeps --rule. */
-    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--quote-bar); color: var(--faint); }
+    /* A ColaMD preset colors the bar and fills the panel (Elegant's red bar /
+       soft paper fill); otherwise the neutral dim bar, no fill. */
+    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--quote-bar);
+                 background: var(--quote-bg); color: var(--quote-text); }
+    /* ColaMD Elegant paints bold in the accent red; other themes keep body ink. */
+    strong { color: var(--strong); }
     /* Without this, the 1em bottom margin on the last <p> inside a blockquote
        creates asymmetric vertical padding — the blockquote looks heavier at the
        bottom than at the top. Reset it so padding alone controls the spacing. */
@@ -332,6 +355,8 @@ enum HTMLTheme {
        (tr:nth-child(2n) — the header row is child 1 of thead, so it never tints). */
     tr:nth-child(2n) { background: var(--table-zebra); }
     thead th { background: var(--code-bg); }
+    /* ColaMD Elegant draws a 2px accent rule under the header row. */
+    thead th { border-bottom: 2px solid var(--table-head-accent); }
     img { max-width: 100%; }
     img.math { vertical-align: middle; }
     .math-display { text-align: center; margin: 1em 0; }

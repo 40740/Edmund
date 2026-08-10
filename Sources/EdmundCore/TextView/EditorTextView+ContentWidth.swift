@@ -38,7 +38,12 @@ extension EditorTextView {
         guard let scrollView = enclosingScrollView else { return }
         let clipHeight = scrollView.contentView.bounds.height
         guard clipHeight > 0 else { return }
-        let top = (typewriterModeEnabled ? clipHeight / 2 : 0) + additionalTopInset
+        // Never reserve scroll room above the first line — typewriter centering
+        // still works once there is content above the caret, but the document
+        // always opens flush at the top like any other editor. (The old
+        // `clipHeight / 2` top pad put a blank band above the first line on
+        // every document and was mistaken for a bug.)
+        let top = additionalTopInset
         let bottom = clipHeight / 2
         guard abs(top - overscrollTopPad) > 0.5
                 || abs(bottom - overscrollBottomPad) > 0.5 else { return }

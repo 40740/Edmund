@@ -180,6 +180,33 @@ public struct EditorTheme: Equatable, Sendable {
         NSColor(hex: mathOperatorHex) ?? .systemRed
     }
 
+    // MARK: ColaMD preset accent colors
+
+    /// Bold-text ink for a ColaMD preset, or nil to keep the body color.
+    @MainActor public var strongColor: NSColor? {
+        preset.strongColorHex.flatMap { NSColor(hex: $0) }
+    }
+
+    /// Blockquote left-bar color for a ColaMD preset, or nil for the default.
+    @MainActor public var quoteBarColor: NSColor? {
+        preset.quoteBarHex.flatMap { NSColor(hex: $0) }
+    }
+
+    /// Blockquote background fill for a ColaMD preset, or nil for none.
+    @MainActor public var quoteBackgroundColor: NSColor? {
+        preset.quoteBackgroundHex.flatMap { NSColor(hex: $0) }
+    }
+
+    /// Blockquote text color for a ColaMD preset, or nil for the default.
+    @MainActor public var quoteTextColor: NSColor? {
+        preset.quoteTextHex.flatMap { NSColor(hex: $0) }
+    }
+
+    /// Table header bottom-rule accent for a ColaMD preset, or nil for default.
+    @MainActor public var tableHeadAccentColor: NSColor? {
+        preset.tableHeadAccentHex.flatMap { NSColor(hex: $0) }
+    }
+
     @MainActor public var mathNumberColor: NSColor {
         NSColor(hex: mathNumberHex) ?? .systemOrange
     }

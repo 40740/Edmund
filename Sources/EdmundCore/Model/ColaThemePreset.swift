@@ -70,14 +70,61 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Inline-code ink hex (overrides the theme's `codeHex`).
+    /// Inline-code ink hex. ColaMD only tints inline code in Elegant (red);
+    /// Light / Dark / Newsprint leave it at the body ink.
     public var codeColorHex: String? {
         switch self {
-        case .system: return nil
-        case .colaLight: return "#cf222e"
-        case .colaDark: return "#ff7b72"
         case .colaElegant: return "#c44b2b"
-        case .colaNewsprint: return "#7a3e9d"
+        default: return nil
+        }
+    }
+
+    /// Bold (**strong**) ink hex, or nil to keep the body color. ColaMD's
+    /// signature: Elegant paints bold text in the accent red.
+    public var strongColorHex: String? {
+        switch self {
+        case .colaElegant: return "#c44b2b"
+        default: return nil
+        }
+    }
+
+    /// Blockquote left-bar hex.
+    public var quoteBarHex: String? {
+        switch self {
+        case .colaLight: return "#d0d7de"
+        case .colaDark: return "#30363d"
+        case .colaElegant: return "#c44b2b"
+        case .colaNewsprint: return "#999999"
+        case .system: return nil
+        }
+    }
+
+    /// Blockquote background fill hex, or nil for none. Elegant paints the
+    /// whole quote on a soft paper panel.
+    public var quoteBackgroundHex: String? {
+        switch self {
+        case .colaElegant: return "#eae6e1"
+        default: return nil
+        }
+    }
+
+    /// Blockquote text hex (ColaMD's per-theme `--text-muted`).
+    public var quoteTextHex: String? {
+        switch self {
+        case .colaLight: return "#656d76"
+        case .colaDark: return "#8b949e"
+        case .colaElegant: return "#777777"
+        case .colaNewsprint: return "#666666"
+        case .system: return nil
+        }
+    }
+
+    /// Table header bottom-rule accent hex, or nil for the default border.
+    /// Elegant draws a 2px red rule under the header row.
+    public var tableHeadAccentHex: String? {
+        switch self {
+        case .colaElegant: return "#c44b2b"
+        default: return nil
         }
     }
 

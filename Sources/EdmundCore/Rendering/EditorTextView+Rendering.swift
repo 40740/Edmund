@@ -83,6 +83,16 @@ extension EditorTextView {
         NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.22 : 0.1)
     }
 
+    /// Inline-code ink: a ColaMD preset's code tint when it has one (Elegant's
+    /// red), else the body foreground — ColaMD only tints inline code in
+    /// Elegant, and the default editor paints it in body ink.
+    var inlineCodeColor: NSColor {
+        if let hex = theme.preset.codeColorHex, let color = NSColor(hex: hex) {
+            return color
+        }
+        return foregroundColor
+    }
+
     /// Stable cache-key representation for dynamic AppKit colors. Hash values
     /// alone can collide, and unresolved semantic colors can change with the
     /// view's appearance.
@@ -235,6 +245,11 @@ extension EditorTextView {
                 let ctx = contextFont(at: span.contentRange.location)
                 let bold = NSFontManager.shared.convert(ctx, toHaveTrait: .boldFontMask)
                 result.addAttribute(.font, value: bold, range: span.contentRange)
+                // ColaMD Elegant paints bold in the accent red; other themes
+                // keep the body ink.
+                if let strong = theme.strongColor {
+                    result.addAttribute(.foregroundColor, value: strong, range: span.contentRange)
+                }
 
             case .italic:
                 guard span.contentRange.upperBound <= result.length else { continue }
@@ -247,12 +262,15 @@ extension EditorTextView {
                 let ctx = contextFont(at: span.contentRange.location)
                 let bi = NSFontManager.shared.convert(ctx, toHaveTrait: [.boldFontMask, .italicFontMask])
                 result.addAttribute(.font, value: bi, range: span.contentRange)
+                if let strong = theme.strongColor {
+                    result.addAttribute(.foregroundColor, value: strong, range: span.contentRange)
+                }
 
             case .code:
                 guard span.contentRange.upperBound <= result.length else { continue }
                 let ctx = contextFont(at: span.contentRange.location)
                 result.addAttribute(.font, value: monoFont(for: ctx), range: span.contentRange)
-                result.addAttribute(.foregroundColor, value: foregroundColor, range: span.contentRange)
+                result.addAttribute(.foregroundColor, value: inlineCodeColor, range: span.contentRange)
                 result.addAttribute(.backgroundColor, value: inlineCodeBackground, range: span.contentRange)
 
             case .codeBlock(let language):
@@ -412,9 +430,16 @@ extension EditorTextView {
                     let firstRange = NSRange(location: lineStart, length: firstLineEnd - lineStart)
                     let restRange = NSRange(location: firstLineEnd,
                                             length: paraRange.upperBound - firstLineEnd)
+                    // A ColaMD preset paints the quote bar in its own color
+                    // (Elegant's red) and fills the quote with a soft panel;
+                    // otherwise the default dim bar and no fill.
+                    let barColor = theme.quoteBarColor ?? syntaxDimColor
+                    if depth == 0, let bg = theme.quoteBackgroundColor {
+                        result.addAttribute(.backgroundColor, value: bg, range: paraRange)
+                    }
                     for (range, hugs) in [(firstRange, true), (restRange, false)] {
                         guard range.length > 0 else { continue }
-                        let ownBar = BlockDecoration(.leftBar(color: syntaxDimColor, width: 2),
+                        let ownBar = BlockDecoration(.leftBar(color: barColor, width: 2),
                                                      inset: CGFloat(depth) * quoteMarkerWidth,
                                                      hugsTextTop: hugs)
                         if depth == 0 {
@@ -445,7 +470,8 @@ extension EditorTextView {
                     // outermost span's fill already covers all nested text, so
                     // deeper spans don't need to (re-)apply it.
                     if depth == 0 {
-                        result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor,
+                        result.addAttribute(.foregroundColor,
+                                            value: theme.quoteTextColor ?? NSColor.secondaryLabelColor,
                                             range: span.contentRange)
                     }
                 }

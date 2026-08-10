@@ -286,19 +286,19 @@ struct HTMLRenderer: MarkupVisitor {
         return "<div class=\"code-block-wrap\">\(Self.copyButtonHTML(code: code))\(pre)</div>"
     }
 
-    /// A code block's copy button: a bare icon, hidden until the block is
-    /// hovered (see `.code-copy-icon` in HTMLTheme.swift) — matches
-    /// Obsidian's read-mode/preview treatment (misc/frontend-refs/obsidian-
-    /// code-block-read-mode-onhover.png), which shows no language name, only
-    /// a hover-revealed icon. The click is intercepted natively (never
-    /// actually navigates); the base64 payload is decoded and written to the
-    /// pasteboard by `ReadModeNavigationPolicy`/`ReadModeWebView`.
+    /// A code block's copy button: a small pill with a copy icon and a
+    /// "复制" label, revealed when the block is hovered (see
+    /// `.code-copy-icon` in HTMLTheme.swift) — ColaMD's read-mode treatment.
+    /// The click is intercepted natively (never actually navigates); the
+    /// base64 payload is decoded and written to the pasteboard by
+    /// `ReadModeNavigationPolicy`/`ReadModeWebView`, which also flashes the
+    /// button to "已复制" for a second.
     private static func copyButtonHTML(code: String) -> String {
         let b64 = Data(code.utf8).base64EncodedString()
         let encoded = b64.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? b64
         let href = "\(copyScheme):\(encoded)"
         let icon = LucideIcons.inlineSVG("copy") ?? ""
-        return "<a class=\"code-copy-btn code-copy-icon\" href=\"\(attr(href))\">\(icon)</a>"
+        return "<a class=\"code-copy-btn code-copy-icon\" href=\"\(attr(href))\">\(icon)<span>复制</span></a>"
     }
 
     /// CSS class for a code token kind (consumed by `HTMLTheme`'s `.tok-*` rules).

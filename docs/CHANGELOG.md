@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-08-10
+
+### Fixed
+- **No more blank band above the first line**: the typewriter scroll top overscroll
+  is gone, so every document opens flush at the top regardless of the typewriter
+  setting (previously half a viewport was reserved, which read as a bug).
+- **Theme preset now actually applies**: the settings picker wrote one
+  UserDefaults key while `EditorTheme.load` read another, so the chosen preset
+  silently stayed on System. Unified on a single key.
+- **Table edges closed**: left and right borders drawn, so every column is boxed
+  like GitHub.
+
+### Added
+- **Full ColaMD theme fidelity**: bold text and inline code render in Elegant's
+  accent red, blockquotes get the red bar + soft paper fill + muted text, and
+  table headers carry the 2px red rule; h1/h2 get ColaMD's hairline underline.
+  Applied in both the editor and Read mode.
+- **Code-block copy button, ColaMD style**: the Read-mode button is now a
+  labeled "复制" pill that flashes "已复制 ✓"; the editor (Edit mode) gained a
+  hover copy button on fenced code blocks that copies the code without fences.
+- **Chinese UI**: menu bar, Settings panes, About window, toolbar, version
+  history, and key-binding conflict messages are translated to Chinese.
+
+## [0.5.1] - 2026-08-10
+
+### Fixed
+- **Theme preset key mismatch** (see 0.5.2 — first shipped here).
+- **Table edges closed** (see 0.5.2 — first shipped here).
+
+### Added
+- **Chinese UI** (see 0.5.2 — first shipped here).
+- **Typewriter scroll defaults to off** so documents open without the top blank.
+
 ## [0.5.0] - 2026-08-10
 
 ### Added

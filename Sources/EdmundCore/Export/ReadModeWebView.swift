@@ -79,7 +79,7 @@ public final class ReadModeWebView: WKWebView {
           if (!el) return;
           if (el._copyTimer) clearTimeout(el._copyTimer);
           if (el._copyOriginal === undefined) el._copyOriginal = el.innerHTML;
-          el.textContent = 'Copied';
+          el.textContent = '已复制 ✓';
           el.classList.add('copied');
           el._copyTimer = setTimeout(function() {
             el.innerHTML = el._copyOriginal;
