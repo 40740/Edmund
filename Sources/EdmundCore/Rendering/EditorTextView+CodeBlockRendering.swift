@@ -40,7 +40,7 @@ extension EditorTextView {
               !span.delimiterRanges.isEmpty else { return }
         let box = BlockDecoration(.box(background: codeBlockBackground, borderColor: nil,
                                        borderEdges: [], borderWidth: 0, topPad: 0,
-                                       bottomPad: 0, cornerRadius: 6))
+                                       bottomPad: 0, cornerRadius: codeCornerRadius))
         result.addAttribute(.blockDecoration, value: box, range: span.fullRange)
         result.addAttribute(.paragraphStyle, value: codeBlockParagraphStyle, range: span.fullRange)
 
@@ -74,10 +74,11 @@ extension EditorTextView {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         // ColaMD's `pre { padding: 16px }` — roomier than the old 12pt so the
-        // code doesn't hug the panel edges.
-        ps.firstLineHeadIndent = 16
-        ps.headIndent = 16
-        ps.tailIndent = -16
+        // code doesn't hug the panel edges; user-tunable in Settings.
+        let hPad = codeBlockHPad
+        ps.firstLineHeadIndent = hPad
+        ps.headIndent = hPad
+        ps.tailIndent = -hPad
         return ps
     }
 }

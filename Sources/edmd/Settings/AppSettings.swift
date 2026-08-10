@@ -37,6 +37,27 @@ enum AppSettings {
 
     /// What one indent unit is made of. The width (in spaces) is `indentWidth`;
     /// a tab indent is always one tab character regardless of the width.
+    /// A user-tunable theme detail (heading-rule gap, quote padding, …).
+    /// `key` is the UserDefaults key; `defaultValue` is what renders when the
+    /// user never touched the slider.
+    struct DetailSetting {
+        let key: String
+        let defaultValue: Double
+        var value: Double {
+            get {
+                guard UserDefaults.standard.object(forKey: key) != nil else { return defaultValue }
+                return UserDefaults.standard.double(forKey: key)
+            }
+            set { UserDefaults.standard.set(newValue, forKey: key) }
+        }
+    }
+
+    static let detailHeadingRuleOffset = DetailSetting(key: Key.detailHeadingRuleOffset, defaultValue: 6)
+    static let detailQuoteVPad = DetailSetting(key: Key.detailQuoteVPad, defaultValue: 15)
+    static let detailInlineCodePadX = DetailSetting(key: Key.detailInlineCodePadX, defaultValue: 6)
+    static let detailCodeCornerRadius = DetailSetting(key: Key.detailCodeCornerRadius, defaultValue: 6)
+    static let detailCodeBlockHPad = DetailSetting(key: Key.detailCodeBlockHPad, defaultValue: 16)
+
     enum IndentStyle: String, CaseIterable, Identifiable {
         case spaces
         case tabs
@@ -90,6 +111,13 @@ enum AppSettings {
         // "cm" / "in" override the locale default for the content-width control.
         static let contentWidthUnit = "settings.appearance.contentWidthUnit"
         static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
+        // ColaMD-theme detail knobs (Settings ▸ 外观 ▸ 细节样式). Shared with
+        // EdmundCore, which reads the raw UserDefaults values directly.
+        static let detailHeadingRuleOffset = "settings.appearance.detail.headingRuleOffset"
+        static let detailQuoteVPad = "settings.appearance.detail.quoteVPad"
+        static let detailInlineCodePadX = "settings.appearance.detail.inlineCodePadX"
+        static let detailCodeCornerRadius = "settings.appearance.detail.codeCornerRadius"
+        static let detailCodeBlockHPad = "settings.appearance.detail.codeBlockHPad"
         static let diagnosticLogging = "settings.general.diagnosticLogging"
         static let verboseEditorDiagnostics = "settings.advanced.verboseEditorDiagnostics"
         static let blockExternalImages = "settings.advanced.blockExternalImages"

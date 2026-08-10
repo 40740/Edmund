@@ -50,6 +50,38 @@ struct AppearanceSettingsView: View {
         )
     }
 
+    /// A labelled slider bound straight to a UserDefaults key. Reads fall back
+    /// to ColaMD's value when the key was never written (stored 0); writing any
+    /// value (including 0) takes effect immediately — the editor re-renders on
+    /// `UserDefaults.didChangeNotification`.
+    private func detailSliderRow(_ title: String, key: String, fallback: Double,
+                                 range: ClosedRange<Double>, format: String) -> some View {
+        GridRow {
+            Text(title)
+                .gridColumnAlignment(.trailing)
+            HStack(spacing: 8) {
+                Slider(value: detailBinding(key, fallback: fallback), in: range, step: 1)
+                    .frame(width: 200)
+                Text(String(format: format, effectiveValue(key, fallback: fallback)))
+                    .frame(width: 44, alignment: .trailing)
+                    .monospacedDigit()
+            }
+            .help("即时生效,无需重启")
+        }
+    }
+
+    private func effectiveValue(_ key: String, fallback: Double) -> Double {
+        guard UserDefaults.standard.object(forKey: key) != nil else { return fallback }
+        return UserDefaults.standard.double(forKey: key)
+    }
+
+    private func detailBinding(_ key: String, fallback: Double) -> Binding<Double> {
+        Binding(
+            get: { effectiveValue(key, fallback: fallback) },
+            set: { UserDefaults.standard.set($0, forKey: key) }
+        )
+    }
+
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
             GridRow {
@@ -107,6 +139,28 @@ struct AppearanceSettingsView: View {
                 }
                 .onChange(of: maxContentWidthCm) { applyContentWidthToOpenDocuments() }
             }
+
+            // MARK: - 细节样式 (ColaMD theme detail knobs)
+
+            GridRow {
+                Divider().gridCellColumns(2)
+            }
+
+            detailSliderRow("标题下划线距离:",
+                            key: AppSettings.Key.detailHeadingRuleOffset, fallback: 6,
+                            range: 0...24, format: "%.0f pt")
+            detailSliderRow("引用块上下边距:",
+                            key: AppSettings.Key.detailQuoteVPad, fallback: 15,
+                            range: 0...40, format: "%.0f pt")
+            detailSliderRow("行内代码左右内边距:",
+                            key: AppSettings.Key.detailInlineCodePadX, fallback: 6,
+                            range: 0...16, format: "%.0f pt")
+            detailSliderRow("代码块圆角:",
+                            key: AppSettings.Key.detailCodeCornerRadius, fallback: 6,
+                            range: 0...24, format: "%.0f pt")
+            detailSliderRow("代码块左右内边距:",
+                            key: AppSettings.Key.detailCodeBlockHPad, fallback: 16,
+                            range: 0...40, format: "%.0f pt")
 
             GridRow {
                 Divider().gridCellColumns(2)

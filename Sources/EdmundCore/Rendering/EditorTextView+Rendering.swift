@@ -35,7 +35,56 @@ extension NSAttributedString.Key {
 // the `styleBlock` switch that dispatches per span kind, and the in-place
 // `restyleBlock` / `applyBlockStyle` used to re-style a single block on edits.
 
+// MARK: - User-tunable theme details (Settings ▸ 外观 ▸ 细节样式)
+//
+// The app-side sliders write these UserDefaults keys; EdmundCore reads the
+// same keys directly (no cross-module dependency, no notification for a read).
+// Values default to ColaMD's numbers when never touched, and the keys mirror
+// AppSettings.Key exactly.
+
+enum DetailStyleKey {
+    static let headingRuleOffset = "settings.appearance.detail.headingRuleOffset"
+    static let quoteVPad = "settings.appearance.detail.quoteVPad"
+    static let inlineCodePadX = "settings.appearance.detail.inlineCodePadX"
+    static let codeCornerRadius = "settings.appearance.detail.codeCornerRadius"
+    static let codeBlockHPad = "settings.appearance.detail.codeBlockHPad"
+}
+
+/// Reads one detail setting from UserDefaults, falling back to ColaMD's value
+/// when the key was never written. An explicit 0 ("no padding") is honored.
+enum DetailStyleValue {
+    static func value(_ key: String, default fallback: Double) -> Double {
+        guard UserDefaults.standard.object(forKey: key) != nil else { return fallback }
+        return UserDefaults.standard.double(forKey: key)
+    }
+}
+
 extension EditorTextView {
+
+    /// Distance (pt) between a heading's text and its underline rule.
+    var headingRuleOffset: CGFloat {
+        CGFloat(DetailStyleValue.value(DetailStyleKey.headingRuleOffset, default: 6))
+    }
+
+    /// Vertical padding (pt) above and below a block quote's panel.
+    var quoteVPad: CGFloat {
+        CGFloat(DetailStyleValue.value(DetailStyleKey.quoteVPad, default: 15))
+    }
+
+    /// Horizontal padding (pt) around inline code's chip background.
+    var inlineCodePadX: CGFloat {
+        CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadX, default: 6))
+    }
+
+    /// Corner radius (pt) of fenced code blocks' rounded panel.
+    var codeCornerRadius: CGFloat {
+        CGFloat(DetailStyleValue.value(DetailStyleKey.codeCornerRadius, default: 6))
+    }
+
+    /// Horizontal padding (pt) between code text and its panel edges.
+    var codeBlockHPad: CGFloat {
+        CGFloat(DetailStyleValue.value(DetailStyleKey.codeBlockHPad, default: 16))
+    }
 
     /// Color for dimmed syntax delimiters (*, **, `, #, …) and for the ink of
     /// syntax that stays visible but recedes (%%comments%%, ^blockrefs). In dark
@@ -310,9 +359,19 @@ extension EditorTextView {
                 if level <= 2, let border = theme.borderColor {
                     // The rule sits 6pt below the text so the heading has
                     // breathing room above its underline (ColaMD's h1/h2
-                    // `padding-bottom`).
+                    // `padding-bottom`). The rule is drawn just past the
+                    // fragment's bottom edge, so push the following paragraph
+                    // down by the same amount to keep the rule clear of it.
+                    let ruleOffset = headingRuleOffset
+                    let ps = (result.attribute(.paragraphStyle,
+                                               at: span.fullRange.location,
+                                               effectiveRange: nil) as? NSParagraphStyle
+                              ?? bodyParagraphStyle).mutableCopy() as! NSMutableParagraphStyle
+                    ps.paragraphSpacing = max(ps.paragraphSpacing, ruleOffset)
+                    result.addAttribute(.paragraphStyle, value: ps, range: span.fullRange)
                     result.addAttribute(.blockDecoration,
-                                        value: BlockDecoration(.bottomRule(color: border, width: 1, offset: 6)),
+                                        value: BlockDecoration(.bottomRule(color: border, width: 1,
+                                                                            offset: ruleOffset)),
                                         range: span.fullRange)
                 }
 
@@ -449,7 +508,7 @@ extension EditorTextView {
                     // `padding: 15px 20px 15px 25px`; the horizontal padding is
                     // the text indent), tiled they read as one panel.
                     let barColor = theme.quoteBarColor ?? syntaxDimColor
-                    let quoteVPad: CGFloat = 15
+                    let vPad = quoteVPad
                     let nsQuote = markdown as NSString
                     var rows: [NSRange] = []
                     var cursor = paraRange.location
@@ -472,8 +531,8 @@ extension EditorTextView {
                             let panel = BlockDecoration(
                                 .box(background: bg, borderColor: nil,
                                      borderEdges: [], borderWidth: 0,
-                                     topPad: i == 0 ? quoteVPad : 0,
-                                     bottomPad: i == rows.count - 1 ? quoteVPad : 0,
+                                     topPad: i == 0 ? vPad : 0,
+                                     bottomPad: i == rows.count - 1 ? vPad : 0,
                                      cornerRadius: 0))
                             let ancestor = result.attribute(.blockDecoration, at: row.location,
                                                             effectiveRange: nil)

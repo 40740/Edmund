@@ -645,8 +645,19 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         var bounds = super.renderingSurfaceBounds
         let frame = layoutFragmentFrame
         if !decorations.isEmpty {
-            bounds = bounds.union(CGRect(x: containerLeft - 4, y: 0,
-                                         width: containerWidth + 8, height: frame.height))
+            // The box's top padding extends the fill above the fragment's
+            // origin, and a heading's underline sits below its bottom edge —
+            // include both or TextKit clips them away.
+            var minY = -boxTopPad
+            var maxY = frame.height
+            for deco in decorations {
+                if case .bottomRule(_, _, let offset) = deco.kind {
+                    maxY = max(maxY, frame.height + offset)
+                }
+            }
+            bounds = bounds.union(CGRect(x: containerLeft - 4, y: minY,
+                                         width: containerWidth + 8,
+                                         height: maxY - minY))
         }
         // Guides sit left of the item's text, outside the text-hugging frame.
         if !listGuides.isEmpty {
@@ -1121,7 +1132,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
               let paragraph = textElement as? NSTextParagraph else { return }
         guard let paraLoc = paragraph.elementRange?.location else { return }
         let str = paragraph.attributedString
-        let padX: CGFloat = 6, padY: CGFloat = 2, radius: CGFloat = 3
+        let padX = CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadX, default: 6))
+        let padY: CGFloat = 2, radius: CGFloat = 3
         str.enumerateAttribute(.inlineCodeChip,
                                in: NSRange(location: 0, length: str.length),
                                options: []) { value, range, _ in

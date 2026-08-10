@@ -569,6 +569,14 @@ public class EditorTextView: NSTextView {
             name: .mathEngineChanged,
             object: nil
         )
+        // The Appearance pane's detail sliders write UserDefaults directly;
+        // re-render the document when one of them moves.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(detailStyleSettingsDidChange(_:)),
+            name: UserDefaults.didChangeNotification,
+            object: nil
+        )
     }
 
     deinit {
@@ -588,6 +596,41 @@ public class EditorTextView: NSTextView {
         guard !blocks.isEmpty else { return }
         recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
                       cursorInRaw: selectedRange().location)
+    }
+
+    // MARK: - Detail-style settings (live re-render)
+
+    @MainActor
+    private static var lastDetailValues: [String: Double] = [:]
+
+    private nonisolated(unsafe) var detailStyleTaskKey: UInt8 = 0
+
+    private var detailStyleRefreshTask: Task<Void, Never>? {
+        get { objc_getAssociatedObject(self, &detailStyleTaskKey) as? Task<Void, Never> }
+        set { objc_setAssociatedObject(self, &detailStyleTaskKey, newValue,
+                                       .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+
+    /// The Settings ▸ 外观 ▸ 细节样式 sliders write UserDefaults; every write
+    /// fires `didChangeNotification`. Re-render only when one of the detail
+    /// keys actually moved, debounced so dragging a slider settles once.
+    @objc private func detailStyleSettingsDidChange(_ note: Notification) {
+        let keys = [DetailStyleKey.headingRuleOffset, DetailStyleKey.quoteVPad,
+                    DetailStyleKey.inlineCodePadX, DetailStyleKey.codeCornerRadius,
+                    DetailStyleKey.codeBlockHPad]
+        let now = Dictionary(uniqueKeysWithValues: keys.map {
+            ($0, UserDefaults.standard.double(forKey: $0))
+        })
+        guard now != Self.lastDetailValues else { return }
+        Self.lastDetailValues = now
+        detailStyleRefreshTask?.cancel()
+        let task = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled, let self, !self.blocks.isEmpty else { return }
+            self.recomposeDirty(IndexSet(integersIn: 0..<self.blocks.count),
+                                cursorInRaw: self.selectedRange().location)
+        }
+        detailStyleRefreshTask = task
     }
 
     /// Hook up scroll promotion once the editor lands in its scroll view.
