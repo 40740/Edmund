@@ -42,4 +42,13 @@ jobs:
           restore-keys: spm-v2-${{ runner.os }}-
 
       - name: Test
-        run: swift test
+        run: swift test 2>&1 | tee test.log; exit ${PIPESTATUS[0]}
+
+      # Upload the log when tests fail so failures are debuggable from the
+      # run's artifacts without admin log access.
+      - name: Upload test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: test.log
