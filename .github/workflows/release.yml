@@ -64,13 +64,18 @@ jobs:
           mv "$DMG_SRC" "build/Edmund-${VERSION}.dmg"
 
       # EdDSA signing needs a Sparkle key the fork may not have — skip both the
-      # signature and the appcast update when it isn't configured. The release
-      # still publishes the .dmg; only in-app auto-update needs the signature.
+      # signature and the appcast update when it isn't configured (checked in
+      # the script: the `secrets` context cannot appear in `if:` conditions).
+      # The release still publishes the .dmg; only in-app auto-update needs the
+      # signature.
       - name: Sign archive (EdDSA)
-        if: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
+          if [ -z "$SPARKLE_ED_PRIVATE_KEY" ]; then
+            echo "No Sparkle EdDSA key configured — skipping signature."
+            exit 0
+          fi
           SIGN_UPDATE="$(find .build -name sign_update -type f | head -1)"
           # Pass the key on stdin via --ed-key-file -. The deprecated `-s <key>`
           # is fatal for newly generated keys ("no longer supported").
@@ -94,10 +99,17 @@ jobs:
             --latest
 
       - name: Update appcast.xml
-        if: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
+          # The appcast entry carries the EdDSA signature; without a Sparkle key
+          # there is nothing to publish, so skip (guarded here rather than in an
+          # `if:` — the `secrets` context is not allowed in `if:` conditions).
+          if [ -z "$SPARKLE_ED_PRIVATE_KEY" ]; then
+            echo "No Sparkle EdDSA key configured — skipping appcast update."
+            exit 0
+          fi
           REPO="${{ github.repository }}"
           ASSET_URL="https://github.com/${REPO}/releases/download/v${VERSION}/Edmund-${VERSION}.dmg"
           PUB_DATE="$(date -u '+%a, %d %b %Y %H:%M:%S +0000')"
