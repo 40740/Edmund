@@ -462,29 +462,45 @@ extension EditorTextView {
                         cursor = row.upperBound
                     }
                     for (i, row) in rows.enumerated() {
-                        var decos: [BlockDecoration] = []
+                        let ownBar = BlockDecoration(.leftBar(color: barColor, width: 2),
+                                                     inset: CGFloat(depth) * quoteMarkerWidth,
+                                                     hugsTextTop: i == 0)
                         if depth == 0, let bg = theme.quoteBackgroundColor {
-                            decos.append(BlockDecoration(
+                            // Preset panel fill: the box joins the bar in a
+                            // list so both draw. Plain themes (no background)
+                            // keep the single bar, unchanged from before.
+                            let panel = BlockDecoration(
                                 .box(background: bg, borderColor: nil,
                                      borderEdges: [], borderWidth: 0,
                                      topPad: i == 0 ? quoteVPad : 0,
                                      bottomPad: i == rows.count - 1 ? quoteVPad : 0,
-                                     cornerRadius: 0)))
+                                     cornerRadius: 0))
+                            let ancestor = result.attribute(.blockDecoration, at: row.location,
+                                                            effectiveRange: nil)
+                            var kept: [BlockDecoration] = []
+                            if let list = ancestor as? BlockDecorationList {
+                                kept = list.decorations
+                            } else if let single = ancestor as? BlockDecoration {
+                                kept = [single]
+                            }
+                            result.addAttribute(.blockDecoration,
+                                                value: BlockDecorationList(kept + [panel, ownBar]),
+                                                range: row)
+                        } else if depth > 0 {
+                            let ancestor = result.attribute(.blockDecoration, at: row.location,
+                                                            effectiveRange: nil)
+                            var kept: [BlockDecoration] = []
+                            if let list = ancestor as? BlockDecorationList {
+                                kept = list.decorations
+                            } else if let single = ancestor as? BlockDecoration {
+                                kept = [single]
+                            }
+                            result.addAttribute(.blockDecoration,
+                                                value: BlockDecorationList(kept + [ownBar]),
+                                                range: row)
+                        } else {
+                            result.addAttribute(.blockDecoration, value: ownBar, range: row)
                         }
-                        decos.append(BlockDecoration(.leftBar(color: barColor, width: 2),
-                                                     inset: CGFloat(depth) * quoteMarkerWidth,
-                                                     hugsTextTop: i == 0))
-                        let ancestor = result.attribute(.blockDecoration, at: row.location,
-                                                        effectiveRange: nil)
-                        var kept: [BlockDecoration] = []
-                        if let list = ancestor as? BlockDecorationList {
-                            kept = list.decorations
-                        } else if let single = ancestor as? BlockDecoration {
-                            kept = [single]
-                        }
-                        result.addAttribute(.blockDecoration,
-                                            value: BlockDecorationList(kept + decos),
-                                            range: row)
                     }
 
                     // Only the outermost span fills content color: `contentRange`
@@ -838,7 +854,7 @@ extension EditorTextView {
             let mono = scale == 1 ? inlineCodeFont
                 : theme.monospaceFont(ofSize: inlineCodeFont.pointSize * scale)
             result.addAttribute(.font, value: mono, range: range)
-            result.addAttribute(.backgroundColor, value: inlineCodeBackground, range: range)
+            result.addAttribute(.inlineCodeChip, value: inlineCodeBackground, range: range)
         case "sub", "sup":
             let small = NSFont(descriptor: ctx.fontDescriptor, size: ctx.pointSize * 0.75) ?? ctx
             result.addAttribute(.font, value: small, range: range)
