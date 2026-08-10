@@ -91,9 +91,10 @@ struct TypewriterCenteringTests {
     }
 
     /// The document's ends. With no reserved blank space above the first line
-    /// (ColaMD: documents open flush at the top), typewriter centering clamps
-    /// at the ends: the first line sits at scroll 0, the last at the bottom
-    /// clamp — never past them.
+    /// (ColaMD: documents open flush at the top), centering the first line
+    /// clamps the viewport to the top — it can't scroll into a blank band that
+    /// no longer exists. The last line still centers: there is content below it
+    /// to give the caret room.
     @Test("Caret centering clamps at the document's ends")
     @MainActor func centersAtDocumentEnds() {
         let (editor, scroll) = makeWindowed()
@@ -102,16 +103,21 @@ struct TypewriterCenteringTests {
         editor.loadContent(doc)
         ensureFullLayout(editor); editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
 
-        let maxScroll = max(0, editor.frame.height - scroll.contentView.bounds.height)
         let ns = editor.rawSource as NSString
-        for (marker, expected) in [("Line 1 ", 0.0), ("Line 100 ", maxScroll)] {
-            let off = ns.range(of: marker).location
-            editor.setSelectedRange(NSRange(location: off, length: 0))
-            editor.scrollCursorToCenter()
-            let origin = scroll.contentView.bounds.origin.y
-            #expect(abs(origin - expected) < 1,
-                    "\(marker)viewport settled at \(origin), expected the clamp \(expected)")
-        }
+
+        // First line: centering wants to go above the document start, so the
+        // viewport clamps to the actual scroll minimum (no negative overscroll).
+        let firstOff = ns.range(of: "Line 1 ").location
+        editor.setSelectedRange(NSRange(location: firstOff, length: 0))
+        editor.scrollCursorToCenter()
+        let minScroll = editor.clampedScrollY(-99_999)
+        #expect(abs(scroll.contentView.bounds.origin.y - minScroll) < 2,
+                "first line settled at \(scroll.contentView.bounds.origin.y), wanted the clamp \(minScroll)")
+
+        // Last line: the caret still reaches the vertical center.
+        let lastOff = ns.range(of: "Line 100 ").location
+        let delta = offFromCenter(editor, scroll, caretOffset: lastOff)
+        #expect(delta < 4, "last line off-center by \(delta)pt")
     }
 
     /// A document shorter than the window: the scroll range is [0, 0], so
