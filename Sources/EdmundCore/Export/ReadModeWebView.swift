@@ -33,6 +33,27 @@ public final class ReadModeWebView: WKWebView {
         coordinator.owner = self
         navigationDelegate = coordinator
         if #available(macOS 13.3, *) { isInspectable = true }
+        // Live theme updates: the Settings ▸ 外观 ▸ 细节样式 sliders (and the
+        // Cola preset / light-dark / content-width pickers) write plain
+        // UserDefaults, so observe them here and re-render when a key that
+        // actually shapes the CSS moved. Without this the preview only refreshed
+        // on a document edit, an appearance flip, or a manual reload — dragging a
+        // slider did nothing visible.
+        lastThemeDefaultsSnapshot = Self.captureThemeDefaults()
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleThemeDefaultsDidChange()
+            }
+        }
+    }
+
+    deinit {
+        if let defaultsObserver {
+            NotificationCenter.default.removeObserver(defaultsObserver)
+        }
     }
 
     @available(*, unavailable)
@@ -113,6 +134,19 @@ public final class ReadModeWebView: WKWebView {
     /// `readScrollPosition`.
     private var hasLoadedOnce = false
 
+    /// Token for the `UserDefaults.didChangeNotification` observer that live-
+    /// re-renders the preview when a theme-detail slider (or appearance knob)
+    /// changes. Removed in `deinit`. `nonisolated(unsafe)` because the token is
+    /// written once in `init` (main actor) and read back only by `deinit`, which
+    /// Swift 6 keeps nonisolated; `NotificationCenter.removeObserver` is
+    /// thread-safe regardless of which thread deallocates the view.
+    private nonisolated(unsafe) var defaultsObserver: NSObjectProtocol?
+
+    /// Snapshot of the theme-affecting defaults from the last re-render trigger,
+    /// so the observer skips unrelated defaults writes (window size, spell
+    /// check, …) without regenerating HTML.
+    private var lastThemeDefaultsSnapshot: [String: String]?
+
     /// Renders `markdown` with the given theme; appearance is resolved from the
     /// view itself. `baseURL` is the document's directory (for resolving relative
     /// image paths to inline).
@@ -162,6 +196,29 @@ public final class ReadModeWebView: WKWebView {
             self.loadGeneration += 1
             self.performLoad(p)
         }
+    }
+
+    /// Snapshot of the theme-affecting defaults as flat strings (``String(describing:)``
+    /// keeps the comparison lossless across Double/Int/String storage), so the observer
+    /// can tell a slider move from an unrelated defaults write.
+    @MainActor
+    private static func captureThemeDefaults() -> [String: String] {
+        Dictionary(uniqueKeysWithValues: HTMLTheme.themeDefaultsKeys.compactMap { key in
+            guard let value = UserDefaults.standard.object(forKey: key) else { return nil }
+            return (key, String(describing: value))
+        })
+    }
+
+    /// UserDefaults changed: if a key that shapes the rendered page actually moved
+    /// (detail sliders, Cola preset, light/dark mode, content width), re-render.
+    /// `reloadHTML()` keeps the scroll position and `performLoad` skips when the
+    /// generated HTML is byte-identical, so this is cheap for unrelated writes.
+    @MainActor
+    private func handleThemeDefaultsDidChange() {
+        let now = Self.captureThemeDefaults()
+        guard now != lastThemeDefaultsSnapshot else { return }
+        lastThemeDefaultsSnapshot = now
+        reloadHTML()
     }
 
     private func performLoad(_ p: (markdown: String, theme: EditorTheme,

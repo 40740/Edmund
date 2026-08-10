@@ -565,6 +565,24 @@ enum HTMLTheme {
     private static let kListLineHeight    = "settings.appearance.detail.listLineHeight"
     private static let kHighlightPad      = "settings.appearance.detail.highlightPad"
 
+    /// Every UserDefaults key whose value changes Read-mode output: the ten
+    /// detail sliders plus the appearance knobs (Cola preset, light/dark mode,
+    /// content width) the preview must react to live. Consumed by
+    /// `ReadModeWebView`'s `UserDefaults.didChangeNotification` observer so a
+    /// slider drag re-renders the preview immediately — see
+    /// `ReadModeWebView.handleThemeDefaultsDidChange`. Keep the literals in
+    /// step with `AppSettings.Key.detail*` / `themePreset` / `appearanceMode` /
+    /// `maxContentWidthCm` / `contentWidthUnit`.
+    static let themeDefaultsKeys: [String] = [
+        kHeadingRuleOffset, kQuoteVPad, kInlineCodePadX, kInlineCodePadY,
+        kCodeCornerRadius, kCodeBlockHPad, kCodeBlockVPad, kQuoteMargin,
+        kListLineHeight, kHighlightPad,
+        "settings.appearance.themePreset",
+        "settings.appearance.mode",
+        "settings.appearance.maxContentWidthCm",
+        "settings.appearance.contentWidthUnit",
+    ]
+
     /// Reads a theme-detail slider value from UserDefaults, falling back to
     /// `fallback` when the key was never written (so an untouched slider renders
     /// the intended default).

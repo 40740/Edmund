@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-08-11
+
+### Fixed
+- **读模式（预览）现在实时响应设置变化**: 此前拖动「外观 ▸ 细节样式」滑块后预览纹丝不动，只在文档编辑、切换明暗或手动刷新时才重新渲染——`HTMLTheme` 注释声称会监听 `UserDefaults` 但代码里根本没有观察者。现在 `ReadModeWebView` 监听 `UserDefaults.didChangeNotification`，任一主题相关 key（10 个细节滑块 + Cola 主题预设 + 明暗模式 + 内容宽度）变化即即时重渲染，且保留滚动位置。
+- **编辑模式行内代码背景真正可见**: 浅色模式下背景原来是 10–14% 透明度的浅灰（≈#EDEDED，对白底几乎不显色，看起来就是"没有背景"），现提到 20%（≈#E6E6E6），深色模式提到 40%，对齐 ColaMD 参考主题 #e8e4df 的可见灰芯片观感。
+
 ## [0.5.7] - 2026-08-10
 
 ### Fixed

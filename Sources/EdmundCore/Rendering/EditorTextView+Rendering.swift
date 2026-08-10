@@ -154,16 +154,17 @@ extension EditorTextView {
         return font
     }
 
-    /// Subtle background color for inline code spans. The 10% wash reads fine
-    /// on white but nearly disappears on the dark background (it lands ~4 levels
-    /// above it), so dark mode more than doubles the alpha to hold the same
-    /// visible step as Read mode's --inline-code-bg. A ColaMD preset paints
-    /// its own chip (Elegant's light paper).
+    /// Subtle background color for inline code spans. The old 10–14% wash
+    /// reads as "no background" on white (≈ #EDEDED, ~1.16:1 against the page),
+    /// which is why the chip looked like it disappeared — ColaMD's reference
+    /// chip (#e8e4df) sits at ~0.91, clearly visible. 0.20 lands at #E6E6E6
+    /// (≈1.28:1) on white; dark mode keeps a bigger step against the near-black
+    /// page. A ColaMD preset paints its own chip (Elegant's light paper).
     var inlineCodeBackground: NSColor {
         if let hex = theme.preset.inlineCodeBackgroundHex, let color = NSColor(hex: hex) {
             return color
         }
-        return NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.28 : 0.14)
+        return NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.40 : 0.20)
     }
 
     /// Inline-code ink: a ColaMD preset's code tint when it has one (Elegant's
