@@ -8,7 +8,8 @@ on:
 jobs:
   release:
     name: Build & publish
-    runs-on: macos-14
+    # macos-15 runners are Apple Silicon (arm64) — the build the M4 needs.
+    runs-on: macos-15
     permissions:
       contents: write  # create releases and commit appcast
     steps:
@@ -16,10 +17,8 @@ jobs:
         with:
           # Fetch full history so we can push the appcast commit back.
           fetch-depth: 0
-          # Admin PAT so the appcast commit can be pushed to the protected
-          # `main` branch. The default GITHUB_TOKEN/bot is not an admin and is
-          # blocked by the required `test` status check.
-          token: ${{ secrets.RELEASE_TOKEN }}
+          # Default GITHUB_TOKEN: on forks `main` isn't protected, so the
+          # appcast commit can be pushed without an admin PAT (RELEASE_TOKEN).
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -63,7 +62,11 @@ jobs:
           fi
           mv "$DMG_SRC" "build/Edmund-${VERSION}.dmg"
 
+      # EdDSA signing needs a Sparkle key the fork may not have — skip both the
+      # signature and the appcast update when it isn't configured. The release
+      # still publishes the .dmg; only in-app auto-update needs the signature.
       - name: Sign archive (EdDSA)
+        if: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
@@ -90,6 +93,7 @@ jobs:
             --latest
 
       - name: Update appcast.xml
+        if: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

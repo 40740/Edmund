@@ -171,7 +171,7 @@ public final class ReadModeWebView: WKWebView {
         // Kills the white flash between `loadHTMLString` and first paint (most
         // visible in dark mode): the page background shows immediately instead
         // of the system default white.
-        underPageBackgroundColor = HTMLTheme.backgroundColor(dark: dark)
+        underPageBackgroundColor = HTMLTheme.backgroundColor(p.theme, dark: dark)
         let html = DocumentHTML.full(markdown: p.markdown, theme: p.theme,
                                      callouts: p.callouts, dark: dark,
                                      baseURL: p.baseURL, options: p.options)

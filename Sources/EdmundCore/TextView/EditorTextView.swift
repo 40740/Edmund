@@ -397,17 +397,21 @@ public class EditorTextView: NSTextView {
     /// Foreground color for all body text — and, through `mathOverlay`, for the
     /// math bitmaps drawn alongside it. Defined once in `EditorTheme` so Read
     /// mode's `--fg` and its embedded equations use the identical ink; see the
-    /// rationale there.
+    /// rationale there. A ColaMD preset overrides the ink with its own palette.
     var foregroundColor: NSColor {
-        EditorTheme.bodyTextColor(dark: isDarkAppearance)
+        if let hex = theme.preset.textColorHex, let color = NSColor(hex: hex) {
+            return color
+        }
+        return EditorTheme.bodyTextColor(dark: isDarkAppearance)
     }
 
     /// Background tint for text selection. Uses system orange so selections read
     /// as warm amber rather than tracking the (potentially red) brand accent.
     var selectionHighlightColor: NSColor { .systemOrange.withAlphaComponent(0.3) }
 
-    /// Background color for the editor surface. Light appearance keeps the
-    /// standard `.textBackgroundColor` semantic; dark appearance uses `#292929`,
+    /// Background color for the editor surface. A ColaMD preset paints its own
+    /// page color; otherwise light appearance keeps the standard
+    /// `.textBackgroundColor` semantic and dark appearance uses `#292929`,
     /// matching Read mode's page background. Built with `srgbRed:` rather than
     /// the shared `NSColor(hex:)` helper (which uses `calibratedRed:`) — the
     /// calibrated color space renders visibly lighter than the sRGB hex value
@@ -416,9 +420,23 @@ public class EditorTextView: NSTextView {
     /// this so the two surfaces read as one (the scroll view draws no
     /// background of its own).
     var editorBackgroundColor: NSColor {
+        if let hex = theme.preset.backgroundColorHex {
+            return NSColor(hex: hex) ?? .textBackgroundColor
+        }
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         guard dark else { return .textBackgroundColor }
         return NSColor(srgbRed: 0x29 / 255.0, green: 0x29 / 255.0, blue: 0x29 / 255.0, alpha: 1.0)
+    }
+
+    /// GitHub-style table zebra row fill. Follows the active ColaMD preset's
+    /// palette; in System mode it uses GitHub's own light/dark zebra grays so
+    /// tables look right either way.
+    var tableZebraColor: NSColor {
+        if let hex = theme.preset.tableZebraHex, let color = NSColor(hex: hex) {
+            return color
+        }
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return NSColor(hex: dark ? "#161b22" : "#f6f8fa") ?? .quaternaryLabelColor
     }
 
     // MARK: - Font & Paragraph Style (derived from theme)

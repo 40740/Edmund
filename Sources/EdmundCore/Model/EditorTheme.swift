@@ -38,12 +38,19 @@ public struct EditorTheme: Equatable, Sendable {
     public var lineSpacing: CGFloat
     public var paragraphSpacingBefore: CGFloat
 
+    /// ColaMD theme preset layered on top of these settings (System = off). The
+    /// preset overrides the derived background/ink/font/link/code values without
+    /// touching the stored font/colour fields, so switching back to System keeps
+    /// the user's customisations.
+    public var preset: ColaThemePreset = .system
+
     public init(fontName: String, fontSize: CGFloat, linkBlueHex: String, codeHex: String,
                 lineSpacing: CGFloat, paragraphSpacingBefore: CGFloat,
                 mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800",
                 monospaceFontName: String = "", monospaceFontSize: CGFloat = 14,
                 standardLigatures: Bool = true, monospaceLigatures: Bool = false,
-                antialias: Bool = true) {
+                antialias: Bool = true,
+                preset: ColaThemePreset = .system) {
         self.fontName = fontName
         self.fontSize = fontSize
         self.linkBlueHex = linkBlueHex
@@ -57,6 +64,7 @@ public struct EditorTheme: Equatable, Sendable {
         self.standardLigatures = standardLigatures
         self.monospaceLigatures = monospaceLigatures
         self.antialias = antialias
+        self.preset = preset
     }
 
     // MARK: - Defaults
@@ -82,7 +90,10 @@ public struct EditorTheme: Equatable, Sendable {
     // MARK: - Derived Properties
 
     @MainActor public var bodyFont: NSFont {
-        let base = NSFont(name: fontName, size: fontSize) ?? .systemFont(ofSize: fontSize)
+        // A ColaMD preset's serif face wins over the saved font while active;
+        // System mode (and any preset without a font) uses the user's choice.
+        let resolvedName = preset.fontName ?? fontName
+        let base = NSFont(name: resolvedName, size: fontSize) ?? .systemFont(ofSize: fontSize)
         return Self.applyingLigatures(standardLigatures, to: base)
     }
 
@@ -156,11 +167,13 @@ public struct EditorTheme: Equatable, Sendable {
     }
 
     @MainActor public var linkBlueColor: NSColor {
-        NSColor(hex: linkBlueHex) ?? .systemBlue
+        if let hex = preset.linkColorHex { return NSColor(hex: hex) ?? .systemBlue }
+        return NSColor(hex: linkBlueHex) ?? .systemBlue
     }
 
     @MainActor public var codeColor: NSColor {
-        NSColor(hex: codeHex) ?? .systemRed
+        if let hex = preset.codeColorHex { return NSColor(hex: hex) ?? .systemRed }
+        return NSColor(hex: codeHex) ?? .systemRed
     }
 
     @MainActor public var mathOperatorColor: NSColor {
@@ -187,6 +200,7 @@ public struct EditorTheme: Equatable, Sendable {
         static let mathNumberHex = "EditorMathNumberHex"
         static let lineSpacing = "EditorLineSpacing"
         static let paragraphSpacingBefore = "EditorParagraphSpacingBefore"
+        static let preset = "EditorThemePreset"
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> EditorTheme {
@@ -219,6 +233,8 @@ public struct EditorTheme: Equatable, Sendable {
         let paragraphSpacingBefore: CGFloat = d.object(forKey: Keys.paragraphSpacingBefore) != nil
             ? CGFloat(d.float(forKey: Keys.paragraphSpacingBefore))
             : def.paragraphSpacingBefore
+        let presetRaw = d.string(forKey: Keys.preset) ?? ""
+        let preset = ColaThemePreset(rawValue: presetRaw) ?? .system
 
         return EditorTheme(
             fontName: fontName,
@@ -233,7 +249,8 @@ public struct EditorTheme: Equatable, Sendable {
             monospaceFontSize: monospaceFontSize,
             standardLigatures: standardLigatures,
             monospaceLigatures: monospaceLigatures,
-            antialias: antialias
+            antialias: antialias,
+            preset: preset
         )
     }
 
@@ -252,6 +269,7 @@ public struct EditorTheme: Equatable, Sendable {
         d.set(mathNumberHex, forKey: Keys.mathNumberHex)
         d.set(Float(lineSpacing), forKey: Keys.lineSpacing)
         d.set(Float(paragraphSpacingBefore), forKey: Keys.paragraphSpacingBefore)
+        d.set(preset.rawValue, forKey: Keys.preset)
     }
 }
 

@@ -5,7 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-10
+
 ### Added
+- **ColaMD themes** (Settings ▸ Appearance ▸ Theme): four presets ported from ColaMD — Light, Dark, Elegant (warm paper + Chinese serif) and Newsprint (PT Serif-style paper) — each forcing its own palette in the editor and in Read mode. System keeps the old behaviour.
+- **GitHub-style tables**: zebra striping on alternating data rows, bold header, and tabular numerals — in both the editor and Read mode.
 - The editor scrolls half a screen past the last line, so the line you are writing is never stuck at the bottom edge of the window (with Typewriter Scroll on, its own centering space covers this).
 
 ### Fixed

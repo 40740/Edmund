@@ -16,14 +16,17 @@ enum HTMLTheme {
     /// The page background hex for the given appearance — shared by the CSS
     /// `--bg` variable and `ReadModeWebView.underPageBackgroundColor` so the
     /// webview's own background can't drift from the page it's about to show.
-    private static func backgroundHex(dark: Bool) -> String {
-        dark ? "#292929" : "#ffffff"
+    /// A ColaMD preset paints its own page color; otherwise the appearance
+    /// default.
+    private static func backgroundHex(_ theme: EditorTheme, dark: Bool) -> String {
+        if let hex = theme.preset.backgroundColorHex { return hex }
+        return dark ? "#292929" : "#ffffff"
     }
 
     /// `NSColor` form of `backgroundHex`, for `WKWebView.underPageBackgroundColor`.
     @MainActor
-    static func backgroundColor(dark: Bool) -> NSColor {
-        NSColor(hex: backgroundHex(dark: dark)) ?? .textBackgroundColor
+    static func backgroundColor(_ theme: EditorTheme, dark: Bool) -> NSColor {
+        NSColor(hex: backgroundHex(theme, dark: dark)) ?? .textBackgroundColor
     }
 
     @MainActor
@@ -31,12 +34,19 @@ enum HTMLTheme {
                     callouts: [String: CalloutStyle],
                     dark: Bool,
                     maxContentWidthPoints: Double = .greatestFiniteMagnitude) -> String {
-        let bg = backgroundHex(dark: dark)
+        let bg = backgroundHex(theme, dark: dark)
         // Body ink comes from the editor's own definition, not a second hex, so
         // Edit and Read mode can never drift apart again (EditorTheme
         // .bodyTextColor). This was `#1a1a1a` in light mode, 10% lighter than
-        // what the editor paints.
-        let fg = EditorTheme.bodyTextColorResolved(dark: dark).hexString
+        // what the editor paints. A ColaMD preset overrides both with its palette.
+        let fg: String
+        if let hex = theme.preset.textColorHex {
+            fg = hex
+        } else {
+            fg = EditorTheme.bodyTextColorResolved(dark: dark).hexString
+        }
+        let zebra = theme.preset.tableZebraHex
+            ?? (dark ? "#161b22" : "#f6f8fa")
         let faint = dark ? "#9a9a9a" : "#6a6a6a"
         let rule = dark ? "#3a3a3a" : "#e0e0e0"
         // Markers, rules and table borders in dark mode: the same gray the editor
@@ -76,8 +86,8 @@ enum HTMLTheme {
           --body-size: \(trim(theme.fontSize))px;
           --mono-font: \(cssFontStack(theme.monospaceFontName.isEmpty ? "ui-monospace" : theme.monospaceFontName, generic: "monospace"));
           --mono-size: \(trim(theme.monospaceFontSize))px;
-          --accent: \(theme.linkBlueHex);
-          --code: \(theme.codeHex);
+          --accent: \(theme.linkBlueColor.hexString);
+          --code: \(theme.codeColor.hexString);
           --bg: \(bg);
           --fg: \(fg);
           --faint: \(faint);
@@ -88,6 +98,7 @@ enum HTMLTheme {
           --inline-code-bg: \(dark ? "#3c3c3c" : codeBg);
           --marker: \(dark ? darkChrome : resolvedRGBA(.tertiaryLabelColor, dark: dark));
           --table-border: \(dark ? darkRule : rule);
+          --table-zebra: \(zebra);
           --hr: \(dark ? "#4a4a4a" : rule);
           --quote-bar: \(dark ? darkChrome : rule);
           --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
@@ -314,8 +325,12 @@ enum HTMLTheme {
        inside .table-wrap instead of squeezing columns or forcing cell text to
        wrap — same idiom as `pre`'s overflow-x below. */
     .table-wrap { overflow-x: auto; margin: 1em 0; }
-    table { border-collapse: collapse; }
+    table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
     th, td { border: 1px solid var(--table-border); padding: 6px 10px; }
+    th { font-weight: 600; }
+    /* GitHub-style zebra: header is bold-only, every other data row is tinted
+       (tr:nth-child(2n) — the header row is child 1 of thead, so it never tints). */
+    tr:nth-child(2n) { background: var(--table-zebra); }
     thead th { background: var(--code-bg); }
     img { max-width: 100%; }
     img.math { vertical-align: middle; }

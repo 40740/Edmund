@@ -158,6 +158,12 @@ extension EditorTextView {
                     ps.paragraphSpacing = cellVPad
                 }
                 result.addAttribute(.paragraphStyle, value: ps, range: lineRange)
+                // GitHub-style zebra: every other data row gets a soft fill. The
+                // header and separator rows stay clear (header = bold only).
+                // Row 1 (0-based) is the separator, so data rows are i >= 2;
+                // zebra hits rows 2, 4, 6 … — i.e. even i — matching GitHub's
+                // `tr:nth-child(2n)` on a DOM without the separator row.
+                let zebra: NSColor? = (i >= 2 && i % 2 == 0) ? tableZebraColor : nil
                 result.addAttribute(
                     .blockDecoration,
                     value: BlockDecoration(.tableRow(columnXOffsets: borderXOffsets,
@@ -167,7 +173,9 @@ extension EditorTextView {
                                                      // No rule under the last row: the
                                                      // table's bottom edge is open, like
                                                      // its left and right edges.
-                                                     bottomBorder: i > 1 && i < lines.count - 1)),
+                                                     bottomBorder: i > 1 && i < lines.count - 1,
+                                                     background: zebra,
+                                                     verticalPad: cellVPad)),
                     range: lineRange)
 
                 // Cells whose styled width exceeds their column's (clamped)

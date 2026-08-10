@@ -8,6 +8,7 @@ import EdmundCore
 
 struct AppearanceSettingsView: View {
     @ObservedObject var fonts: FontSettings
+    @AppStorage(AppSettings.Key.themePreset) private var themePreset = ColaThemePreset.system.rawValue
     @AppStorage(AppSettings.Key.appearanceMode) private var appearanceMode = AppSettings.AppearanceMode.matchSystem
     @AppStorage(AppSettings.Key.maxContentWidthCm) private var maxContentWidthCm = AppSettings.defaultMaxContentWidthCm
     /// "" follows the locale; "cm"/"in" override it (toggled via the unit button).
@@ -51,6 +52,19 @@ struct AppearanceSettingsView: View {
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
+            GridRow {
+                Text("Theme:")
+                    .gridColumnAlignment(.trailing)
+                Picker("", selection: $themePreset) {
+                    ForEach(ColaThemePreset.allCases) { preset in
+                        Text(preset.displayName).tag(preset.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 240)
+                .onChange(of: themePreset) { AppSettings.applyThemePreset() }
+            }
+
             GridRow {
                 Text("Appearance:")
                     .gridColumnAlignment(.trailing)

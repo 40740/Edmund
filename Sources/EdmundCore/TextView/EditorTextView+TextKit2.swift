@@ -84,8 +84,12 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         /// table's left edge. `bottomBorder` draws a full-width line at this
         /// row's bottom edge — the grid line between data rows (the header/
         /// separator boundary already gets its line from `separator`).
+        /// `background` fills the row band with a GitHub-style zebra tint
+        /// (extended `verticalPad` points above and below the fragment so the
+        /// stripes cover the row's paragraph spacing and tile without gaps).
         case tableRow(columnXOffsets: [CGFloat], width: CGFloat,
-                      leftInset: CGFloat, separator: Bool, bottomBorder: Bool)
+                      leftInset: CGFloat, separator: Bool, bottomBorder: Bool,
+                      background: NSColor?, verticalPad: CGFloat)
         /// Horizontal hairline across the text column, drawn `centerOffset`
         /// points below the fragment's vertical center. The offset compensates
         /// for adjacent text sitting at its baseline (low in its line box), so
@@ -142,13 +146,16 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
             hasher.combine(color)
             hasher.combine(width)
         case .tableRow(let offsets, let width, let leftInset,
-                       let separator, let bottomBorder):
+                       let separator, let bottomBorder,
+                       let background, let verticalPad):
             hasher.combine(3)
             hasher.combine(offsets)
             hasher.combine(width)
             hasher.combine(leftInset)
             hasher.combine(separator)
             hasher.combine(bottomBorder)
+            hasher.combine(background)
+            hasher.combine(verticalPad)
         case .horizontalRule(let color, let centerOffset):
             hasher.combine(4)
             hasher.combine(color)
@@ -914,8 +921,19 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             context.fill(CGRect(x: point.x - width + decoration.inset, y: barTop,
                                 width: width, height: barHeight))
 
-        case .tableRow(let xOffsets, let width, let leftInset, let separator, let bottomBorder):
+        case .tableRow(let xOffsets, let width, let leftInset, let separator,
+                       let bottomBorder, let background, let verticalPad):
             // Offsets are text-relative; the fragment's origin is the text start.
+            // The zebra fill spans the whole row band: the fragment frame stops
+            // at the row's text, so extend `verticalPad` each way to cover the
+            // paragraph spacing above and below and tile with the neighbours.
+            if let background {
+                context.setFillColor(background.cgColor)
+                context.fill(CGRect(x: point.x - leftInset,
+                                    y: point.y - verticalPad,
+                                    width: width,
+                                    height: frame.height + 2 * verticalPad))
+            }
             let borderColor = chromeLineColor
             context.setStrokeColor(borderColor.cgColor)
             context.setLineWidth(1)

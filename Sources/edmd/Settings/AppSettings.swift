@@ -85,6 +85,7 @@ enum AppSettings {
         static let autoSaveWithVersions = "settings.general.autoSaveWithVersions"
         static let quitWhenAllWindowsClosed = "settings.general.quitWhenAllWindowsClosed"
         static let appearanceMode = "settings.appearance.mode"
+        static let themePreset = "settings.appearance.themePreset"
         static let maxContentWidthCm = "settings.appearance.maxContentWidthCm"
         // "cm" / "in" override the locale default for the content-width control.
         static let contentWidthUnit = "settings.appearance.contentWidthUnit"
@@ -304,6 +305,19 @@ enum AppSettings {
             return mode
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.appearanceMode) }
+    }
+
+    /// The active ColaMD theme preset (`.system` = off). The preset forces its
+    /// own light/dark palette on top of `appearanceMode` and the saved font.
+    static var themePreset: ColaThemePreset {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: Key.themePreset),
+                  let preset = ColaThemePreset(rawValue: raw) else {
+                return .system
+            }
+            return preset
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.themePreset) }
     }
 
     /// IDs of extensions (`EdmundExtension.id`) the user has turned on.
@@ -598,6 +612,13 @@ enum AppSettings {
     }
 
     @MainActor static func applyAppearance() {
+        // A ColaMD preset wins over the appearance-mode picker: it carries its
+        // own light/dark palette, so force the matching appearance and let the
+        // editor/Read colors do the rest.
+        if let forcedDark = themePreset.forcedDark {
+            NSApp.appearance = NSAppearance(named: forcedDark ? .darkAqua : .aqua)
+            return
+        }
         switch appearanceMode {
         case .matchSystem:
             NSApp.appearance = nil
@@ -605,6 +626,18 @@ enum AppSettings {
             NSApp.appearance = NSAppearance(named: .aqua)
         case .dark:
             NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+
+    /// Applies the selected ColaMD theme preset to the whole app: forces the
+    /// appearance (light/dark), then re-applies the editor theme to every open
+    /// document so background / ink / font / table colors update live.
+    @MainActor static func applyThemePreset() {
+        applyAppearance()
+        let theme = EditorTheme.load()
+        for case let document as Document in NSDocumentController.shared.documents {
+            document.editor?.applyTheme(theme)
+            document.refreshReadView()
         }
     }
 }
