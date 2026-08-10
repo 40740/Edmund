@@ -83,6 +83,13 @@ jobs:
           echo "ED_SIG=$(echo "$SIG_OUTPUT" | grep -o 'sparkle:edSignature="[^"]*"')" >> "$GITHUB_ENV"
           echo "LENGTH=$(echo "$SIG_OUTPUT" | grep -o 'length="[^"]*"' | head -1)" >> "$GITHUB_ENV"
 
+      # A re-pushed tag (same version, fixed build) must not collide with the
+      # release from the previous push — drop it first so create succeeds.
+      - name: Drop stale release for this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete "v${VERSION}" --yes --cleanup-tag 2>/dev/null || true
+
       - name: Create GitHub Release
         id: create_release
         env:
