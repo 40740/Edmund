@@ -8,19 +8,9 @@ on:
 
 jobs:
   test:
-    runs-on: macos-15
+    runs-on: macos-14
     permissions:
       contents: write
     steps:
       - name: A
         run: echo "step A ok"
-      - name: B
-        if: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
-        run: echo "step B ok"
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - uses: actions/cache@v5
-        with:
-          path: .build
-          key: debug-${{ runner.os }}
