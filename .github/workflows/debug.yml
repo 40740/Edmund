@@ -8,9 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: macos-14
-    permissions:
-      contents: write
+    runs-on: macos-15
     steps:
       - name: A
         run: echo "step A ok"
