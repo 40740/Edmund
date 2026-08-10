@@ -2,8 +2,8 @@ name: Debug
 
 on:
   push:
-    branches: [main]
-    paths: ['.github/workflows/debug.yml']
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
@@ -12,6 +12,3 @@ jobs:
     steps:
       - name: A
         run: echo "step A ok"
-      - name: B
-        if: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
-        run: echo "step B ok"
