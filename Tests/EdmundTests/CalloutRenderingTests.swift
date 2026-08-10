@@ -9,7 +9,7 @@ struct CalloutRenderingTests {
 
     private func boxDecoration(_ deco: BlockDecoration?)
         -> (background: NSColor, borderColor: NSColor?, edges: CalloutStyle.Edges, width: CGFloat)? {
-        guard let deco, case .box(let bg, let border, let edges, let width, _) = deco.kind
+        guard let deco, case .box(let bg, let border, let edges, let width, _, _) = deco.kind
         else { return nil }
         return (bg, border, edges, width)
     }
@@ -37,7 +37,7 @@ struct CalloutRenderingTests {
         let editor = makeEditor()
         let styled = editor.styleBlock("> [!note]\n> first\n> last")
         func bottomPad(at i: Int) -> CGFloat? {
-            guard case .box(_, _, _, _, let bp)? = blockDecoration(at: i, in: styled)?.kind
+            guard case .box(_, _, _, _, let bp, _)? = blockDecoration(at: i, in: styled)?.kind
             else { return nil }
             return bp
         }

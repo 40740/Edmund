@@ -106,7 +106,10 @@ extension EditorTextView {
     /// Ink for every list marker (dot, checkbox circle, ordered "N."). Markers
     /// are part of the dim tier, so this is `syntaxDimColor` under a name that
     /// says what it is at the call sites.
-    var listMarkerColor: NSColor { syntaxDimColor }
+    /// Marker ink for bullets/numbers/checkboxes. ColaMD paints markers in the
+    /// body ink (black-ish), not the dim tier — the default was `syntaxDimColor`
+    /// (a light gray), which read as faded next to the text it labels.
+    var listMarkerColor: NSColor { foregroundColor }
 
     /// Creates a fragment overlay with an SF Symbol for checkbox rendering.
     /// Unchecked: dim outlined `circle`. Checked: filled `checkmark.circle.fill`.

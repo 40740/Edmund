@@ -212,7 +212,8 @@ struct EditorStylingTests {
                 borderColor: nil,
                 borderEdges: [],
                 borderWidth: 3,
-                bottomPad: CGFloat(index)
+                bottomPad: CGFloat(index),
+                cornerRadius: 0
             ))
         }
         #expect(Set(decorations.map(\.hash)).count > 28)
@@ -915,7 +916,7 @@ struct EditorStylingTests {
         #expect(isHidden(at: 10, in: styled))
         // Separator row carries a separator .tableRow decoration
         if let deco = blockDecoration(at: 10, in: styled),
-           case .tableRow(_, _, _, let separator, _, _, _) = deco.kind {
+           case .tableRow(_, _, _, let separator, _, _, _, _) = deco.kind {
             #expect(separator)
         } else {
             Issue.record("expected a .tableRow decoration on the separator row")

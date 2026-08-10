@@ -128,6 +128,47 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Fenced code block background hex (ColaMD's `--code-block-bg`). Elegant's
+    /// signature is a dark panel behind the code.
+    public var codeBlockBackgroundHex: String? {
+        switch self {
+        case .colaLight: return "#f6f8fa"
+        case .colaDark: return "#161b22"
+        case .colaElegant: return "#2c2c2c"
+        case .colaNewsprint: return "#eae6de"
+        case .system: return nil
+        }
+    }
+
+    /// Fenced code block text hex (ColaMD's `--code-block-text`), or nil to
+    /// keep the body ink. Elegant uses light ink on its dark panel.
+    public var codeBlockTextHex: String? {
+        switch self {
+        case .colaElegant: return "#e0dcd7"
+        default: return nil
+        }
+    }
+
+    /// Inline-code background hex, or nil for the default wash. Elegant uses a
+    /// light paper chip (its `--code-bg`), distinct from the dark block panel.
+    public var inlineCodeBackgroundHex: String? {
+        switch self {
+        case .colaElegant: return "#e8e4df"
+        default: return nil
+        }
+    }
+
+    /// Hairline border hex (headings' underline, ColaMD's `--border-color`).
+    public var borderColorHex: String? {
+        switch self {
+        case .colaLight: return "#d0d7de"
+        case .colaDark: return "#30363d"
+        case .colaElegant: return "#d8d3ce"
+        case .colaNewsprint: return "#d4d0c8"
+        case .system: return nil
+        }
+    }
+
     /// GitHub-style table zebra row background hex.
     public var tableZebraHex: String? {
         switch self {

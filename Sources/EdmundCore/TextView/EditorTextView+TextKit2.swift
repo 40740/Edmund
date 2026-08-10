@@ -73,9 +73,13 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         /// TextKit 2 does not include trailing `paragraphSpacing` in the
         /// fragment height, so a callout's last line carries the bottom padding
         /// here (and a matching paragraphSpacing pushes the next block clear).
+        /// `cornerRadius` rounds the fill (code-block boxes); callouts stay 0.
         case box(background: NSColor, borderColor: NSColor?,
                  borderEdges: CalloutStyle.Edges, borderWidth: CGFloat,
-                 bottomPad: CGFloat)
+                 bottomPad: CGFloat, cornerRadius: CGFloat)
+        /// Horizontal hairline along the fragment's bottom edge (ColaMD's
+        /// h1/h2 underline).
+        case bottomRule(color: NSColor, width: CGFloat)
         /// Vertical bar just left of the paragraph's text (plain block quotes).
         case leftBar(color: NSColor, width: CGFloat)
         /// Table-row chrome: vertical column borders at text-relative x
@@ -89,7 +93,8 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         /// stripes cover the row's paragraph spacing and tile without gaps).
         case tableRow(columnXOffsets: [CGFloat], width: CGFloat,
                       leftInset: CGFloat, separator: Bool, bottomBorder: Bool,
-                      background: NSColor?, verticalPad: CGFloat)
+                      background: NSColor?, verticalPad: CGFloat,
+                      headerAccent: NSColor?)
         /// Horizontal hairline across the text column, drawn `centerOffset`
         /// points below the fragment's vertical center. The offset compensates
         /// for adjacent text sitting at its baseline (low in its line box), so
@@ -134,20 +139,25 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         var hasher = Hasher()
         switch kind {
         case .box(let background, let borderColor, let borderEdges,
-                  let borderWidth, let bottomPad):
+                  let borderWidth, let bottomPad, let cornerRadius):
             hasher.combine(1)
             hasher.combine(background)
             hasher.combine(borderColor)
             hasher.combine(borderEdges.rawValue)
             hasher.combine(borderWidth)
             hasher.combine(bottomPad)
+            hasher.combine(cornerRadius)
         case .leftBar(let color, let width):
             hasher.combine(2)
             hasher.combine(color)
             hasher.combine(width)
+        case .bottomRule(let color, let width):
+            hasher.combine(6)
+            hasher.combine(color)
+            hasher.combine(width)
         case .tableRow(let offsets, let width, let leftInset,
                        let separator, let bottomBorder,
-                       let background, let verticalPad):
+                       let background, let verticalPad, let headerAccent):
             hasher.combine(3)
             hasher.combine(offsets)
             hasher.combine(width)
@@ -156,6 +166,7 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
             hasher.combine(bottomBorder)
             hasher.combine(background)
             hasher.combine(verticalPad)
+            hasher.combine(headerAccent)
         case .horizontalRule(let color, let centerOffset):
             hasher.combine(4)
             hasher.combine(color)
@@ -554,7 +565,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// *and* the parent's below it (see `draw`), so both fit.
     private var boxBottomPad: CGFloat {
         decorations.reduce(0) { acc, deco in
-            if case .box(_, _, _, _, let bottomPad) = deco.kind { return acc + bottomPad }
+            if case .box(_, _, _, _, let bottomPad, _) = deco.kind { return acc + bottomPad }
             return acc
         }
     }
@@ -638,7 +649,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             let topInset = index == decorations.count - 1 ? codeBoxTopShave : 0
             drawDecoration(decoration, at: point, in: context,
                            bottomInset: precedingBottomPad, topInset: topInset)
-            if case .box(_, _, _, _, let bottomPad) = decoration.kind {
+            if case .box(_, _, _, _, let bottomPad, _) = decoration.kind {
                 precedingBottomPad += bottomPad
             }
         }
@@ -874,7 +885,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                                 width: containerWidth, height: fillHeight)
 
         switch decoration.kind {
-        case .box(let background, let borderColor, let edges, let borderWidth, _):
+        case .box(let background, let borderColor, let edges, let borderWidth,
+                   _, let cornerRadius):
             // The fragment frame already includes any box bottomPad (see
             // layoutFragmentFrame), so columnRect covers the padded area. A
             // nested box insets symmetrically so it sits within its parent box,
@@ -886,7 +898,12 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             columnRect.size.height -= bottomInset + topInset
             columnRect.origin.y += topInset
             context.setFillColor(background.cgColor)
-            context.fill(columnRect)
+            if cornerRadius > 0 {
+                NSBezierPath(roundedRect: columnRect,
+                             xRadius: cornerRadius, yRadius: cornerRadius).fill()
+            } else {
+                context.fill(columnRect)
+            }
             if let borderColor, !edges.isEmpty {
                 context.setFillColor(borderColor.cgColor)
                 if edges.contains(.left) {
@@ -922,7 +939,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                                 width: width, height: barHeight))
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator,
-                       let bottomBorder, let background, let verticalPad):
+                       let bottomBorder, let background, let verticalPad,
+                       let headerAccent):
             // Offsets are text-relative; the fragment's origin is the text start.
             // The zebra fill spans the whole row band: the fragment frame stops
             // at the row's text, so extend `verticalPad` each way to cover the
@@ -948,19 +966,31 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             context.setFillColor(borderColor.cgColor)
             // The table spans [textStart - leftInset, textStart - leftInset + width],
             // so box it in: column borders from `xOffsets`, plus the left and
-            // right edges (GitHub tables are fully closed).
+            // right edges (GitHub tables are fully closed). Every row's verticals
+            // extend `verticalPad` past the fragment both ways, so the lines run
+            // through the row-to-row paragraph spacing and land exactly on the
+            // zebra band — previously they stopped at the fragment edge, leaving
+            // the striped fill sticking out past the grid (a visible "shadow").
             var xs = xOffsets
             xs.append(-leftInset)
             xs.append(width - leftInset)
             for x in xs {
                 let lineX = (((point.x + x) * scale).rounded()) / scale
-                context.fill(CGRect(x: lineX, y: point.y,
-                                    width: hairline, height: frame.height))
+                context.fill(CGRect(x: lineX, y: point.y - verticalPad,
+                                    width: hairline, height: frame.height + 2 * verticalPad))
             }
+            // Header rule: a 2px accent line under the header row when a ColaMD
+            // preset sets one (Elegant's red), else the default 1px grid line.
+            // Filled, so the heavier line stays crisp.
             if separator {
-                let y = round(point.y + frame.height / 2) + 0.5
-                context.move(to: CGPoint(x: point.x - leftInset, y: y))
-                context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
+                // A ColaMD preset's accent (Elegant's red) makes the header
+                // rule a 2px colored line; otherwise the default 1px grid line.
+                let sepColor = headerAccent ?? borderColor
+                let sepWidth: CGFloat = headerAccent != nil ? 2 : 1
+                let y = ((point.y + frame.height / 2 - sepWidth / 2) * scale).rounded() / scale
+                context.setFillColor(sepColor.cgColor)
+                context.fill(CGRect(x: point.x - leftInset, y: y,
+                                    width: width, height: max(hairline, sepWidth)))
             }
             if bottomBorder {
                 let y = round(point.y + frame.height) + 0.5
@@ -976,6 +1006,16 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
             let thickness = 3 / scale
             let y = ((point.y + frame.height / 2 + centerOffset) * scale).rounded() / scale
+            context.setFillColor(color.cgColor)
+            context.fill(CGRect(x: columnRect.minX, y: y,
+                                width: columnRect.maxX - columnRect.minX, height: thickness))
+
+        case .bottomRule(let color, let width):
+            // A hairline glued to the fragment's bottom edge (headings' rule).
+            // Device-rounded so it lands on a pixel boundary.
+            let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
+            let thickness = max(1 / scale, width)
+            let y = ((point.y + frame.height - thickness) * scale).rounded() / scale
             context.setFillColor(color.cgColor)
             context.fill(CGRect(x: columnRect.minX, y: y,
                                 width: columnRect.maxX - columnRect.minX, height: thickness))

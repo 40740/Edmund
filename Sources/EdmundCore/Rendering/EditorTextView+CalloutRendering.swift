@@ -124,7 +124,7 @@ extension EditorTextView {
                                  borderColor: c.border,
                                  borderEdges: info.style.borderEdges,
                                  borderWidth: info.style.borderWidth,
-                                 bottomPad: bottomPad))
+                                 bottomPad: bottomPad, cornerRadius: 0))
         }
         result.addAttribute(.blockDecoration, value: box(bottomPad: 0),
                             range: span.fullRange)

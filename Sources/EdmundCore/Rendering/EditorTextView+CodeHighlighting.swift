@@ -15,9 +15,13 @@ extension EditorTextView {
 
     /// The `NSColor` for a token kind (`nil` = plain code) in the current
     /// appearance, derived from the shared `CodeSyntaxPalette` hexes so the
-    /// editor and Read mode / PDF export color tokens identically.
+    /// editor and Read mode / PDF export color tokens identically. A ColaMD
+    /// preset overrides the plain ink (Elegant's light #e0dcd7 on its dark
+    /// panel); token colors stay on the shared palette so syntax still pops.
     private func codeColor(_ type: CodeHighlighter.TokenType?) -> NSColor {
-        NSColor(hex: CodeSyntaxPalette.hex(type, dark: prefersDarkCodeTheme)) ?? .textColor
+        if type == nil, let hex = theme.preset.codeBlockTextHex,
+           let color = NSColor(hex: hex) { return color }
+        return NSColor(hex: CodeSyntaxPalette.hex(type, dark: prefersDarkCodeTheme)) ?? .textColor
     }
 
     /// Applies syntax colors to a code block's content range in place.

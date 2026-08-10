@@ -16,12 +16,16 @@ import AppKit
 extension EditorTextView {
 
     /// Background tint for a code block's box. Matches Read mode's
-    /// `--code-bg` (HTMLTheme.swift) so Edit and Read mode agree.
+    /// `--code-bg` (HTMLTheme.swift) so Edit and Read mode agree; a ColaMD
+    /// preset paints its own panel (Elegant's dark #2c2c2c).
     var codeBlockBackground: NSColor {
+        if let hex = theme.preset.codeBlockBackgroundHex, let color = NSColor(hex: hex) {
+            return color
+        }
         // sRGB, not the calibrated `NSColor(hex:)` helper — same reason as
         // `editorBackgroundColor`: calibrated renders visibly lighter, and this
         // has to land exactly on Read mode's --code-bg.
-        isDarkAppearance
+        return isDarkAppearance
             ? NSColor(srgbRed: 0x33 / 255.0, green: 0x33 / 255.0, blue: 0x33 / 255.0, alpha: 1)
             : (NSColor(hex: "#f4f4f4") ?? NSColor(calibratedWhite: 0.96, alpha: 1))
     }
@@ -35,7 +39,8 @@ extension EditorTextView {
         guard span.fullRange.upperBound <= result.length,
               !span.delimiterRanges.isEmpty else { return }
         let box = BlockDecoration(.box(background: codeBlockBackground, borderColor: nil,
-                                       borderEdges: [], borderWidth: 0, bottomPad: 0))
+                                       borderEdges: [], borderWidth: 0, bottomPad: 0,
+                                       cornerRadius: 6))
         result.addAttribute(.blockDecoration, value: box, range: span.fullRange)
         result.addAttribute(.paragraphStyle, value: codeBlockParagraphStyle, range: span.fullRange)
 

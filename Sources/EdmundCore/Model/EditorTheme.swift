@@ -207,6 +207,26 @@ public struct EditorTheme: Equatable, Sendable {
         preset.tableHeadAccentHex.flatMap { NSColor(hex: $0) }
     }
 
+    /// Fenced code block background for a ColaMD preset, or nil for default.
+    @MainActor public var codeBlockBackgroundColor: NSColor? {
+        preset.codeBlockBackgroundHex.flatMap { NSColor(hex: $0) }
+    }
+
+    /// Fenced code block text for a ColaMD preset, or nil for default.
+    @MainActor public var codeBlockTextColor: NSColor? {
+        preset.codeBlockTextHex.flatMap { NSColor(hex: $0) }
+    }
+
+    /// Inline-code chip background for a ColaMD preset, or nil for default.
+    @MainActor public var inlineCodeBackgroundColor: NSColor? {
+        preset.inlineCodeBackgroundHex.flatMap { NSColor(hex: $0) }
+    }
+
+    /// Hairline border color for a ColaMD preset (headings' underline), or nil.
+    @MainActor public var borderColor: NSColor? {
+        preset.borderColorHex.flatMap { NSColor(hex: $0) }
+    }
+
     @MainActor public var mathNumberColor: NSColor {
         NSColor(hex: mathNumberHex) ?? .systemOrange
     }

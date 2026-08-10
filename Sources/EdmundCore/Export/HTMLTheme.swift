@@ -64,8 +64,10 @@ enum HTMLTheme {
         let tableHeadAccent = theme.preset.tableHeadAccentHex
             ?? (dark ? darkRule : rule)
         // #2a2a2a sat one level above the #292929 page background — code blocks
-        // and table header rows had no visible tint at all in dark mode.
-        let codeBg = dark ? "#333333" : "#f4f4f4"
+        // and table header rows had no visible tint at all in dark mode. A
+        // ColaMD preset paints its own panel (Elegant's dark #2c2c2c).
+        let codeBg = theme.preset.codeBlockBackgroundHex
+            ?? (dark ? "#333333" : "#f4f4f4")
 
         // line-height: editor `NSParagraphStyle.lineSpacing` adds extra points
         // *between* lines on top of the font's natural line height. That natural
@@ -103,8 +105,10 @@ enum HTMLTheme {
           --rule: \(rule);
           --code-bg: \(codeBg);
           /* Inline code sits directly on --bg, where the block --code-bg is only
-             one level lighter and reads as nothing; dark mode needs its own step. */
-          --inline-code-bg: \(dark ? "#3c3c3c" : codeBg);
+             one level lighter and reads as nothing; dark mode needs its own step,
+             and a preset may paint its own chip (Elegant's light paper). */
+          --inline-code-bg: \(theme.preset.inlineCodeBackgroundHex
+              ?? (dark ? "#3c3c3c" : codeBg));
           --marker: \(dark ? darkChrome : resolvedRGBA(.tertiaryLabelColor, dark: dark));
           --table-border: \(dark ? darkRule : rule);
           --table-zebra: \(zebra);

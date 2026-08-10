@@ -78,9 +78,13 @@ extension EditorTextView {
     /// Subtle background color for inline code spans. The 10% wash reads fine
     /// on white but nearly disappears on the dark background (it lands ~4 levels
     /// above it), so dark mode more than doubles the alpha to hold the same
-    /// visible step as Read mode's --inline-code-bg.
+    /// visible step as Read mode's --inline-code-bg. A ColaMD preset paints
+    /// its own chip (Elegant's light paper).
     var inlineCodeBackground: NSColor {
-        NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.22 : 0.1)
+        if let hex = theme.preset.inlineCodeBackgroundHex, let color = NSColor(hex: hex) {
+            return color
+        }
+        return NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.22 : 0.1)
     }
 
     /// Inline-code ink: a ColaMD preset's code tint when it has one (Elegant's
@@ -299,6 +303,13 @@ extension EditorTextView {
                                    size: bodyFont.pointSize * scale) ?? bodyFont
                 let heading = NSFontManager.shared.convert(sized, toHaveTrait: .boldFontMask)
                 result.addAttribute(.font, value: heading, range: span.fullRange)
+                // ColaMD's signature: h1/h2 carry a hairline rule under the
+                // text (per-theme border color).
+                if level <= 2, let border = theme.borderColor {
+                    result.addAttribute(.blockDecoration,
+                                        value: BlockDecoration(.bottomRule(color: border, width: 1)),
+                                        range: span.fullRange)
+                }
 
             case .link(let destination):
                 guard span.contentRange.upperBound <= result.length else { continue }

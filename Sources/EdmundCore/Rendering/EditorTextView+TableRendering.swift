@@ -34,8 +34,11 @@ extension EditorTextView {
             let tableStr = tableNS.substring(with: span.fullRange)
             let lines = tableStr.components(separatedBy: "\n")
 
-            let cellHPad = bodyFont.pointSize * 0.3
-            let cellVPad = bodyFont.pointSize * 0.15
+            // ColaMD's table cells pad 13×6px; scale with the body font
+            // (~0.8em horizontal, ~0.4em vertical) so tables breathe like
+            // ColaMD's instead of hugging the borders.
+            let cellHPad = bodyFont.pointSize * 0.8
+            let cellVPad = bodyFont.pointSize * 0.4
 
             // --- Style each cell's inline markdown and measure the result ---
             // Each cell runs through styleBlock so `**bold**`, `code`, links,
@@ -170,12 +173,14 @@ extension EditorTextView {
                                                      width: totalWidth,
                                                      leftInset: cellHPad,
                                                      separator: i == 1,
-                                                     // No rule under the last row: the
-                                                     // table's bottom edge is open, like
-                                                     // its left and right edges.
-                                                     bottomBorder: i > 1 && i < lines.count - 1,
+                                                     // Fully closed grid: every data
+                                                     // row gets a rule below it,
+                                                     // including the last (ColaMD
+                                                     // tables are boxed all around).
+                                                     bottomBorder: i > 1,
                                                      background: zebra,
-                                                     verticalPad: cellVPad)),
+                                                     verticalPad: cellVPad,
+                                                     headerAccent: theme.tableHeadAccentColor)),
                     range: lineRange)
 
                 // Cells whose styled width exceeds their column's (clamped)
