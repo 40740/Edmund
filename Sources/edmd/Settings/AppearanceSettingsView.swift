@@ -53,7 +53,7 @@ struct AppearanceSettingsView: View {
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
             GridRow {
-                Text("Theme:")
+                Text("主题:")
                     .gridColumnAlignment(.trailing)
                 Picker("", selection: $themePreset) {
                     ForEach(ColaThemePreset.allCases) { preset in
@@ -66,7 +66,7 @@ struct AppearanceSettingsView: View {
             }
 
             GridRow {
-                Text("Appearance:")
+                Text("外观:")
                     .gridColumnAlignment(.trailing)
                 Picker("", selection: $appearanceMode) {
                     ForEach(AppSettings.AppearanceMode.displayOrder) { Text($0.label).tag($0) }
@@ -78,7 +78,7 @@ struct AppearanceSettingsView: View {
             }
 
             GridRow {
-                Text("Max content width:")
+                Text("最大内容宽度:")
                     .gridColumnAlignment(.trailing)
                 HStack(spacing: 8) {
                     ContentWidthSlider(
@@ -103,7 +103,7 @@ struct AppearanceSettingsView: View {
                     // .plain strips all button chrome so only the text shows.
                     Button(action: toggleUnit) { Text(unitLabel) }
                         .buttonStyle(.plain)
-                        .help("Switch between centimetres and inches")
+                        .help("在厘米和英寸之间切换")
                 }
                 .onChange(of: maxContentWidthCm) { applyContentWidthToOpenDocuments() }
             }
@@ -113,7 +113,7 @@ struct AppearanceSettingsView: View {
             }
 
             GridRow {
-                Text("Standard font:")
+                Text("标准字体:")
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     fontRow(summary: fonts.standardSummary,
@@ -123,14 +123,14 @@ struct AppearanceSettingsView: View {
                                           set: { fonts.setStandardSize(CGFloat($0)) }),
                             select: fonts.selectStandardFont)
                     HStack(spacing: 16) {
-                        Toggle("Antialias", isOn: $fonts.antialias)
-                        Toggle("Ligatures", isOn: $fonts.standardLigatures)
+                        Toggle("抗锯齿", isOn: $fonts.antialias)
+                        Toggle("连字", isOn: $fonts.standardLigatures)
                     }
                 }
             }
 
             GridRow {
-                Text("Monospaced font:")
+                Text("等宽字体:")
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     fontRow(summary: fonts.monospaceSummary,
@@ -140,14 +140,14 @@ struct AppearanceSettingsView: View {
                                           set: { fonts.setMonospaceSize(CGFloat($0)) }),
                             select: fonts.selectMonospaceFont)
                     HStack(spacing: 16) {
-                        Toggle("Antialias", isOn: $fonts.antialias)
-                        Toggle("Ligatures", isOn: $fonts.monospaceLigatures)
+                        Toggle("抗锯齿", isOn: $fonts.antialias)
+                        Toggle("连字", isOn: $fonts.monospaceLigatures)
                     }
                 }
             }
 
             GridRow {
-                Text("Line height:")
+                Text("行高:")
                     .gridColumnAlignment(.trailing)
                 HStack(spacing: 6) {
                     let lineHeight = Binding(get: { Double(fonts.lineHeight) },
@@ -157,7 +157,7 @@ struct AppearanceSettingsView: View {
                         .frame(width: 56)
                     Stepper("", value: lineHeight, in: 1...3, step: 0.1)
                         .labelsHidden()
-                    Text("times")
+                    Text("倍")
                 }
             }
         }
@@ -185,7 +185,7 @@ struct AppearanceSettingsView: View {
                 .frame(width: 240)
             Stepper("", value: size, in: 8...72, step: 1)
                 .labelsHidden()
-            Button("Select…", action: select)
+            Button("选择…", action: select)
                 .fixedSize()
         }
     }

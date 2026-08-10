@@ -64,7 +64,7 @@ struct ExtensionsSettingsView: View {
 
             HStack {
                 Spacer()
-                Button("More extensions…") {
+                Button("更多扩展…") {
                     // STUB: link to GitHub extensions repo for now.
                     // Extensions marketplace comes later.
                 }
@@ -94,8 +94,8 @@ struct ExtensionsSettingsView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    sidebarSection("Installed", items: installed, isExpanded: $installedExpanded)
-                    sidebarSection("Recommended", items: recommended, isExpanded: $recommendedExpanded)
+                    sidebarSection("已安装", items: installed, isExpanded: $installedExpanded)
+                    sidebarSection("推荐", items: recommended, isExpanded: $recommendedExpanded)
                 }
             }
             // Keyboard movement has to bring its target into view itself; only a
@@ -166,7 +166,7 @@ struct ExtensionsSettingsView: View {
                 .id(selected.id)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
-                Text("No extensions installed.")
+                Text("没有已安装的扩展。")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -387,7 +387,7 @@ private struct ExtensionDetailView: View {
                 }
                 Text("v\(ext.version)")
                 if isInstalled {
-                    Text("(installed v\(ext.version))")
+                    Text("（已安装 v\(ext.version)）")
                 }
             }
             .foregroundStyle(.secondary)
@@ -397,7 +397,7 @@ private struct ExtensionDetailView: View {
                 Text(ext.summary.settingsLinkTinted())
                     .fixedSize(horizontal: false, vertical: true)
                 if ext.longDescriptionURL != nil {
-                    Button("Learn more…") { showingLongDescription = true }
+                    Button("了解更多…") { showingLongDescription = true }
                         .buttonStyle(.plain)
                         .foregroundStyle(.tint)
                         .controlSize(.small)
@@ -434,16 +434,16 @@ private struct ExtensionDetailView: View {
             HStack(spacing: 8) {
                 if isInstalled {
                     if ext.hasUpdate {
-                        Button("Update") { download() }
+                        Button("更新") { download() }
                     }
                     Button(isEnabled ? "Disable" : "Enable") { isEnabled.toggle() }
-                    Button("Uninstall") { uninstall() }
+                    Button("卸载") { uninstall() }
                 } else {
                     Button(isDownloading ? "Downloading…" : "Download") { download() }
                         .disabled(isDownloading)
                 }
                 if let donateURL = ext.donateURL {
-                    Button("Donate") { NSWorkspace.shared.open(donateURL) }
+                    Button("捐赠") { NSWorkspace.shared.open(donateURL) }
                 }
             }
             if let downloadError {
@@ -460,7 +460,7 @@ private struct ExtensionDetailView: View {
     private var specs: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let developer = ext.developer {
-                specRow("Author") {
+                specRow("作者") {
                     if let url = developer.profileURL {
                         Button(developer.name) { NSWorkspace.shared.open(url) }
                             .buttonStyle(.plain)
@@ -471,17 +471,17 @@ private struct ExtensionDetailView: View {
                 }
             }
             if let repo = ext.repositoryURL {
-                specRow("Repository") {
+                specRow("仓库") {
                     Button(repo.absoluteString) { NSWorkspace.shared.open(repo) }
                         .buttonStyle(.plain)
                         .foregroundStyle(.tint)
                 }
             }
             if let size = ext.installedSizeDescription {
-                specRow("Size") { Text(size) }
+                specRow("大小") { Text(size) }
             }
             if let lastUpdated = ext.lastUpdated {
-                specRow("Last updated") {
+                specRow("最后更新") {
                     Text(lastUpdated, format: .relative(presentation: .named))
                 }
             }
@@ -544,7 +544,7 @@ private struct LongDescriptionSheet: View {
             HStack {
                 Text(title).font(.headline)
                 Spacer()
-                Button("Done") { dismiss() }
+                Button("完成") { dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
             .padding()

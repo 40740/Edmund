@@ -29,16 +29,16 @@ struct SyntaxSettingsView: View {
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
             GridRow(alignment: .firstTextBaseline) {
-                Text("Markdown syntax:").gridColumnAlignment(.trailing)
+                Text("Markdown 语法:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Enable extended Markdown syntax (non-GFM)", isOn: $enableNonGFM)
+                    Toggle("启用扩展 Markdown 语法（非 GFM）", isOn: $enableNonGFM)
                         .onChange(of: enableNonGFM) { applyFeatures() }
                         .padding(.top, -8)
                     // Parsed rather than left to `Text`'s own literal markdown
                     // handling, so `settingsLinkTinted()` can bring the link in
                     // line with every other link in Settings.
                     Text(AttributedString(
-                        inlineMarkdown: "Opt-in support for [Obsidian-flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown)."
+                        inlineMarkdown: "可选支持 [Obsidian 风格 Markdown](https://obsidian.md/help/obsidian-flavored-markdown)。"
                     ).settingsLinkTinted())
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -63,7 +63,7 @@ struct SyntaxSettingsView: View {
             // Code-block highlighting: the default language for untagged fences,
             // and the list of installed language definitions (bundled + user).
             GridRow {
-                Text("Default code syntax:").gridColumnAlignment(.trailing)
+                Text("默认代码语法:").gridColumnAlignment(.trailing)
                 Picker("", selection: $defaultCodeSyntax) {
                     ForEach(languages, id: \.id) { Text($0.label).tag($0.id) }
                 }
@@ -77,7 +77,7 @@ struct SyntaxSettingsView: View {
             // Pull the box up toward its popup (the outer 18-pt row spacing is
             // too wide a gap here — see the CotEditor Format ref).
             GridRow(alignment: .top) {
-                Text("Available syntaxes:").gridColumnAlignment(.trailing)
+                Text("可用语法:").gridColumnAlignment(.trailing)
                     .padding(.top, -10)
                 availableSyntaxList
                     .padding(.top, -10)
@@ -141,12 +141,12 @@ struct SyntaxSettingsView: View {
             Divider()
             HStack(spacing: 10) {
                 Button(action: importDefinition) { Image(systemName: "plus") }
-                    .help("Import a language definition (.json)")
+                    .help("导入语言定义（.json）")
                 Button(action: removeDefinition) { Image(systemName: "minus") }
-                    .help("Remove the selected user definition")
+                    .help("删除选中的自定义定义")
                     .disabled(!selectionIsUser)
                 Button(action: revealDefinition) { Image(systemName: "pencil") }
-                    .help("Show the definition's JSON file in the Finder")
+                    .help("在访达中显示该定义的 JSON 文件")
                     // Built-ins are read-only inside the app bundle.
                     .disabled(!selectionIsUser)
                 Spacer()
@@ -225,7 +225,7 @@ struct SyntaxSettingsView: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
-        panel.prompt = "Import"
+        panel.prompt = "导入"
         guard panel.runModal() == .OK, let src = panel.url else { return }
 
         let dir = SyntaxDefinitionStore.userDirectory

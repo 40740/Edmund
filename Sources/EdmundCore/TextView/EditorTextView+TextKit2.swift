@@ -946,7 +946,13 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
             let hairline = 1 / scale
             context.setFillColor(borderColor.cgColor)
-            for x in xOffsets {
+            // The table spans [textStart - leftInset, textStart - leftInset + width],
+            // so box it in: column borders from `xOffsets`, plus the left and
+            // right edges (GitHub tables are fully closed).
+            var xs = xOffsets
+            xs.append(-leftInset)
+            xs.append(width - leftInset)
+            for x in xs {
                 let lineX = (((point.x + x) * scale).rounded()) / scale
                 context.fill(CGRect(x: lineX, y: point.y,
                                     width: hairline, height: frame.height))

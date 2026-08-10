@@ -28,7 +28,7 @@ struct Shortcut: Equatable {
 struct MenuCommand {
     let id: String
     /// The menu this command lives under, as Settings ▸ Key Bindings groups it.
-    var group: String = "Format"
+    var group: String = "格式"
     /// The submenu it sits in, if any ("Font", "Heading", …). Settings lists the
     /// commands nested under this title, the way the menu bar shows them.
     var submenu: String? = nil
@@ -58,7 +58,7 @@ enum FormatMenu {
     /// The top-level "Format" menu item (with its submenu).
     static func build() -> NSMenuItem {
         let formatItem = NSMenuItem()
-        let menu = NSMenu(title: "Format")
+        let menu = NSMenu(title: "格式")
 
         menu.addItem(headingSubmenuItem())
         menu.addItem(thematicBreakCommand.makeItem())
@@ -84,7 +84,7 @@ enum FormatMenu {
     /// The "Toggle View Mode" item (⌘E) for the View menu — bracketed by
     /// dividers by the caller.
     static func viewModeToggleItem() -> NSMenuItem {
-        MenuCommand(id: "view.toggleMode", group: "View", title: "Toggle View Mode",
+        MenuCommand(id: "view.toggleMode", group: "视图", title: "切换视图模式",
                     action: #selector(Document.toggleViewMode(_:)),
                     shortcut: .cmd("e")).makeItem()
     }
@@ -92,58 +92,58 @@ enum FormatMenu {
     // MARK: - Groups
 
     private static let listCommands: [MenuCommand] = [
-        MenuCommand(id: "format.bulletedList", title: "Bulleted List",
+        MenuCommand(id: "format.bulletedList", title: "项目符号列表",
                     action: #selector(EditorTextView.formatBulletedList(_:)), shortcut: .cmdOpt("b")),
-        MenuCommand(id: "format.numberedList", title: "Numbered List",
+        MenuCommand(id: "format.numberedList", title: "编号列表",
                     action: #selector(EditorTextView.formatNumberedList(_:))),
-        MenuCommand(id: "format.checklist", title: "Checklist",
+        MenuCommand(id: "format.checklist", title: "任务清单",
                     action: #selector(EditorTextView.formatChecklist(_:)), shortcut: .cmd("l")),
     ]
 
     private static let linkCommands: [MenuCommand] = [
-        MenuCommand(id: "format.link", title: "Link",
+        MenuCommand(id: "format.link", title: "链接",
                     action: #selector(EditorTextView.formatLink(_:)), shortcut: .cmd("k")),
-        MenuCommand(id: "format.wikilink", title: "Wikilink",
+        MenuCommand(id: "format.wikilink", title: "Wiki 链接",
                     action: #selector(EditorTextView.formatWikilink(_:))),
-        MenuCommand(id: "format.image", title: "Image",
+        MenuCommand(id: "format.image", title: "图片",
                     action: #selector(EditorTextView.formatImage(_:))),
     ]
 
-    private static let thematicBreakCommand = MenuCommand(id: "format.thematicBreak", title: "Thematic Break",
+    private static let thematicBreakCommand = MenuCommand(id: "format.thematicBreak", title: "分隔线",
                     action: #selector(EditorTextView.formatThematicBreak(_:)))
 
-    private static let footnoteCommand = MenuCommand(id: "format.footnote", title: "Footnote",
+    private static let footnoteCommand = MenuCommand(id: "format.footnote", title: "脚注",
                     action: #selector(EditorTextView.formatFootnote(_:)))
 
     private static let blockCommands: [MenuCommand] = [
-        MenuCommand(id: "format.table", title: "Table",
+        MenuCommand(id: "format.table", title: "表格",
                     action: #selector(EditorTextView.formatTable(_:))),
-        MenuCommand(id: "format.codeBlock", title: "Code Block",
+        MenuCommand(id: "format.codeBlock", title: "代码块",
                     action: #selector(EditorTextView.formatCodeBlock(_:))),
-        MenuCommand(id: "format.mathBlock", title: "Math Block",
+        MenuCommand(id: "format.mathBlock", title: "公式块",
                     action: #selector(EditorTextView.formatMathBlock(_:))),
-        MenuCommand(id: "format.blockQuote", title: "Block Quote",
+        MenuCommand(id: "format.blockQuote", title: "引用块",
                     action: #selector(EditorTextView.formatBlockQuote(_:)), shortcut: .cmdShift("b")),
     ]
 
     private static let fontCommands: [MenuCommand] = [
-        MenuCommand(id: "format.bold", submenu: "Font", title: "Bold",
+        MenuCommand(id: "format.bold", submenu: "字体", title: "粗体",
                     action: #selector(EditorTextView.formatBold(_:)), shortcut: .cmd("b")),
-        MenuCommand(id: "format.italic", submenu: "Font", title: "Italic",
+        MenuCommand(id: "format.italic", submenu: "字体", title: "斜体",
                     action: #selector(EditorTextView.formatItalic(_:)), shortcut: .cmd("i")),
-        MenuCommand(id: "format.underline", submenu: "Font", title: "Underline",
+        MenuCommand(id: "format.underline", submenu: "字体", title: "下划线",
                     action: #selector(EditorTextView.formatUnderline(_:)), shortcut: .cmd("u")),
-        MenuCommand(id: "format.strikethrough", submenu: "Font", title: "Strikethrough",
+        MenuCommand(id: "format.strikethrough", submenu: "字体", title: "删除线",
                     action: #selector(EditorTextView.formatStrikethrough(_:))),
-        MenuCommand(id: "format.highlight", submenu: "Font", title: "Highlight",
+        MenuCommand(id: "format.highlight", submenu: "字体", title: "高亮",
                     action: #selector(EditorTextView.formatHighlight(_:))),
-        MenuCommand(id: "format.code", submenu: "Font", title: "Code",
+        MenuCommand(id: "format.code", submenu: "字体", title: "代码",
                     action: #selector(EditorTextView.formatCode(_:))),
-        MenuCommand(id: "format.math", submenu: "Font", title: "Math",
+        MenuCommand(id: "format.math", submenu: "字体", title: "公式",
                     action: #selector(EditorTextView.formatInlineMath(_:))),
-        MenuCommand(id: "format.keyboard", submenu: "Font", title: "Keyboard",
+        MenuCommand(id: "format.keyboard", submenu: "字体", title: "键盘按键",
                     action: #selector(EditorTextView.formatKeyboard(_:))),
-        MenuCommand(id: "format.comment", submenu: "Font", title: "Comments",
+        MenuCommand(id: "format.comment", submenu: "字体", title: "注释",
                     action: #selector(EditorTextView.formatComment(_:))),
     ]
 
@@ -160,11 +160,11 @@ enum FormatMenu {
     // MARK: - Submenus
 
     private static func headingSubmenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Heading", action: nil, keyEquivalent: "")
-        let menu = NSMenu(title: "Heading")
+        let item = NSMenuItem(title: "标题", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "标题")
         for level in 1...6 {
-            menu.addItem(MenuCommand(id: "format.heading\(level)", submenu: "Heading",
-                                     title: "Heading \(level)",
+            menu.addItem(MenuCommand(id: "format.heading\(level)", submenu: "标题",
+                                     title: "标题 \(level)",
                                      action: #selector(EditorTextView.formatHeading(_:)),
                                      tag: level).makeItem())
         }
@@ -173,17 +173,17 @@ enum FormatMenu {
     }
 
     private static func calloutSubmenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Alert / Callout", action: nil, keyEquivalent: "")
-        let menu = NSMenu(title: "Alert / Callout")
+        let item = NSMenuItem(title: "提示 / 标注", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "提示 / 标注")
         for type in githubCalloutTypes {
-            menu.addItem(MenuCommand(id: "format.callout.\(type)", submenu: "Alert / Callout",
+            menu.addItem(MenuCommand(id: "format.callout.\(type)", submenu: "提示 / 标注",
                                      title: type.capitalized,
                                      action: #selector(EditorTextView.formatCallout(_:)),
                                      representedObject: type).makeItem())
         }
         menu.addItem(.separator())
         for type in obsidianCalloutTypes {
-            menu.addItem(MenuCommand(id: "format.callout.\(type)", submenu: "Alert / Callout",
+            menu.addItem(MenuCommand(id: "format.callout.\(type)", submenu: "提示 / 标注",
                                      title: type.capitalized,
                                      action: #selector(EditorTextView.formatCallout(_:)),
                                      representedObject: type).makeItem())
@@ -193,7 +193,7 @@ enum FormatMenu {
     }
 
     private static func fontSubmenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Font", action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: "字体", action: nil, keyEquivalent: "")
         item.submenu = fontMenu()
         return item
     }
@@ -202,7 +202,7 @@ enum FormatMenu {
     /// used to replace the system Font submenu in the editor's right-click menu
     /// (see `EditorTextView.contextFontMenuProvider`).
     static func fontMenu() -> NSMenu {
-        let menu = NSMenu(title: "Font")
+        let menu = NSMenu(title: "字体")
         for cmd in fontCommands { menu.addItem(cmd.makeItem()) }
         return menu
     }

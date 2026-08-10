@@ -754,7 +754,7 @@ class Document: NSDocument, HeadingNavigable {
             item.state = AppSettings.sourceMode ? .on : .off
         }
         if item.action == #selector(toggleToolbarShown(_:)) {
-            item.title = AppSettings.showToolbar ? "Hide Toolbar" : "Show Toolbar"
+            item.title = AppSettings.showToolbar ? "隐藏工具栏" : "显示工具栏"
         }
         if item.action == #selector(toggleAutoHideToolbar(_:)) {
             item.state = AppSettings.autoHideToolbar ? .on : .off
@@ -859,7 +859,7 @@ extension Document: NSToolbarDelegate {
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         guard itemIdentifier == Self.viewModeItemID else { return nil }
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-        item.label = "View Mode"
+        item.label = "视图模式"
         item.visibilityPriority = .high
 
         // Left-click toggles the editing view ↔ Read. The right-click mode menu

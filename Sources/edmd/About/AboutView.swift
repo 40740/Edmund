@@ -17,7 +17,7 @@ struct AboutView: View {
             Text("Edmund")
                 .font(.title2.weight(.semibold))
 
-            Text("Version \(short) (\(build))")
+            Text("版本 \(short) (\(build))")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 

@@ -20,11 +20,11 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
     /// Display name shown in the Settings ▸ Appearance picker.
     public var displayName: String {
         switch self {
-        case .system: return "System"
-        case .colaLight: return "ColaMD Light"
-        case .colaDark: return "ColaMD Dark"
-        case .colaElegant: return "ColaMD Elegant"
-        case .colaNewsprint: return "ColaMD Newsprint"
+        case .system: return "跟随系统"
+        case .colaLight: return "ColaMD 浅色"
+        case .colaDark: return "ColaMD 深色"
+        case .colaElegant: return "ColaMD 优雅"
+        case .colaNewsprint: return "ColaMD 新闻纸"
         }
     }
 

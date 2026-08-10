@@ -16,10 +16,10 @@ struct AdvancedSettingsView: View {
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
             GridRow {
-                Text("Software updates:")
+                Text("软件更新:")
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Automatically check for updates", isOn: $autoCheckUpdates)
+                    Toggle("自动检查更新", isOn: $autoCheckUpdates)
                 }
             }
             
@@ -28,16 +28,16 @@ struct AdvancedSettingsView: View {
             }
             
             GridRow {
-                Text("Privacy & Security:")
+                Text("隐私与安全:")
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Block external images", isOn: $blockExternalImages)
+                    Toggle("阻止外部图片", isOn: $blockExternalImages)
                         .onChange(of: blockExternalImages) { refreshOpenReadViews() }
                     // Parsed rather than left to `Text`'s own literal markdown
                     // handling, so `settingsLinkTinted()` can bring the link in
                     // line with every other link in Settings.
                     Text(AttributedString(
-                        inlineMarkdown: "Refer to [this proposal](https://github.com/opencloud-eu/opencloud/issues/1145) for specific security implications."
+                        inlineMarkdown: "具体的安全影响请参阅[此提案](https://github.com/opencloud-eu/opencloud/issues/1145)。"
                     ).settingsLinkTinted())
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
@@ -57,13 +57,13 @@ struct AdvancedSettingsView: View {
             }
 
             GridRow {
-                Text("Diagnostics:")
+                Text("诊断:")
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Save diagnostic logs", isOn: $diagnosticLogging)
+                    Toggle("保存诊断日志", isOn: $diagnosticLogging)
                         .onChange(of: diagnosticLogging) { AppSettings.applyLogging() }
                     HStack(spacing: 6) {
-                        Text("Clear logs after:")
+                        Text("日志保留时长:")
                         Picker("", selection: $logRetention) {
                             ForEach(AppSettings.LogRetention.allCases) { Text($0.label).tag($0) }
                         }
@@ -73,17 +73,17 @@ struct AdvancedSettingsView: View {
                     }
                     .disabled(!diagnosticLogging)
                     .padding(.leading, 20)
-                    Text("Logs are kept locally at ~/.edmund/logs and will never leave that folder unless you move them. They are only useful if you want to improve your bug reports / GitHub issues.")
+                    Text("日志保存在本地 ~/.edmund/logs 文件夹,除非你主动移动,否则不会离开该文件夹。它们仅在你需要改进错误报告 / GitHub issue 时有用。")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(width: 380, alignment: .leading)
                         .padding(.leading, 20)
-                    Toggle("Verbose editor tracing", isOn: $verboseEditorDiagnostics)
+                    Toggle("详细编辑器跟踪", isOn: $verboseEditorDiagnostics)
                         .onChange(of: verboseEditorDiagnostics) { AppSettings.applyLogging() }
                         .disabled(!diagnosticLogging)
                         .padding(.leading, 20)
-                    Text("Records every keystroke, caret move, and sync — for reproducing tricky editor bugs (caret drift). Noisy; leave off unless asked.")
+                    Text("记录每次按键、光标移动和同步——用于重现棘手的编辑器 bug（光标漂移）。信息量很大;除非需要,请保持关闭。")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)

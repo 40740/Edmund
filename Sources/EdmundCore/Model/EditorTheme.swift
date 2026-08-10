@@ -200,7 +200,10 @@ public struct EditorTheme: Equatable, Sendable {
         static let mathNumberHex = "EditorMathNumberHex"
         static let lineSpacing = "EditorLineSpacing"
         static let paragraphSpacingBefore = "EditorParagraphSpacingBefore"
-        static let preset = "EditorThemePreset"
+        // Shared with the app layer's AppSettings.Key.themePreset — the settings
+        // picker writes this key, so EditorTheme.load() must read the same one
+        // or the chosen preset never reaches the editor.
+        static let preset = "settings.appearance.themePreset"
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> EditorTheme {

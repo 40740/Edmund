@@ -285,9 +285,9 @@ enum KeyBindingConflict {
     /// Why a shortcut can't be assigned, or nil if it can.
     static func rejectionReason(for shortcut: Shortcut, excluding editedItem: NSMenuItem?) -> String? {
         guard shortcut.isValidKeyEquivalent else {
-            return "A shortcut must include ⌘ or ⌃."
+            return "快捷键必须包含 ⌘ 或 ⌃。"
         }
         guard let clash = conflictingItem(with: shortcut, excluding: editedItem) else { return nil }
-        return "\(shortcut.displayString) is already used by “\(clash.title)”."
+        return "\(shortcut.displayString) 已被「\(clash.title)」占用。"
     }
 }

@@ -41,11 +41,11 @@ struct EditSettingsView: View {
 
             // MARK: - Content-level editing settings
             GridRow {
-                Text("Indentation:")
+                Text("缩进:")
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("Prefer using")
+                        Text("优先使用")
                         Picker("", selection: $indentStyle) {
                             ForEach(AppSettings.IndentStyle.allCases) { Text($0.label).tag($0) }
                         }
@@ -53,30 +53,30 @@ struct EditSettingsView: View {
                         .fixedSize()
                     }
                     HStack(spacing: 6) {
-                        Text("Indent width:")
+                        Text("缩进宽度:")
                         TextField("", value: $indentWidth,
                                   format: .number.precision(.fractionLength(0)))
                             .multilineTextAlignment(.trailing)
                             .frame(width: 24)
                         Stepper("", value: $indentWidth, in: 1...8)
                             .labelsHidden()
-                        Text("spaces")
+                        Text("空格")
                     }
-                    Toggle("Detect indent style on document opening", isOn: $detectIndent)
+                    Toggle("打开文档时自动检测缩进风格", isOn: $detectIndent)
                 }
                 .onChange(of: indentStyle) { AppSettings.applyEditSettingsToOpenDocuments() }
                 .onChange(of: indentWidth) { AppSettings.applyEditSettingsToOpenDocuments() }
             }
             
             GridRow {
-                Text("Words:")
+                Text("文字:")
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Automatically close parentheses and quotes", isOn: $autoCloseBrackets)
-                    Toggle("Check spelling while typing", isOn: $spellCheck)
+                    Toggle("自动补全括号和引号", isOn: $autoCloseBrackets)
+                    Toggle("键入时检查拼写", isOn: $spellCheck)
                     // AppKit checks grammar as part of the continuous
                     // spell-checking pass (hence the menu's "Check Grammar With
                     // Spelling"), so it has nothing to do on its own.
-                    Toggle("Check grammar while typing", isOn: $grammarCheck)
+                    Toggle("键入时检查语法", isOn: $grammarCheck)
                         .padding(.leading, 20)
                         .disabled(!spellCheck)
                 }
@@ -86,11 +86,11 @@ struct EditSettingsView: View {
             }
             
             GridRow {
-                Text("Lists:")
+                Text("列表:")
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Show list indent guides", isOn: $showListIndentGuides)
+                    Toggle("显示列表缩进参考线", isOn: $showListIndentGuides)
                         .onChange(of: showListIndentGuides) { AppSettings.applyEditSettingsToOpenDocuments() }
-                    Toggle("Automatically continue lists", isOn: $continueLists)
+                    Toggle("自动延续列表", isOn: $continueLists)
                         .onChange(of: continueLists) { AppSettings.applyEditSettingsToOpenDocuments() }
                 }
             }
@@ -99,9 +99,9 @@ struct EditSettingsView: View {
                         
             // MARK: - Content-level display settings
             GridRow {
-                Text("Characters:").gridColumnAlignment(.trailing)
+                Text("字符:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Show invisible characters upon selection", isOn: $showInvisibles)
+                    Toggle("选中文本时显示隐藏字符", isOn: $showInvisibles)
                     // The mode picker this toggle replaced (commit 6652972),
                     // parked in case Always comes back. Restoring it also needs
                     // AppSettings.InvisibleCharacterMode, its key/accessor, and
@@ -137,14 +137,14 @@ struct EditSettingsView: View {
             }
             
             GridRow {
-                Text("Lines:").gridColumnAlignment(.trailing)
+                Text("行:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     // Not in print / PDF, for now.
-                    Toggle("Show line numbers", isOn: $showLineNumbers)
+                    Toggle("显示行号", isOn: $showLineNumbers)
                         .onChange(of: showLineNumbers) { AppSettings.applyEditSettingsToOpenDocuments() }
-                    Toggle("Strict line breaks", isOn: $strictLineBreaks)
+                    Toggle("严格换行", isOn: $strictLineBreaks)
                         .onChange(of: strictLineBreaks) { refreshReadViews() }
-                    Text("Turn off to make single line breaks / soft-wraps visible.")
+                    Text("关闭后,单个换行 / 软换行会显示出来。")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -154,7 +154,7 @@ struct EditSettingsView: View {
             }
             
             GridRow {
-                Text("Document:").gridColumnAlignment(.trailing)
+                Text("文档:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     // Joining lines only makes sense while a single newline is
                     // formatting rather than content — see the note below the
@@ -162,9 +162,9 @@ struct EditSettingsView: View {
                     // One switch for the whole feature: a file that opens
                     // hard-wrapped is joined for editing and written back at the
                     // width it already uses, detected from its own line breaks.
-                    Toggle("Detect hard wrap pattern for lines on document opening", isOn: $hardWrapLongLines)
+                    Toggle("打开文档时检测硬换行模式", isOn: $hardWrapLongLines)
                         .disabled(!strictLineBreaks)
-                    Text("Requires strict line breaks")
+                    Text("需要开启严格换行")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -179,13 +179,13 @@ struct EditSettingsView: View {
     private var invisibleCharacterGrid: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 24, verticalSpacing: 6) {
             GridRow {
-                cell("Line ending", $lineEnding)
-                cell("Tab", $tab)
-                cell("Space", $space)
+                cell("行结尾", $lineEnding)
+                cell("制表符", $tab)
+                cell("空格", $space)
             }
             GridRow {
-                cell("Other whitespace", $otherWhitespace)
-                cell("Other control characters", $otherControl)
+                cell("其他空白", $otherWhitespace)
+                cell("其他控制字符", $otherControl)
                     .gridCellColumns(2)
             }
         }

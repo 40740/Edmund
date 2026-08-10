@@ -47,7 +47,7 @@ struct KeyBindingsSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("To change a shortcut, click the key column, then type the new keys.")
+            Text("要修改快捷键,请点击按键列,然后输入新的按键组合。")
 
             // A hand-built header over two plain Lists rather than SwiftUI
             // `Table`s: Table draws a separator under every row, which this pane
@@ -63,7 +63,7 @@ struct KeyBindingsSettingsView: View {
             .onAppear { if selectedGroup == nil { selectedGroup = groups.first } }
 
             HStack {
-                Button("Restore Defaults", action: restoreDefaults)
+                Button("恢复默认", action: restoreDefaults)
                     .disabled(!KeyBindingStore.hasAnyOverride)
                 if let error {
                     Text(error)
@@ -83,18 +83,18 @@ struct KeyBindingsSettingsView: View {
     /// widths and insets, so every divider lines up with the column it splits.
     private var header: some View {
         HStack(spacing: 0) {
-            Text("Menu")
+            Text("菜单")
                 .padding(.leading, Self.rowInset + Self.listInset)
                 .frame(width: Self.menuColumnWidth, alignment: .leading)
             Divider()
-            Text("Command")
+            Text("命令")
                 .padding(.leading, Self.rowInset + Self.listInset + Self.disclosureWidth)
                 .frame(maxWidth: .infinity, alignment: .leading)
             // Stops short of the header's edges — it separates two labels, it
             // doesn't continue down the lists the way the Menu one does. There
             // is none after Key: nothing follows it but the empty margin.
             Divider().frame(height: 16)
-            Text("Key")
+            Text("按键")
                 .padding(.trailing, ShortcutRecorderView.trailingInset)
                 .frame(width: Self.keyColumnWidth, alignment: .trailing)
             Color.clear

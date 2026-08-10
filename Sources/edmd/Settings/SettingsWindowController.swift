@@ -17,7 +17,7 @@ final class SettingsWindowController: NSWindowController {
         // view loads (above, as the window takes it as content view controller),
         // so seed the window from that — assigning a literal here would paint
         // over the first pane's name until the user switched tabs.
-        window.title = tabController.title ?? "Settings"
+        window.title = tabController.title ?? "设置"
         window.toolbarStyle = .preference
         window.center()
         window.isReleasedWhenClosed = false
@@ -35,13 +35,13 @@ final class SettingsTabViewController: NSTabViewController {
         super.viewDidLoad()
         tabStyle = .toolbar
 
-        addPane(GeneralSettingsView(), label: "General", symbol: "gearshape")
-        addPane(AppearanceSettingsView(fonts: fonts), label: "Appearance", symbol: "eyeglasses")
-        addPane(EditSettingsView(), label: "Edit", symbol: "square.and.pencil")
-        addPane(SyntaxSettingsView(), label: "Syntax", symbol: "chevron.left.forwardslash.chevron.right")
-        addPane(KeyBindingsSettingsView(), label: "Key Bindings", symbol: "keyboard")
-        addPane(ExtensionsSettingsView(), label: "Extensions", symbol: "puzzlepiece.extension")
-        addPane(AdvancedSettingsView(), label: "Advanced", symbol: "gearshape.2")
+        addPane(GeneralSettingsView(), label: "通用", symbol: "gearshape")
+        addPane(AppearanceSettingsView(fonts: fonts), label: "外观", symbol: "eyeglasses")
+        addPane(EditSettingsView(), label: "编辑", symbol: "square.and.pencil")
+        addPane(SyntaxSettingsView(), label: "语法", symbol: "chevron.left.forwardslash.chevron.right")
+        addPane(KeyBindingsSettingsView(), label: "快捷键", symbol: "keyboard")
+        addPane(ExtensionsSettingsView(), label: "扩展", symbol: "puzzlepiece.extension")
+        addPane(AdvancedSettingsView(), label: "高级", symbol: "gearshape.2")
     }
 
     private func addPane(_ view: some View, label: String, symbol: String) {

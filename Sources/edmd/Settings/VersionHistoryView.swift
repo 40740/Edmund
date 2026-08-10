@@ -58,17 +58,17 @@ struct VersionHistoryView: View {
         .task(id: refreshToken) { await reload() }
         .onChange(of: query) { rebuildRoots() }
         .confirmationDialog(
-            "Delete \(pendingTargets.count) version\(pendingTargets.count == 1 ? "" : "s")?",
+            "删除 \(pendingTargets.count) 个版本?",
             isPresented: $confirmClear, titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive) { performRemove(pendingTargets) }
-            Button("Cancel", role: .cancel) { }
+            Button("删除", role: .destructive) { performRemove(pendingTargets) }
+            Button("取消", role: .cancel) { }
         } message: {
-            Text("This permanently deletes the selected saved versions. It can't be undone.")
+            Text("这将永久删除选中的已保存版本,无法撤销。")
         }
-        .alert("Couldn't delete some versions",
+        .alert("无法删除部分版本",
                isPresented: .init(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-            Button("OK") { errorMessage = nil }
+            Button("好") { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
     }
 
@@ -80,8 +80,8 @@ struct VersionHistoryView: View {
                 .font(.system(size: 34))
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Version History").font(.headline)
-                Text("Auto Save keeps past versions of your documents. Review and delete them to reclaim disk space. Only documents Edmund knows about are shown — use Scan Folder to add more.")
+                Text("版本历史").font(.headline)
+                Text("自动保存会保留文档的历史版本。可以查看并删除它们以释放磁盘空间。这里只显示 Edmund 认识的文档——使用「扫描文件夹」可以添加更多。")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -93,12 +93,12 @@ struct VersionHistoryView: View {
     private var toolbar: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Search filename or path", text: $query)
+            TextField("搜索文件名或路径", text: $query)
                 .textFieldStyle(.plain)
             Spacer()
-            Button { scanFolder() } label: { Label("Scan Folder…", systemImage: "folder.badge.plus") }
+            Button { scanFolder() } label: { Label("扫描文件夹…", systemImage: "folder.badge.plus") }
             Button { refreshToken += 1 } label: { Image(systemName: "arrow.clockwise") }
-                .help("Refresh")
+                .help("刷新")
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
     }
@@ -108,8 +108,8 @@ struct VersionHistoryView: View {
             centered { ProgressView() }
         } else if roots.isEmpty {
             centered {
-                Text(folders.isEmpty ? "No version history found for these documents."
-                                     : "No matches.")
+                Text(folders.isEmpty ? "没有找到这些文档的版本历史。"
+                                     : "没有匹配结果。")
                     .foregroundStyle(.secondary)
             }
         } else {
@@ -122,20 +122,20 @@ struct VersionHistoryView: View {
             HStack(spacing: 8) {
                 // Stock NSDatePicker field: mm/dd/yyyy in en_US, keyboard-editable,
                 // localized elsewhere for free.
-                DatePicker("Delete versions before", selection: $beforeDate,
+                DatePicker("删除此日期之前的版本", selection: $beforeDate,
                            displayedComponents: .date)
                     .fixedSize()
                 Spacer()
             }
             HStack {
-                Text("Selected: \(byteString(selectedSize))").foregroundStyle(.secondary)
+                Text("已选: \(byteString(selectedSize))").foregroundStyle(.secondary)
                 Text("·").foregroundStyle(.tertiary)
-                Text("Total: \(byteString(totalSize))").foregroundStyle(.secondary)
+                Text("总计: \(byteString(totalSize))").foregroundStyle(.secondary)
                 Spacer()
-                Button("Done") { dismiss() }
+                Button("完成") { dismiss() }
                     .keyboardShortcut(.defaultAction)
                 Button { confirm(deleteTargets) } label: {
-                    Text("Delete").foregroundStyle(.red)
+                    Text("删除").foregroundStyle(.red)
                 }
                 .disabled(deleteTargets.isEmpty)
             }
