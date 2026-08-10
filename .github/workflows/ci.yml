@@ -62,9 +62,13 @@ jobs:
               .slice(-40);
             const msg = lines.join('\n') || log.slice(-1500);
             const { owner, repo } = context.repo;
-            const job = await github.rest.actions.getJobForWorkflowRun({
-              owner, repo, job_id: process.env.GITHUB_JOB });
-            const checkRunId = job.data.check_run_url.split('/').pop();
+            // GITHUB_JOB is the job's *name*; the checks API wants its numeric
+            // id, so find it in the run's job list.
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner, repo, run_id: context.runId });
+            const job = jobs.data.jobs.find(j => j.name === process.env.GITHUB_JOB);
+            if (!job) throw new Error('job not found');
+            const checkRunId = job.check_run_url.split('/').pop();
             await github.rest.checks.update({
               owner, repo, check_run_id: checkRunId,
               output: { title: 'Test failures', summary: msg.slice(0, 60000) }
