@@ -458,6 +458,12 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// outlives no editor, but a fragment must never keep one alive.
     /// See EditorTextView+FocusMode.
     weak var owner: EditorTextView?
+    /// The editor's layout manager, handed over at vend time: `draw` is
+    /// nonisolated and can't reach through `owner` for it, but it's needed to
+    /// measure inline-code chip rects. Weak — the layout manager owns the
+    /// fragments, so a strong reference would cycle. Named to avoid clashing
+    /// with `NSTextLayoutFragment.textLayoutManager`.
+    weak var chipLayoutManager: NSTextLayoutManager?
 
     init(textElement: NSTextElement, range: NSTextRange?,
          decorations: [BlockDecoration],
@@ -470,9 +476,11 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
          codeBlockLabelFont: NSFont = .monospacedSystemFont(ofSize: 10, weight: .regular),
          invisibles: InvisiblesConfig? = nil,
          listGuides: [CGFloat] = [],
-         owner: EditorTextView? = nil) {
+         owner: EditorTextView? = nil,
+         chipLayoutManager: NSTextLayoutManager? = nil) {
         self.listGuides = listGuides
         self.owner = owner
+        self.chipLayoutManager = chipLayoutManager
         self.decorations = decorations
         self.overlays = overlays
         self.antialias = antialias
@@ -1109,7 +1117,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// container coordinates (this context's space) and are merged per line
     /// so each span is one pill rather than per-character capsules.
     private func drawInlineCodeChips(at point: CGPoint, in context: CGContext) {
-        guard let owner, let tlm = owner.textLayoutManager,
+        guard let tlm = chipLayoutManager,
               let paragraph = textElement as? NSTextParagraph else { return }
         guard let paraLoc = paragraph.elementRange?.location else { return }
         let str = paragraph.attributedString
@@ -1222,7 +1230,8 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                            codeBlockLabelFont: codeBlockLabelFont,
                                            invisibles: invisibles,
                                            listGuides: listGuides,
-                                           owner: self)
+                                           owner: self,
+                                           chipLayoutManager: textLayoutManager)
     }
 }
 
