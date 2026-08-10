@@ -487,10 +487,10 @@ struct FullDocumentIntegrationTests {
         let a3 = attrs(at: b3 + 2, in: editor)  // content starts after ~~
         #expect(a3[.strikethroughStyle] as? Int == NSUnderlineStyle.single.rawValue)
 
-        // Block 4 non-active: raw text preserved, delimiters hidden, content has background
+        // Block 4 non-active: raw text preserved, delimiters hidden, content has highlight chip
         #expect(displayText(for: 4, in: editor) == "==highlight==")
         let b4 = editor.blocks[4].range.location
         let a4 = attrs(at: b4 + 2, in: editor)  // content starts after ==
-        #expect(a4[.backgroundColor] != nil)
+        #expect(a4[.highlightChip] != nil)
     }
 }

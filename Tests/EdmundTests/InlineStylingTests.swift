@@ -119,14 +119,14 @@ struct InlineStylingActiveTests {
 
     // MARK: - Highlight
 
-    @Test("Active ==highlight== has yellow background")
+    @Test("Active ==highlight== carries a highlight chip")
     @MainActor func activeHighlight() {
         let editor = makeEditor()
         editor.loadContent("==marked==")
         activateBlock(0, in: editor)
 
         let a = attrs(at: 2, in: editor)
-        let bg = a[.backgroundColor] as? NSColor
+        let bg = a[.highlightChip] as? NSColor
         #expect(bg != nil)
     }
 
@@ -331,7 +331,7 @@ struct InlineStylingInactiveTests {
         #expect(a[.strikethroughStyle] as? Int == NSUnderlineStyle.single.rawValue)
     }
 
-    @Test("Non-active ==highlight== hides delimiters and applies background color")
+    @Test("Non-active ==highlight== hides delimiters and applies highlight chip")
     @MainActor func nonActiveHighlight() {
         let editor = makeEditor()
         editor.loadContent("==marked==\nother")
@@ -343,7 +343,7 @@ struct InlineStylingInactiveTests {
         let base = editor.blocks[0].range.location
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         let a = attrs(at: base + 2, in: editor)
-        #expect(a[.backgroundColor] != nil)
+        #expect(a[.highlightChip] != nil)
     }
 
     @Test("Non-active [link](url) hides syntax, link text has underline and accent color")

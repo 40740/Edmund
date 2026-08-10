@@ -450,11 +450,11 @@ struct EditorStylingTests {
         #expect(isHidden(at: 12, in: styled))
     }
 
-    @Test("Highlight content has background color")
+    @Test("Highlight content carries the highlightChip attribute")
     @MainActor func highlightBackground() {
         let editor = makeEditor()
         let styled = editor.styleBlock("==important==")
-        let val = styled.attribute(.backgroundColor, at: 2, effectiveRange: nil)
+        let val = styled.attribute(.highlightChip, at: 2, effectiveRange: nil)
         #expect(val != nil)
     }
 
