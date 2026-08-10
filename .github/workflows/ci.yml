@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  checks: write
 
 # Only the latest run per branch/PR matters; cancel older ones so private-repo
 # macOS minutes (billed at 10x) aren't spent on superseded commits.
@@ -45,12 +46,26 @@ jobs:
         run: |
           set -o pipefail
           swift test 2>&1 | tee test.log
-          status=${PIPESTATUS[0]}
-          if [ $status -ne 0 ]; then
-            echo "::error::EDMUND-CI-FAILED-MARKER status=$status"
-            # Surface the tail of the log as one escaped annotation (readable
-            # via the check-runs API without admin log access).
-            summary=$(tail -80 test.log | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')
-            echo "::error::$summary"
-          fi
-          exit $status
+          exit ${PIPESTATUS[0]}
+
+      # Publish the failing-test lines into the check run's output.summary,
+      # which the check-runs API exposes without admin log access.
+      - name: Report failures
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const log = fs.readFileSync('test.log', 'utf8');
+            const lines = log.split('\n')
+              .filter(l => /✘|✗|failed|error:|Issue|issue/.test(l))
+              .slice(-40);
+            const msg = lines.join('\n') || log.slice(-1500);
+            const { owner, repo } = context.repo;
+            const job = await github.rest.actions.getJobForWorkflowRun({
+              owner, repo, job_id: process.env.GITHUB_JOB });
+            const checkRunId = job.data.check_run_url.split('/').pop();
+            await github.rest.checks.update({
+              owner, repo, check_run_id: checkRunId,
+              output: { title: 'Test failures', summary: msg.slice(0, 60000) }
+            });
