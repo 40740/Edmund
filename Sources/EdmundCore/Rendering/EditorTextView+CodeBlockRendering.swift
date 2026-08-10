@@ -39,8 +39,8 @@ extension EditorTextView {
         guard span.fullRange.upperBound <= result.length,
               !span.delimiterRanges.isEmpty else { return }
         let box = BlockDecoration(.box(background: codeBlockBackground, borderColor: nil,
-                                       borderEdges: [], borderWidth: 0, bottomPad: 0,
-                                       cornerRadius: 6))
+                                       borderEdges: [], borderWidth: 0, topPad: 0,
+                                       bottomPad: 0, cornerRadius: 6))
         result.addAttribute(.blockDecoration, value: box, range: span.fullRange)
         result.addAttribute(.paragraphStyle, value: codeBlockParagraphStyle, range: span.fullRange)
 
@@ -58,6 +58,14 @@ extension EditorTextView {
             result.addAttribute(.codeBlockLabelAnchor, value: trimmed.capitalized,
                                 range: NSIntersectionRange(secondLine, span.fullRange))
         }
+        // Mark the closing line so its fragment's box draws the block's bottom
+        // corners (each row is its own fragment — see `codeBoxPath`).
+        let lastChar = max(span.fullRange.location, span.fullRange.upperBound - 1)
+        let lastLine = ns.lineRange(for: NSRange(location: lastChar, length: 0))
+        if lastLine.location >= span.fullRange.location {
+            result.addAttribute(.codeBlockLastLine, value: true,
+                                range: NSIntersectionRange(lastLine, span.fullRange))
+        }
     }
 
     /// Text inset for a code block's box (matches Read mode's `padding: 12px
@@ -65,9 +73,11 @@ extension EditorTextView {
     private var codeBlockParagraphStyle: NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
-        ps.firstLineHeadIndent = 12
-        ps.headIndent = 12
-        ps.tailIndent = -12
+        // ColaMD's `pre { padding: 16px }` — roomier than the old 12pt so the
+        // code doesn't hug the panel edges.
+        ps.firstLineHeadIndent = 16
+        ps.headIndent = 16
+        ps.tailIndent = -16
         return ps
     }
 }

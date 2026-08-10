@@ -113,7 +113,7 @@ struct CalloutNestedTests {
         let list = s.attribute(.blockDecoration, at: loc, effectiveRange: nil) as? BlockDecorationList
         #expect(list != nil)
         let pads = (list?.decorations ?? []).compactMap { d -> CGFloat? in
-            if case .box(_, _, _, _, let bp, _) = d.kind { return bp }
+            if case .box(_, _, _, _, _, let bp, _) = d.kind { return bp }
             return nil
         }
         #expect(pads.count == 2)
@@ -222,8 +222,8 @@ struct DecorationModelTests {
 
     private func box(inset: CGFloat) -> BlockDecoration {
         BlockDecoration(.box(background: .clear, borderColor: nil,
-                             borderEdges: [], borderWidth: 0, bottomPad: 0,
-                             cornerRadius: 0), inset: inset)
+                             borderEdges: [], borderWidth: 0, topPad: 0,
+                             bottomPad: 0, cornerRadius: 0), inset: inset)
     }
 
     @Test("Box inset participates in equality")

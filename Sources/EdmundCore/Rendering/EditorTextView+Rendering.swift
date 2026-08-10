@@ -275,7 +275,9 @@ extension EditorTextView {
                 let ctx = contextFont(at: span.contentRange.location)
                 result.addAttribute(.font, value: monoFont(for: ctx), range: span.contentRange)
                 result.addAttribute(.foregroundColor, value: inlineCodeColor, range: span.contentRange)
-                result.addAttribute(.backgroundColor, value: inlineCodeBackground, range: span.contentRange)
+                // Padded chip (ColaMD's `padding: 2px 6px`): the fragment
+                // draws the pill from this color — see `drawInlineCodeChips`.
+                result.addAttribute(.inlineCodeChip, value: inlineCodeBackground, range: span.contentRange)
 
             case .codeBlock(let language):
                 guard span.fullRange.upperBound <= result.length else { continue }
@@ -306,8 +308,11 @@ extension EditorTextView {
                 // ColaMD's signature: h1/h2 carry a hairline rule under the
                 // text (per-theme border color).
                 if level <= 2, let border = theme.borderColor {
+                    // The rule sits 6pt below the text so the heading has
+                    // breathing room above its underline (ColaMD's h1/h2
+                    // `padding-bottom`).
                     result.addAttribute(.blockDecoration,
-                                        value: BlockDecoration(.bottomRule(color: border, width: 1)),
+                                        value: BlockDecoration(.bottomRule(color: border, width: 1, offset: 6)),
                                         range: span.fullRange)
                 }
 
@@ -435,41 +440,51 @@ extension EditorTextView {
                     // ancestor stack is read per sub-range: an ancestor's own
                     // first line (hugging) can coincide with this span's first
                     // line, but its interior lines never hug.
-                    let firstLineEnd = min((markdown as NSString)
-                        .lineRange(for: NSRange(location: lineStart, length: 0)).upperBound,
-                        paraRange.upperBound)
-                    let firstRange = NSRange(location: lineStart, length: firstLineEnd - lineStart)
-                    let restRange = NSRange(location: firstLineEnd,
-                                            length: paraRange.upperBound - firstLineEnd)
                     // A ColaMD preset paints the quote bar in its own color
                     // (Elegant's red) and fills the quote with a soft panel;
-                    // otherwise the default dim bar and no fill.
+                    // otherwise the default dim bar and no fill. Each quote row
+                    // is its own layout fragment, so the panel fill is one box
+                    // per row: the first row's box carries the top padding and
+                    // the last row's the bottom (ColaMD's blockquote
+                    // `padding: 15px 20px 15px 25px`; the horizontal padding is
+                    // the text indent), tiled they read as one panel.
                     let barColor = theme.quoteBarColor ?? syntaxDimColor
-                    if depth == 0, let bg = theme.quoteBackgroundColor {
-                        result.addAttribute(.backgroundColor, value: bg, range: paraRange)
+                    let quoteVPad: CGFloat = 15
+                    let nsQuote = markdown as NSString
+                    var rows: [NSRange] = []
+                    var cursor = paraRange.location
+                    while cursor < paraRange.upperBound {
+                        let row = NSIntersectionRange(
+                            nsQuote.lineRange(for: NSRange(location: cursor, length: 0)),
+                            paraRange)
+                        if row.length == 0 { break }
+                        rows.append(row)
+                        cursor = row.upperBound
                     }
-                    for (range, hugs) in [(firstRange, true), (restRange, false)] {
-                        guard range.length > 0 else { continue }
-                        let ownBar = BlockDecoration(.leftBar(color: barColor, width: 2),
-                                                     inset: CGFloat(depth) * quoteMarkerWidth,
-                                                     hugsTextTop: hugs)
-                        if depth == 0 {
-                            result.addAttribute(.blockDecoration, value: ownBar, range: range)
-                        } else {
-                            let ancestor = result.attribute(.blockDecoration, at: range.location,
-                                                            effectiveRange: nil)
-                            let kept: [BlockDecoration]
-                            if let list = ancestor as? BlockDecorationList {
-                                kept = list.decorations
-                            } else if let single = ancestor as? BlockDecoration {
-                                kept = [single]
-                            } else {
-                                kept = []
-                            }
-                            result.addAttribute(.blockDecoration,
-                                                value: BlockDecorationList(kept + [ownBar]),
-                                                range: range)
+                    for (i, row) in rows.enumerated() {
+                        var decos: [BlockDecoration] = []
+                        if depth == 0, let bg = theme.quoteBackgroundColor {
+                            decos.append(BlockDecoration(
+                                .box(background: bg, borderColor: nil,
+                                     borderEdges: [], borderWidth: 0,
+                                     topPad: i == 0 ? quoteVPad : 0,
+                                     bottomPad: i == rows.count - 1 ? quoteVPad : 0,
+                                     cornerRadius: 0)))
                         }
+                        decos.append(BlockDecoration(.leftBar(color: barColor, width: 2),
+                                                     inset: CGFloat(depth) * quoteMarkerWidth,
+                                                     hugsTextTop: i == 0))
+                        let ancestor = result.attribute(.blockDecoration, at: row.location,
+                                                        effectiveRange: nil)
+                        var kept: [BlockDecoration] = []
+                        if let list = ancestor as? BlockDecorationList {
+                            kept = list.decorations
+                        } else if let single = ancestor as? BlockDecoration {
+                            kept = [single]
+                        }
+                        result.addAttribute(.blockDecoration,
+                                            value: BlockDecorationList(kept + decos),
+                                            range: row)
                     }
 
                     // Only the outermost span fills content color: `contentRange`

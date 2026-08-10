@@ -21,6 +21,15 @@ extension EditorTextView {
         button.font = NSFont.systemFont(ofSize: 11)
         button.isHidden = true
         button.setButtonType(.momentaryPushIn)
+        // The code block's panel is dark in Elegant — the pill must stand out
+        // against it, so pin a light chip with dark ink instead of letting the
+        // system pick a dark button that vanishes into the panel.
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 6
+        button.layer?.backgroundColor = NSColor(calibratedWhite: 0.97, alpha: 1).cgColor
+        button.layer?.borderWidth = 1
+        button.layer?.borderColor = NSColor(calibratedWhite: 0.65, alpha: 0.5).cgColor
+        button.contentTintColor = NSColor(calibratedWhite: 0.12, alpha: 1)
         addSubview(button)
         objc_setAssociatedObject(self, &codeCopyButtonKey, button, .OBJC_ASSOCIATION_RETAIN)
         return button

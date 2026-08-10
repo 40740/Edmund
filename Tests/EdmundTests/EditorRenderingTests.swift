@@ -212,6 +212,7 @@ struct EditorStylingTests {
                 borderColor: nil,
                 borderEdges: [],
                 borderWidth: 3,
+                topPad: CGFloat(index),
                 bottomPad: CGFloat(index),
                 cornerRadius: 0
             ))
@@ -482,11 +483,11 @@ struct EditorStylingTests {
         #expect(f!.isFixedPitch)
     }
 
-    @Test("Inline code content has background color")
+    @Test("Inline code content has a chip background color")
     @MainActor func codeBackground() {
         let editor = makeEditor()
         let styled = editor.styleBlock("`code`")
-        let bg = styled.attribute(.backgroundColor, at: 1, effectiveRange: nil) as? NSColor
+        let bg = styled.attribute(.inlineCodeChip, at: 1, effectiveRange: nil) as? NSColor
         #expect(bg != nil)
     }
 

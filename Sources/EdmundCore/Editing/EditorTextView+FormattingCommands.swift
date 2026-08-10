@@ -111,18 +111,26 @@ extension EditorTextView {
     /// Format-menu command table. nil → keep the system Font submenu.
     public static var contextFontMenuProvider: (() -> NSMenu)?
 
-    /// Swap the system "Font" submenu (Show Fonts, Bold, Bigger, …) for our
-    /// Markdown Font menu (Bold, Italic, Highlight, Comments, …) so right-click
-    /// offers the same commands as Format ▸ Font.
+    /// The right-click menu. The system one follows the OS language (English
+    /// on an English system) while the app's own UI is localized in-app, so
+    /// build a Chinese menu here to match, and swap in the same Markdown Font
+    /// submenu the Format menu uses (Bold, Italic, Highlight, …) instead of
+    /// the system Font submenu.
     public override func menu(for event: NSEvent) -> NSMenu? {
-        guard let menu = super.menu(for: event) else { return nil }
-        if let provider = Self.contextFontMenuProvider,
-           let fontItem = menu.items.first(where: { item in
-               item.submenu?.items.contains {
-                   $0.action == #selector(NSFontManager.orderFrontFontPanel(_:))
-               } == true
-           }) {
+        let menu = NSMenu(title: "")
+        menu.autoenablesItems = true
+        func add(_ title: String, _ action: Selector) {
+            menu.addItem(NSMenuItem(title: title, action: action, keyEquivalent: ""))
+        }
+        add("剪切", #selector(NSText.cut(_:)))
+        add("复制", #selector(NSText.copy(_:)))
+        add("粘贴", #selector(NSText.paste(_:)))
+        add("全选", #selector(NSText.selectAll(_:)))
+        menu.addItem(.separator())
+        if let provider = Self.contextFontMenuProvider {
+            let fontItem = NSMenuItem(title: "字体", action: nil, keyEquivalent: "")
             fontItem.submenu = provider()
+            menu.addItem(fontItem)
         }
         return menu
     }

@@ -802,12 +802,12 @@ class Document: NSDocument, HeadingNavigable {
         let menu = NSMenu()
         menu.autoenablesItems = false   // actions always fire on selection
         let inEditing = editor?.viewMode != .reading
-        menu.addItem(menuItem("Edit", icon(for: .edit),
+        menu.addItem(menuItem("编辑", icon(for: .edit),
                               #selector(selectEditMode(_:)), on: inEditing))
-        menu.addItem(menuItem("Read", icon(for: .reading),
+        menu.addItem(menuItem("阅读", icon(for: .reading),
                               #selector(selectReadingMode(_:)), on: !inEditing))
         menu.addItem(.separator())
-        menu.addItem(menuItem("Show source in editor", nil,
+        menu.addItem(menuItem("在编辑器中显示源码", nil,
                               #selector(toggleSourceMode(_:)), on: AppSettings.sourceMode))
         return menu
     }

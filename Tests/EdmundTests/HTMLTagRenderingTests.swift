@@ -191,7 +191,7 @@ struct HTMLTagRenderingTests {
 
         let kbd = editor.styleBlock("<kbd>K</kbd>", cursorPosition: nil)
         #expect((attr(.font, at: 5, in: kbd) as? NSFont) == editor.inlineCodeFont)
-        #expect(attr(.backgroundColor, at: 5, in: kbd) as? NSColor == editor.inlineCodeBackground)
+        #expect(attr(.inlineCodeChip, at: 5, in: kbd) as? NSColor == editor.inlineCodeBackground)
 
         let mark = editor.styleBlock("<mark>M</mark>", cursorPosition: nil)
         #expect(attr(.backgroundColor, at: 6, in: mark) != nil)

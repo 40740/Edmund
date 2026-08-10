@@ -60,6 +60,15 @@ public extension NSAttributedString.Key {
     /// Written whether or not the setting is on, so toggling the guides needs a
     /// re-vend (`refreshOverdraw`) rather than a whole-document restyle.
     static let listGuides = NSAttributedString.Key("MarkdownEditor.listGuides")
+    /// Marks a fenced code block's closing (last) line — the fragment whose
+    /// box draws the block's bottom corners. Value: `Bool`. Absent on every
+    /// other line.
+    static let codeBlockLastLine = NSAttributedString.Key("MarkdownEditor.codeBlockLastLine")
+    /// Character-level inline-code chip background. Value: `NSColor`. The
+    /// fragment draws a padded rounded pill around the covered characters
+    /// (TextKit 2 has no native inline background padding — see
+    /// `drawInlineCodeChips`).
+    static let inlineCodeChip = NSAttributedString.Key("MarkdownEditor.inlineCodeChip")
 }
 
 /// Value object describing what to draw behind a decorated paragraph.
@@ -68,18 +77,21 @@ public extension NSAttributedString.Key {
 public final class BlockDecoration: NSObject, @unchecked Sendable {
 
     public enum Kind: Equatable {
-        /// Filled box across the text column (callouts), with optional borders.
-        /// `bottomPad` extends the fill/border below the fragment's text frame —
-        /// TextKit 2 does not include trailing `paragraphSpacing` in the
-        /// fragment height, so a callout's last line carries the bottom padding
-        /// here (and a matching paragraphSpacing pushes the next block clear).
-        /// `cornerRadius` rounds the fill (code-block boxes); callouts stay 0.
+        /// Filled box across the text column (callouts, plain block quotes),
+        /// with optional borders. `topPad`/`bottomPad` extend the fill above
+        /// and below the fragment's text frame — TextKit 2 does not include
+        /// leading/trailing `paragraphSpacing` in the fragment height, so a
+        /// block's first/last line carries the padding here (and a matching
+        /// paragraphSpacing pushes the next block clear). `cornerRadius`
+        /// rounds the fill (code-block boxes); callouts and quotes stay 0.
         case box(background: NSColor, borderColor: NSColor?,
                  borderEdges: CalloutStyle.Edges, borderWidth: CGFloat,
-                 bottomPad: CGFloat, cornerRadius: CGFloat)
+                 topPad: CGFloat, bottomPad: CGFloat, cornerRadius: CGFloat)
         /// Horizontal hairline along the fragment's bottom edge (ColaMD's
-        /// h1/h2 underline).
-        case bottomRule(color: NSColor, width: CGFloat)
+        /// h1/h2 underline). `offset` pushes the rule further below the
+        /// fragment's bottom edge — breathing room between the heading text
+        /// and its underline.
+        case bottomRule(color: NSColor, width: CGFloat, offset: CGFloat)
         /// Vertical bar just left of the paragraph's text (plain block quotes).
         case leftBar(color: NSColor, width: CGFloat)
         /// Table-row chrome: vertical column borders at text-relative x
@@ -139,22 +151,25 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         var hasher = Hasher()
         switch kind {
         case .box(let background, let borderColor, let borderEdges,
-                  let borderWidth, let bottomPad, let cornerRadius):
+                  let borderWidth, let topPad, let bottomPad,
+                  let cornerRadius):
             hasher.combine(1)
             hasher.combine(background)
             hasher.combine(borderColor)
             hasher.combine(borderEdges.rawValue)
             hasher.combine(borderWidth)
+            hasher.combine(topPad)
             hasher.combine(bottomPad)
             hasher.combine(cornerRadius)
         case .leftBar(let color, let width):
             hasher.combine(2)
             hasher.combine(color)
             hasher.combine(width)
-        case .bottomRule(let color, let width):
+        case .bottomRule(let color, let width, let offset):
             hasher.combine(6)
             hasher.combine(color)
             hasher.combine(width)
+            hasher.combine(offset)
         case .tableRow(let offsets, let width, let leftInset,
                        let separator, let bottomBorder,
                        let background, let verticalPad, let headerAccent):
@@ -423,6 +438,9 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// fragment that paints the label, reaching up over the fence row
     /// (see `.codeBlockLabelAnchor`).
     let codeBlockLabelAnchor: String?
+    /// Whether this fragment is a fenced code block's last line — its box
+    /// draws the block's bottom corners.
+    let codeBlockLastLine: Bool
     /// The label's font — a smaller cut of the editor's monospace font,
     /// handed over at vend time (the fragment has no theme access).
     let codeBlockLabelFont: NSFont
@@ -448,6 +466,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
          antialias: Bool,
          codeBlockLabel: String? = nil,
          codeBlockLabelAnchor: String? = nil,
+         codeBlockLastLine: Bool = false,
          codeBlockLabelFont: NSFont = .monospacedSystemFont(ofSize: 10, weight: .regular),
          invisibles: InvisiblesConfig? = nil,
          listGuides: [CGFloat] = [],
@@ -459,6 +478,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         self.antialias = antialias
         self.codeBlockLabel = codeBlockLabel
         self.codeBlockLabelAnchor = codeBlockLabelAnchor
+        self.codeBlockLastLine = codeBlockLastLine
         self.codeBlockLabelFont = codeBlockLabelFont
         self.invisibles = invisibles
         var resolved: [(wrap: TableCellWrap, lines: [NSTextLineFragment])] = []
@@ -565,7 +585,18 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// *and* the parent's below it (see `draw`), so both fit.
     private var boxBottomPad: CGFloat {
         decorations.reduce(0) { acc, deco in
-            if case .box(_, _, _, _, let bottomPad, _) = deco.kind { return acc + bottomPad }
+            if case .box(_, _, _, _, _, let bottomPad, _) = deco.kind { return acc + bottomPad }
+            return acc
+        }
+    }
+
+    /// The summed top padding of this fragment's boxes (a block quote's first
+    /// line, or a stacked nested box). Extends the fragment frame upward so the
+    /// fill covers the padded band above the text and clicks there land on the
+    /// text.
+    private var boxTopPad: CGFloat {
+        decorations.reduce(0) { acc, deco in
+            if case .box(_, _, _, _, let topPad, _, _) = deco.kind { return acc + topPad }
             return acc
         }
     }
@@ -597,7 +628,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         var frame = super.layoutFragmentFrame
         // A row is never both a box and a table row, so at most one of these
         // two is ever nonzero.
-        frame.size.height += boxBottomPad + tableRowExtraHeight
+        frame.origin.y -= boxTopPad
+        frame.size.height += boxTopPad + boxBottomPad + tableRowExtraHeight
         return frame
     }
 
@@ -649,11 +681,12 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             let topInset = index == decorations.count - 1 ? codeBoxTopShave : 0
             drawDecoration(decoration, at: point, in: context,
                            bottomInset: precedingBottomPad, topInset: topInset)
-            if case .box(_, _, _, _, let bottomPad, _) = decoration.kind {
+            if case .box(_, _, _, _, _, let bottomPad, _) = decoration.kind {
                 precedingBottomPad += bottomPad
             }
         }
         context.restoreGState()
+        drawInlineCodeChips(at: point, in: context)
         context.saveGState()
         context.setShouldAntialias(antialias)
         super.draw(at: point, in: context)
@@ -886,8 +919,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
         switch decoration.kind {
         case .box(let background, let borderColor, let edges, let borderWidth,
-                   _, let cornerRadius):
-            // The fragment frame already includes any box bottomPad (see
+                   _, _, let cornerRadius):
+            // The fragment frame already includes any box top/bottom pad (see
             // layoutFragmentFrame), so columnRect covers the padded area. A
             // nested box insets symmetrically so it sits within its parent box,
             // and stops `bottomInset` short of the frame bottom so the enclosing
@@ -899,8 +932,14 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             columnRect.origin.y += topInset
             context.setFillColor(background.cgColor)
             if cornerRadius > 0 {
-                NSBezierPath(roundedRect: columnRect,
-                             xRadius: cornerRadius, yRadius: cornerRadius).fill()
+                // A fenced code block's box is one rounded rectangle spanning
+                // all its rows, but each row is its own layout fragment: round
+                // only the fragment that starts the block (top corners) and the
+                // one that ends it (bottom corners), keeping the middle rows
+                // square so the rows tile into a single rounded panel.
+                codeBoxPath(columnRect, radius: cornerRadius,
+                            topRounded: codeBlockLabel != nil,
+                            bottomRounded: codeBlockLastLine).fill()
             } else {
                 context.fill(columnRect)
             }
@@ -1010,15 +1049,101 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             context.fill(CGRect(x: columnRect.minX, y: y,
                                 width: columnRect.maxX - columnRect.minX, height: thickness))
 
-        case .bottomRule(let color, let width):
-            // A hairline glued to the fragment's bottom edge (headings' rule).
-            // Device-rounded so it lands on a pixel boundary.
+        case .bottomRule(let color, let width, let offset):
+            // A hairline below the fragment's bottom edge (headings' rule).
+            // `offset` pushes it clear of the text; device-rounded so it lands
+            // on a pixel boundary.
             let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
             let thickness = max(1 / scale, width)
-            let y = ((point.y + frame.height - thickness) * scale).rounded() / scale
+            let y = ((point.y + frame.height + offset - thickness) * scale).rounded() / scale
             context.setFillColor(color.cgColor)
             context.fill(CGRect(x: columnRect.minX, y: y,
                                 width: columnRect.maxX - columnRect.minX, height: thickness))
+        }
+    }
+
+    /// The path for a code block's box fill on one row. The block's first row
+    /// rounds the top corners, its last row the bottom, and middle rows stay
+    /// square — tiled, they read as one rounded rectangle. (The drawing
+    /// context is flipped, so `minY` is the visual top.)
+    private func codeBoxPath(_ rect: CGRect, radius: CGFloat,
+                             topRounded: Bool, bottomRounded: Bool) -> NSBezierPath {
+        let r = min(radius, rect.height / 2)
+        if topRounded && bottomRounded {
+            return NSBezierPath(roundedRect: rect, xRadius: r, yRadius: r)
+        }
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: rect.minX, y: rect.minY))
+        if topRounded {
+            path.curve(to: NSPoint(x: rect.minX + r, y: rect.minY),
+                       controlPoint1: NSPoint(x: rect.minX, y: rect.minY + r),
+                       controlPoint2: NSPoint(x: rect.minX + r, y: rect.minY))
+        }
+        path.line(to: NSPoint(x: rect.maxX - (topRounded ? r : 0), y: rect.minY))
+        if topRounded {
+            path.curve(to: NSPoint(x: rect.maxX, y: rect.minY + r),
+                       controlPoint1: NSPoint(x: rect.maxX - r, y: rect.minY),
+                       controlPoint2: NSPoint(x: rect.maxX, y: rect.minY + r))
+        }
+        path.line(to: NSPoint(x: rect.maxX, y: rect.maxY - (bottomRounded ? r : 0)))
+        if bottomRounded {
+            path.curve(to: NSPoint(x: rect.maxX - r, y: rect.maxY),
+                       controlPoint1: NSPoint(x: rect.maxX, y: rect.maxY - r),
+                       controlPoint2: NSPoint(x: rect.maxX - r, y: rect.maxY))
+        }
+        path.line(to: NSPoint(x: rect.minX + (bottomRounded ? r : 0), y: rect.maxY))
+        if bottomRounded {
+            path.curve(to: NSPoint(x: rect.minX, y: rect.maxY - r),
+                       controlPoint1: NSPoint(x: rect.minX + r, y: rect.maxY),
+                       controlPoint2: NSPoint(x: rect.minX, y: rect.maxY - r))
+        }
+        path.close()
+        return path
+    }
+
+    /// Draws padded rounded pills behind inline-code spans (ColaMD's chip
+    /// look). TextKit 2 paints `.backgroundColor` tight against the glyphs
+    /// with no padding hook, so the styling code stores the color in
+    /// `.inlineCodeChip` and this pass draws the padded pill itself before
+    /// `super.draw` paints the text. Rects come from the layout manager in
+    /// container coordinates (this context's space) and are merged per line
+    /// so each span is one pill rather than per-character capsules.
+    private func drawInlineCodeChips(at point: CGPoint, in context: CGContext) {
+        guard let owner, let tlm = owner.textLayoutManager,
+              let paragraph = textElement as? NSTextParagraph else { return }
+        guard let paraLoc = paragraph.elementRange?.location else { return }
+        let str = paragraph.attributedString
+        let padX: CGFloat = 6, padY: CGFloat = 2, radius: CGFloat = 3
+        str.enumerateAttribute(.inlineCodeChip,
+                               in: NSRange(location: 0, length: str.length),
+                               options: []) { value, range, _ in
+            guard let color = value as? NSColor, range.length > 0,
+                  let start = tlm.location(paraLoc, offsetBy: range.location),
+                  let end = tlm.location(paraLoc, offsetBy: range.location + range.length),
+                  let textRange = NSTextRange(location: start, end: end) else { return }
+            var rects: [CGRect] = []
+            tlm.enumerateTextSegments(in: textRange, type: .standard,
+                                      options: []) { _, rect, _, _ in
+                rects.append(rect)
+                return true
+            }
+            guard !rects.isEmpty else { return }
+            var merged: [CGRect] = []
+            for rect in rects.sorted(by: { $0.minX < $1.minX }) {
+                if var last = merged.last, abs(last.midY - rect.midY) < 1 {
+                    last = last.union(rect)
+                    merged[merged.count - 1] = last
+                } else {
+                    merged.append(rect)
+                }
+            }
+            context.saveGState()
+            context.setFillColor(color.cgColor)
+            for rect in merged {
+                let pill = rect.insetBy(dx: -padX, dy: -padY)
+                NSBezierPath(roundedRect: pill, xRadius: radius, yRadius: radius).fill()
+            }
+            context.restoreGState()
         }
     }
 }
@@ -1058,6 +1183,8 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
         let cellWraps = (cellWrapsValue as? TableCellWrapList)?.wraps ?? []
         let codeBlockLabelValue = str.attribute(.codeBlockLabel, at: 0, effectiveRange: nil) as? String
         let codeBlockLabelAnchorValue = str.attribute(.codeBlockLabelAnchor, at: 0, effectiveRange: nil) as? String
+        let codeBlockLastLineValue = str.attribute(.codeBlockLastLine, at: 0,
+                                                  effectiveRange: nil) as? Bool ?? false
         // A plain fragment suffices only when there's nothing to draw over the
         // text and antialiasing is on (the default); otherwise vend the custom
         // fragment so its draw can disable antialiasing. (A `.codeBlockLabel`
@@ -1091,6 +1218,7 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                            antialias: textAntialias,
                                            codeBlockLabel: codeBlockLabelValue,
                                            codeBlockLabelAnchor: codeBlockLabelAnchorValue,
+                                           codeBlockLastLine: codeBlockLastLineValue,
                                            codeBlockLabelFont: codeBlockLabelFont,
                                            invisibles: invisibles,
                                            listGuides: listGuides,
