@@ -69,6 +69,10 @@ public extension NSAttributedString.Key {
     /// (TextKit 2 has no native inline background padding — see
     /// `drawInlineCodeChips`).
     static let inlineCodeChip = NSAttributedString.Key("MarkdownEditor.inlineCodeChip")
+    /// Character-level ==highlight== chip background. Value: `NSColor`.
+    /// Drawn with the same padded-pill path as inline code so highlight
+    /// padding is user-tunable (Settings ▸ 高亮内边距).
+    static let highlightChip = NSAttributedString.Key("MarkdownEditor.highlightChip")
 }
 
 /// Value object describing what to draw behind a decorated paragraph.
@@ -1132,39 +1136,49 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
               let paragraph = textElement as? NSTextParagraph else { return }
         guard let paraLoc = paragraph.elementRange?.location else { return }
         let str = paragraph.attributedString
-        let padX = CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadX, default: 6))
-        let padY: CGFloat = 2, radius: CGFloat = 3
-        str.enumerateAttribute(.inlineCodeChip,
-                               in: NSRange(location: 0, length: str.length),
-                               options: []) { value, range, _ in
-            guard let color = value as? NSColor, range.length > 0,
-                  let start = tlm.location(paraLoc, offsetBy: range.location),
-                  let end = tlm.location(paraLoc, offsetBy: range.location + range.length),
-                  let textRange = NSTextRange(location: start, end: end) else { return }
-            var rects: [CGRect] = []
-            tlm.enumerateTextSegments(in: textRange, type: .standard,
-                                      options: []) { _, rect, _, _ in
-                rects.append(rect)
-                return true
-            }
-            guard !rects.isEmpty else { return }
-            var merged: [CGRect] = []
-            for rect in rects.sorted(by: { $0.minX < $1.minX }) {
-                if var last = merged.last, abs(last.midY - rect.midY) < 1 {
-                    last = last.union(rect)
-                    merged[merged.count - 1] = last
-                } else {
-                    merged.append(rect)
+        // Inline-code padding (Settings ▸ 行内代码左右/上下内边距).
+        let codePadX = CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadX, default: 6))
+        let codePadY = CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadY, default: 3))
+        // Highlight padding (Settings ▸ 高亮内边距) — single value for both axes.
+        let hlPad = CGFloat(DetailStyleValue.value(DetailStyleKey.highlightPad, default: 4))
+        let radius: CGFloat = 3
+
+        func drawChips(attribute: NSAttributedString.Key, padX: CGFloat, padY: CGFloat) {
+            str.enumerateAttribute(attribute,
+                                   in: NSRange(location: 0, length: str.length),
+                                   options: []) { value, range, _ in
+                guard let color = value as? NSColor, range.length > 0,
+                      let start = tlm.location(paraLoc, offsetBy: range.location),
+                      let end = tlm.location(paraLoc, offsetBy: range.location + range.length),
+                      let textRange = NSTextRange(location: start, end: end) else { return }
+                var rects: [CGRect] = []
+                tlm.enumerateTextSegments(in: textRange, type: .standard,
+                                          options: []) { _, rect, _, _ in
+                    rects.append(rect)
+                    return true
                 }
+                guard !rects.isEmpty else { return }
+                var merged: [CGRect] = []
+                for rect in rects.sorted(by: { $0.minX < $1.minX }) {
+                    if var last = merged.last, abs(last.midY - rect.midY) < 1 {
+                        last = last.union(rect)
+                        merged[merged.count - 1] = last
+                    } else {
+                        merged.append(rect)
+                    }
+                }
+                context.saveGState()
+                context.setFillColor(color.cgColor)
+                for rect in merged {
+                    let pill = rect.insetBy(dx: -padX, dy: -padY)
+                    NSBezierPath(roundedRect: pill, xRadius: radius, yRadius: radius).fill()
+                }
+                context.restoreGState()
             }
-            context.saveGState()
-            context.setFillColor(color.cgColor)
-            for rect in merged {
-                let pill = rect.insetBy(dx: -padX, dy: -padY)
-                NSBezierPath(roundedRect: pill, xRadius: radius, yRadius: radius).fill()
-            }
-            context.restoreGState()
         }
+
+        drawChips(attribute: .inlineCodeChip, padX: codePadX, padY: codePadY)
+        drawChips(attribute: .highlightChip, padX: hlPad, padY: hlPad)
     }
 }
 

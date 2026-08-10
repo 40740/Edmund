@@ -616,8 +616,10 @@ public class EditorTextView: NSTextView {
     /// keys actually moved, debounced so dragging a slider settles once.
     @objc private func detailStyleSettingsDidChange(_ note: Notification) {
         let keys = [DetailStyleKey.headingRuleOffset, DetailStyleKey.quoteVPad,
-                    DetailStyleKey.inlineCodePadX, DetailStyleKey.codeCornerRadius,
-                    DetailStyleKey.codeBlockHPad]
+                    DetailStyleKey.inlineCodePadX, DetailStyleKey.inlineCodePadY,
+                    DetailStyleKey.codeCornerRadius, DetailStyleKey.codeBlockHPad,
+                    DetailStyleKey.codeBlockVPad, DetailStyleKey.quoteMargin,
+                    DetailStyleKey.listLineHeight, DetailStyleKey.highlightPad]
         let now = Dictionary(uniqueKeysWithValues: keys.map {
             ($0, UserDefaults.standard.double(forKey: $0))
         })

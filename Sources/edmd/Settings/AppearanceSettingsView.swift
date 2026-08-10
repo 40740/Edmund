@@ -156,6 +156,12 @@ struct AppearanceSettingsView: View {
             detailSliderRow("行内代码左右内边距:",
                             key: AppSettings.Key.detailInlineCodePadX, fallback: 6,
                             range: 0...16, format: "%.0f pt")
+            detailSliderRow("行内代码上下内边距:",
+                            key: AppSettings.Key.detailInlineCodePadY, fallback: 3,
+                            range: 0...12, format: "%.0f pt")
+            detailSliderRow("高亮内边距:",
+                            key: AppSettings.Key.detailHighlightPad, fallback: 4,
+                            range: 0...12, format: "%.0f pt")
             detailSliderRow("代码块圆角:",
                             key: AppSettings.Key.detailCodeCornerRadius, fallback: 6,
                             range: 0...24, format: "%.0f pt")

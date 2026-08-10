@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-08-10
+
+### Fixed
+- **真正接通细节样式滑块到编辑渲染**: 0.5.6 仅在设置 UI / Read 模式写入了部分 UserDefaults，编辑模式 `DetailStyleKey` 与 `detailStyleSettingsDidChange` 未监听新键，拖动无效
+- 行内代码灰色背景对比度提高（浅色 alpha 0.14 / 深色 0.28），并新增「行内代码上下内边距」滑块（默认 3pt）
+- `==高亮==` / `<mark>` 改为可内边距的圆角芯片绘制（与行内代码同路径），新增「高亮内边距」滑块（默认 4pt）
+- 引用块「上下外边距」滑块现写入 `paragraphSpacingBefore` + `paragraphSpacing`，上下对称
+- 列表「列表行距」滑块接入 `listParagraphStyle`（默认 1.8 倍）
+- 代码块「上下内边距」接入面板 `topPad`/`bottomPad`
+- Read 模式 CSS 同步：高亮内边距、行内代码上下内边距、列表行高
+
 ## [0.5.6] - 2026-08-10
 
 ### Fixed

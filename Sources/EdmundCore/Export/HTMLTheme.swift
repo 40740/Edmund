@@ -101,11 +101,13 @@ enum HTMLTheme {
         let dHeadingRuleOffset = Self.detailDouble(Self.kHeadingRuleOffset, 6)
         let dQuoteVPad         = Self.detailDouble(Self.kQuoteVPad, 15)
         let dInlineCodePadX    = Self.detailDouble(Self.kInlineCodePadX, 6)
+        let dInlineCodePadY    = Self.detailDouble(Self.kInlineCodePadY, 3)
         let dCodeCornerRadius  = Self.detailDouble(Self.kCodeCornerRadius, 6)
         let dCodeBlockHPad     = Self.detailDouble(Self.kCodeBlockHPad, 16)
         let dCodeBlockVPad     = Self.detailDouble(Self.kCodeBlockVPad, 16)
         let dQuoteMargin       = Self.detailDouble(Self.kQuoteMargin, 16)
         let dListLineHeight    = Self.detailDouble(Self.kListLineHeight, 1.8)
+        let dHighlightPad      = Self.detailDouble(Self.kHighlightPad, 4)
 
         return """
         :root {
@@ -144,6 +146,8 @@ enum HTMLTheme {
           --quote-vpad: \(trim(CGFloat(dQuoteVPad)))px;
           --quote-margin: \(trim(CGFloat(dQuoteMargin)))px;
           --inline-code-pad-x: \(trim(CGFloat(dInlineCodePadX)))px;
+          --inline-code-pad-y: \(trim(CGFloat(dInlineCodePadY)))px;
+          --highlight-pad: \(trim(CGFloat(dHighlightPad)))px;
           --code-hpad: \(trim(CGFloat(dCodeBlockHPad)))px;
           --code-vpad: \(trim(CGFloat(dCodeBlockVPad)))px;
           --code-radius: \(trim(CGFloat(dCodeCornerRadius)))px;
@@ -249,7 +253,7 @@ enum HTMLTheme {
     /* Radii are em, not px, so the chip's corners keep their proportion as the
        font-size stepper moves — a fixed 4px reads as square at large sizes. */
     code { font-family: var(--mono-font); font-size: 0.92em; color: var(--inline-code-ink);
-           background: var(--inline-code-bg); padding: 0.12em var(--inline-code-pad-x); border-radius: 0.25em; }
+           background: var(--inline-code-bg); padding: var(--inline-code-pad-y) var(--inline-code-pad-x); border-radius: 0.25em; }
     pre { background: var(--code-bg); padding: var(--code-vpad) var(--code-hpad);
           border-radius: var(--code-radius); overflow-x: auto;
           /* tab-size: browsers default to 8; match the common editor convention of 4. */
@@ -290,7 +294,7 @@ enum HTMLTheme {
     blockquote > blockquote:last-child,
     .callout-body > blockquote:last-child { margin-bottom: 0; }
     hr { border: none; border-top: 1.5px solid var(--hr); margin: 1.6em 0; }
-    mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
+    mark { background: rgba(255, 200, 0, 0.35); color: inherit; padding: var(--highlight-pad); border-radius: 0.2em; }
     /* Obsidian #tag: an accent-colored pill. Style only, no navigation. */
     .tag { color: var(--accent);
            background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -319,7 +323,8 @@ enum HTMLTheme {
     /* Only direct children of .page and .callout-body get block margin (1em top
        + bottom) and the wider level-1 indent (2.25em). Nested lists inside list
        items stay at 0 margin — otherwise each level compounds to large gaps. */
-    ul, ol { margin: 0; padding-left: 1.25em; }
+    ul, ol { margin: 0; padding-left: 1.25em; line-height: var(--list-line-height); }
+    li { line-height: var(--list-line-height); }
     .page > ul, .page > ol,
     .callout-body > ul, .callout-body > ol { margin: 1.3em 0; padding-left: 2.25em; }
     li > ul, li > ol { margin: 0; }
@@ -552,11 +557,13 @@ enum HTMLTheme {
     private static let kHeadingRuleOffset = "settings.appearance.detail.headingRuleOffset"
     private static let kQuoteVPad         = "settings.appearance.detail.quoteVPad"
     private static let kInlineCodePadX    = "settings.appearance.detail.inlineCodePadX"
+    private static let kInlineCodePadY    = "settings.appearance.detail.inlineCodePadY"
     private static let kCodeCornerRadius  = "settings.appearance.detail.codeCornerRadius"
     private static let kCodeBlockHPad     = "settings.appearance.detail.codeBlockHPad"
     private static let kCodeBlockVPad     = "settings.appearance.detail.codeBlockVPad"
     private static let kQuoteMargin       = "settings.appearance.detail.quoteMargin"
     private static let kListLineHeight    = "settings.appearance.detail.listLineHeight"
+    private static let kHighlightPad      = "settings.appearance.detail.highlightPad"
 
     /// Reads a theme-detail slider value from UserDefaults, falling back to
     /// `fallback` when the key was never written (so an untouched slider renders

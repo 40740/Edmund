@@ -38,9 +38,10 @@ extension EditorTextView {
                            language: String?) {
         guard span.fullRange.upperBound <= result.length,
               !span.delimiterRanges.isEmpty else { return }
+        let vPad = codeBlockVPad
         let box = BlockDecoration(.box(background: codeBlockBackground, borderColor: nil,
-                                       borderEdges: [], borderWidth: 0, topPad: 0,
-                                       bottomPad: 0, cornerRadius: codeCornerRadius))
+                                       borderEdges: [], borderWidth: 0, topPad: vPad,
+                                       bottomPad: vPad, cornerRadius: codeCornerRadius))
         result.addAttribute(.blockDecoration, value: box, range: span.fullRange)
         result.addAttribute(.paragraphStyle, value: codeBlockParagraphStyle, range: span.fullRange)
 

@@ -46,8 +46,13 @@ enum DetailStyleKey {
     static let headingRuleOffset = "settings.appearance.detail.headingRuleOffset"
     static let quoteVPad = "settings.appearance.detail.quoteVPad"
     static let inlineCodePadX = "settings.appearance.detail.inlineCodePadX"
+    static let inlineCodePadY = "settings.appearance.detail.inlineCodePadY"
     static let codeCornerRadius = "settings.appearance.detail.codeCornerRadius"
     static let codeBlockHPad = "settings.appearance.detail.codeBlockHPad"
+    static let codeBlockVPad = "settings.appearance.detail.codeBlockVPad"
+    static let quoteMargin = "settings.appearance.detail.quoteMargin"
+    static let listLineHeight = "settings.appearance.detail.listLineHeight"
+    static let highlightPad = "settings.appearance.detail.highlightPad"
 }
 
 /// Reads one detail setting from UserDefaults, falling back to ColaMD's value
@@ -76,6 +81,11 @@ extension EditorTextView {
         CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadX, default: 6))
     }
 
+    /// Vertical padding (pt) around inline code's chip background.
+    var inlineCodePadY: CGFloat {
+        CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadY, default: 3))
+    }
+
     /// Corner radius (pt) of fenced code blocks' rounded panel.
     var codeCornerRadius: CGFloat {
         CGFloat(DetailStyleValue.value(DetailStyleKey.codeCornerRadius, default: 6))
@@ -84,6 +94,26 @@ extension EditorTextView {
     /// Horizontal padding (pt) between code text and its panel edges.
     var codeBlockHPad: CGFloat {
         CGFloat(DetailStyleValue.value(DetailStyleKey.codeBlockHPad, default: 16))
+    }
+
+    /// Vertical padding (pt) inside fenced code blocks' panel (top/bottom).
+    var codeBlockVPad: CGFloat {
+        CGFloat(DetailStyleValue.value(DetailStyleKey.codeBlockVPad, default: 16))
+    }
+
+    /// Outer vertical margin (pt) above and below a block quote (paragraph spacing).
+    var quoteMargin: CGFloat {
+        CGFloat(DetailStyleValue.value(DetailStyleKey.quoteMargin, default: 16))
+    }
+
+    /// List-item line-height multiplier (1.0 = body; ColaMD-like default 1.8).
+    var listLineHeightMultiplier: CGFloat {
+        CGFloat(DetailStyleValue.value(DetailStyleKey.listLineHeight, default: 1.8))
+    }
+
+    /// Horizontal/vertical padding (pt) around ==highlight== chips.
+    var highlightPad: CGFloat {
+        CGFloat(DetailStyleValue.value(DetailStyleKey.highlightPad, default: 4))
     }
 
     /// Color for dimmed syntax delimiters (*, **, `, #, …) and for the ink of
@@ -133,7 +163,7 @@ extension EditorTextView {
         if let hex = theme.preset.inlineCodeBackgroundHex, let color = NSColor(hex: hex) {
             return color
         }
-        return NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.22 : 0.1)
+        return NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.28 : 0.14)
     }
 
     /// Inline-code ink: a ColaMD preset's code tint when it has one (Elegant's
@@ -218,7 +248,11 @@ extension EditorTextView {
     private func blockquoteParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
-        ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
+        // Outer margin (Settings ▸ 引用块上下外边距) — balanced top/bottom so
+        // the quote panel has breathing room against neighbouring blocks.
+        let margin = quoteMargin
+        ps.paragraphSpacingBefore = max(bodyParagraphStyle.paragraphSpacingBefore, margin)
+        ps.paragraphSpacing = max(bodyParagraphStyle.paragraphSpacing, margin)
         ps.firstLineHeadIndent = 2
         ps.headIndent = 2 + quoteMarkerWidth
         return ps
@@ -345,7 +379,12 @@ extension EditorTextView {
 
             case .highlight:
                 guard span.contentRange.upperBound <= result.length else { continue }
-                result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: span.contentRange)
+                // Padded chip (same drawing path as inline code) so highlight
+                // padding is user-tunable and visibly larger than the tight
+                // system `.backgroundColor` wash.
+                result.addAttribute(.highlightChip,
+                                    value: NSColor.systemYellow.withAlphaComponent(0.35),
+                                    range: span.contentRange)
 
             case .heading(let level):
                 guard span.fullRange.upperBound <= result.length else { continue }
@@ -907,7 +946,9 @@ extension EditorTextView {
         case "u":
             result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
         case "mark":
-            result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: range)
+            result.addAttribute(.highlightChip,
+                                value: NSColor.systemYellow.withAlphaComponent(0.35),
+                                range: range)
         case "kbd":
             let scale = ctx.pointSize / bodyFont.pointSize
             let mono = scale == 1 ? inlineCodeFont

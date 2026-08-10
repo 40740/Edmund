@@ -39,7 +39,14 @@ extension EditorTextView {
     /// text after the marker.
     func listParagraphStyle(firstLineIndent: CGFloat, contentIndent: CGFloat) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
-        ps.lineSpacing = bodyParagraphStyle.lineSpacing
+        // listLineHeightMultiplier (Settings ▸ 列表行距) scales list item
+        // spacing relative to body, matching ColaMD's looser list rhythm.
+        // Multiplier 1.0 keeps body spacing; default 1.8.
+        let mult = max(1.0, listLineHeightMultiplier)
+        let baseLS = bodyParagraphStyle.lineSpacing
+        let fontSize = bodyFont.pointSize
+        let targetExtra = max(0, (mult - 1.0) * fontSize * 0.35)
+        ps.lineSpacing = max(baseLS, targetExtra)
         ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
         ps.firstLineHeadIndent = firstLineIndent
         ps.headIndent = contentIndent

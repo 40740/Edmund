@@ -55,8 +55,10 @@ enum AppSettings {
     static let detailHeadingRuleOffset = DetailSetting(key: Key.detailHeadingRuleOffset, defaultValue: 6)
     static let detailQuoteVPad = DetailSetting(key: Key.detailQuoteVPad, defaultValue: 15)
     static let detailInlineCodePadX = DetailSetting(key: Key.detailInlineCodePadX, defaultValue: 6)
+    static let detailInlineCodePadY = DetailSetting(key: Key.detailInlineCodePadY, defaultValue: 3)
     static let detailCodeCornerRadius = DetailSetting(key: Key.detailCodeCornerRadius, defaultValue: 6)
     static let detailCodeBlockHPad = DetailSetting(key: Key.detailCodeBlockHPad, defaultValue: 16)
+    static let detailHighlightPad = DetailSetting(key: Key.detailHighlightPad, defaultValue: 4)
     // Blockquote outer top/bottom margin (one value keeps top & bottom balanced).
     static let detailQuoteMargin = DetailSetting(key: Key.detailQuoteMargin, defaultValue: 16)
     // Code block vertical padding (paired with detailCodeBlockHPad so the
@@ -123,8 +125,10 @@ enum AppSettings {
         static let detailHeadingRuleOffset = "settings.appearance.detail.headingRuleOffset"
         static let detailQuoteVPad = "settings.appearance.detail.quoteVPad"
         static let detailInlineCodePadX = "settings.appearance.detail.inlineCodePadX"
+        static let detailInlineCodePadY = "settings.appearance.detail.inlineCodePadY"
         static let detailCodeCornerRadius = "settings.appearance.detail.codeCornerRadius"
         static let detailCodeBlockHPad = "settings.appearance.detail.codeBlockHPad"
+        static let detailHighlightPad = "settings.appearance.detail.highlightPad"
         static let detailQuoteMargin = "settings.appearance.detail.quoteMargin"
         static let detailCodeBlockVPad = "settings.appearance.detail.codeBlockVPad"
         static let detailListLineHeight = "settings.appearance.detail.listLineHeight"
