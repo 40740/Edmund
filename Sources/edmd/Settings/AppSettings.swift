@@ -57,6 +57,13 @@ enum AppSettings {
     static let detailInlineCodePadX = DetailSetting(key: Key.detailInlineCodePadX, defaultValue: 6)
     static let detailCodeCornerRadius = DetailSetting(key: Key.detailCodeCornerRadius, defaultValue: 6)
     static let detailCodeBlockHPad = DetailSetting(key: Key.detailCodeBlockHPad, defaultValue: 16)
+    // Blockquote outer top/bottom margin (one value keeps top & bottom balanced).
+    static let detailQuoteMargin = DetailSetting(key: Key.detailQuoteMargin, defaultValue: 16)
+    // Code block vertical padding (paired with detailCodeBlockHPad so the
+    // highlight's padding is fully dynamic, not hardcoded).
+    static let detailCodeBlockVPad = DetailSetting(key: Key.detailCodeBlockVPad, defaultValue: 16)
+    // List item line-height; looser than body text per the ColaMD reference.
+    static let detailListLineHeight = DetailSetting(key: Key.detailListLineHeight, defaultValue: 1.8)
 
     enum IndentStyle: String, CaseIterable, Identifiable {
         case spaces
@@ -118,6 +125,9 @@ enum AppSettings {
         static let detailInlineCodePadX = "settings.appearance.detail.inlineCodePadX"
         static let detailCodeCornerRadius = "settings.appearance.detail.codeCornerRadius"
         static let detailCodeBlockHPad = "settings.appearance.detail.codeBlockHPad"
+        static let detailQuoteMargin = "settings.appearance.detail.quoteMargin"
+        static let detailCodeBlockVPad = "settings.appearance.detail.codeBlockVPad"
+        static let detailListLineHeight = "settings.appearance.detail.listLineHeight"
         static let diagnosticLogging = "settings.general.diagnosticLogging"
         static let verboseEditorDiagnostics = "settings.advanced.verboseEditorDiagnostics"
         static let blockExternalImages = "settings.advanced.blockExternalImages"

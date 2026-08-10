@@ -55,12 +55,13 @@ struct AppearanceSettingsView: View {
     /// value (including 0) takes effect immediately — the editor re-renders on
     /// `UserDefaults.didChangeNotification`.
     private func detailSliderRow(_ title: String, key: String, fallback: Double,
-                                 range: ClosedRange<Double>, format: String) -> some View {
+                                 range: ClosedRange<Double>, format: String,
+                                 step: Double = 1) -> some View {
         GridRow {
             Text(title)
                 .gridColumnAlignment(.trailing)
             HStack(spacing: 8) {
-                Slider(value: detailBinding(key, fallback: fallback), in: range, step: 1)
+                Slider(value: detailBinding(key, fallback: fallback), in: range, step: step)
                     .frame(width: 200)
                 Text(String(format: format, effectiveValue(key, fallback: fallback)))
                     .frame(width: 44, alignment: .trailing)
@@ -161,6 +162,15 @@ struct AppearanceSettingsView: View {
             detailSliderRow("代码块左右内边距:",
                             key: AppSettings.Key.detailCodeBlockHPad, fallback: 16,
                             range: 0...40, format: "%.0f pt")
+            detailSliderRow("代码块上下内边距:",
+                            key: AppSettings.Key.detailCodeBlockVPad, fallback: 16,
+                            range: 0...40, format: "%.0f pt")
+            detailSliderRow("引用块上下外边距:",
+                            key: AppSettings.Key.detailQuoteMargin, fallback: 16,
+                            range: 0...40, format: "%.0f pt")
+            detailSliderRow("列表行距:",
+                            key: AppSettings.Key.detailListLineHeight, fallback: 1.8,
+                            range: 1.0...2.5, format: "%.2f 倍", step: 0.05)
 
             GridRow {
                 Divider().gridCellColumns(2)

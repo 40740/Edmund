@@ -91,6 +91,22 @@ enum HTMLTheme {
         let pageMaxWidth = maxContentWidthPoints < 100_000
             ? "\(trim(CGFloat(maxContentWidthPoints)))px" : "none"
 
+        // Theme-detail knobs (Settings ▸ 外观 ▸ 细节样式). EdmundCore reads these
+        // raw UserDefaults values directly — the Appearance pane sliders write
+        // them and Read mode re-renders on `UserDefaults.didChangeNotification`.
+        // Fallbacks match `AppSettings.detail*` so an untouched slider renders the
+        // intended default. (Keys are duplicated as string literals here because
+        // EdmundCore can't import the app's `AppSettings`; keep them in step with
+        // `AppSettings.Key.detail*`.)
+        let dHeadingRuleOffset = Self.detailDouble(Self.kHeadingRuleOffset, 6)
+        let dQuoteVPad         = Self.detailDouble(Self.kQuoteVPad, 15)
+        let dInlineCodePadX    = Self.detailDouble(Self.kInlineCodePadX, 6)
+        let dCodeCornerRadius  = Self.detailDouble(Self.kCodeCornerRadius, 6)
+        let dCodeBlockHPad     = Self.detailDouble(Self.kCodeBlockHPad, 16)
+        let dCodeBlockVPad     = Self.detailDouble(Self.kCodeBlockVPad, 16)
+        let dQuoteMargin       = Self.detailDouble(Self.kQuoteMargin, 16)
+        let dListLineHeight    = Self.detailDouble(Self.kListLineHeight, 1.8)
+
         return """
         :root {
           --body-font: \(cssFontStack(theme.fontName, generic: "serif"));
@@ -108,7 +124,7 @@ enum HTMLTheme {
              one level lighter and reads as nothing; dark mode needs its own step,
              and a preset may paint its own chip (Elegant's light paper). */
           --inline-code-bg: \(theme.preset.inlineCodeBackgroundHex
-              ?? (dark ? "#3c3c3c" : codeBg));
+              ?? (dark ? "#3c3c3c" : "#eaeaea"));
           --marker: \(dark ? darkChrome : resolvedRGBA(.tertiaryLabelColor, dark: dark));
           --table-border: \(dark ? darkRule : rule);
           --table-zebra: \(zebra);
@@ -123,6 +139,15 @@ enum HTMLTheme {
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
           --page-max-width: \(pageMaxWidth);
+          /* Theme-detail knobs (Settings ▸ 外观 ▸ 细节样式), driven by sliders. */
+          --heading-rule-offset: \(trim(CGFloat(dHeadingRuleOffset)))px;
+          --quote-vpad: \(trim(CGFloat(dQuoteVPad)))px;
+          --quote-margin: \(trim(CGFloat(dQuoteMargin)))px;
+          --inline-code-pad-x: \(trim(CGFloat(dInlineCodePadX)))px;
+          --code-hpad: \(trim(CGFloat(dCodeBlockHPad)))px;
+          --code-vpad: \(trim(CGFloat(dCodeBlockVPad)))px;
+          --code-radius: \(trim(CGFloat(dCodeCornerRadius)))px;
+          --list-line-height: \(trim(CGFloat(dListLineHeight)));
         }
         \(calloutVars(callouts, dark: dark))
         \(staticRules)
@@ -216,7 +241,7 @@ enum HTMLTheme {
     h1 { font-size: 1.5em; } h2 { font-size: 1.3em; } h3 { font-size: 1.15em; }
     h4 { font-size: 1em; } h5 { font-size: 1em; } h6 { font-size: 1em; }
     /* ColaMD's signature: h1/h2 carry a hairline rule under the text. */
-    h1, h2 { border-bottom: 1px solid var(--rule); padding-bottom: 0.3em; }
+    h1, h2 { border-bottom: 1px solid var(--rule); padding-bottom: var(--heading-rule-offset); }
     :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
     a { color: var(--accent); text-decoration: underline; }
     /* Body color, not --code: the editor draws inline code in the body color
@@ -224,8 +249,9 @@ enum HTMLTheme {
     /* Radii are em, not px, so the chip's corners keep their proportion as the
        font-size stepper moves — a fixed 4px reads as square at large sizes. */
     code { font-family: var(--mono-font); font-size: 0.92em; color: var(--inline-code-ink);
-           background: var(--inline-code-bg); padding: 0.1em 0.35em; border-radius: 0.25em; }
-    pre { background: var(--code-bg); padding: 12px 14px; border-radius: 0.5em; overflow-x: auto;
+           background: var(--inline-code-bg); padding: 0.12em var(--inline-code-pad-x); border-radius: 0.25em; }
+    pre { background: var(--code-bg); padding: var(--code-vpad) var(--code-hpad);
+          border-radius: var(--code-radius); overflow-x: auto;
           /* tab-size: browsers default to 8; match the common editor convention of 4. */
           tab-size: 4; -moz-tab-size: 4; }
     pre code { color: var(--fg); background: none; padding: 0; font-size: var(--mono-size); }
@@ -250,7 +276,7 @@ enum HTMLTheme {
     .code-block-wrap:hover .code-copy-icon { opacity: 1; }
     /* A ColaMD preset colors the bar and fills the panel (Elegant's red bar /
        soft paper fill); otherwise the neutral dim bar, no fill. */
-    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--quote-bar);
+    blockquote { margin: var(--quote-margin) 0; padding: var(--quote-vpad) 1em; border-left: 3px solid var(--quote-bar);
                  background: var(--quote-bg); color: var(--quote-text); }
     /* ColaMD Elegant paints bold in the accent red; other themes keep body ink. */
     strong { color: var(--strong); }
@@ -304,7 +330,7 @@ enum HTMLTheme {
        line pitch apart — same as a wrapped line inside an item. Any margin here
        makes Read mode's lists looser than the text you typed them into; measured,
        0.35em put items 31.5pt apart against the editor's 26.0pt. */
-    li { margin: 0; }
+    li { margin: 0; line-height: var(--list-line-height); }
     li::marker { color: var(--marker); font-size: 0.85em; }
     /* Numbers read as text, not as a glyph: keep them at the item's own size so
        Read mode matches Edit mode, where the "N." keeps the body font. */
@@ -516,5 +542,29 @@ enum HTMLTheme {
     /// Formats a CGFloat without a trailing ".0" so CSS reads cleanly.
     private static func trim(_ v: CGFloat) -> String {
         v == v.rounded() ? String(Int(v)) : String(format: "%g", v)
+    }
+
+    // MARK: Theme-detail knobs (Settings ▸ 外观 ▸ 细节样式)
+
+    /// UserDefaults keys for the theme-detail sliders. EdmundCore can't import the
+    /// app's `AppSettings`, so these string literals are duplicated from
+    /// `AppSettings.Key.detail*` — keep them in sync.
+    private static let kHeadingRuleOffset = "settings.appearance.detail.headingRuleOffset"
+    private static let kQuoteVPad         = "settings.appearance.detail.quoteVPad"
+    private static let kInlineCodePadX    = "settings.appearance.detail.inlineCodePadX"
+    private static let kCodeCornerRadius  = "settings.appearance.detail.codeCornerRadius"
+    private static let kCodeBlockHPad     = "settings.appearance.detail.codeBlockHPad"
+    private static let kCodeBlockVPad     = "settings.appearance.detail.codeBlockVPad"
+    private static let kQuoteMargin       = "settings.appearance.detail.quoteMargin"
+    private static let kListLineHeight    = "settings.appearance.detail.listLineHeight"
+
+    /// Reads a theme-detail slider value from UserDefaults, falling back to
+    /// `fallback` when the key was never written (so an untouched slider renders
+    /// the intended default).
+    private static func detailDouble(_ key: String, _ fallback: Double) -> Double {
+        guard let obj = UserDefaults.standard.object(forKey: key) else { return fallback }
+        if let d = obj as? Double { return d }
+        if let i = obj as? Int { return Double(i) }
+        return fallback
     }
 }
