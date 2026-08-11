@@ -454,7 +454,7 @@ struct EditorStylingTests {
     @MainActor func highlightBackground() {
         let editor = makeEditor()
         let styled = editor.styleBlock("==important==")
-        let val = styled.attribute(.backgroundColor, at: 2, effectiveRange: nil)
+        let val = styled.attribute(.highlightChip, at: 2, effectiveRange: nil)
         #expect(val != nil)
     }
 

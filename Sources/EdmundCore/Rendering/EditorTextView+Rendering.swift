@@ -296,7 +296,14 @@ extension EditorTextView {
 
             case .highlight:
                 guard span.contentRange.upperBound <= result.length else { continue }
-                result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: span.contentRange)
+                // Highlight (==mark==): a padded, rounded chip — the same
+                // treatment as inline code. TextKit 2's `.backgroundColor`
+                // hugs the glyphs with no padding, so store the wash in
+                // `.highlightChip` and let `drawInlineCodeChips` paint the
+                // padded rounded pill.
+                result.addAttribute(.highlightChip,
+                                    value: NSColor.systemYellow.withAlphaComponent(0.3),
+                                    range: span.contentRange)
 
             case .heading(let level):
                 guard span.fullRange.upperBound <= result.length else { continue }
@@ -462,9 +469,13 @@ extension EditorTextView {
                         cursor = row.upperBound
                     }
                     for (i, row) in rows.enumerated() {
-                        let ownBar = BlockDecoration(.leftBar(color: barColor, width: 2),
-                                                     inset: CGFloat(depth) * quoteMarkerWidth,
-                                                     hugsTextTop: i == 0)
+                        // The quote bar spans the FULL box height (top and bottom
+                        // padding included), not just the text: it now reads as
+                        // vertically centered within the whole quote panel and is
+                        // visibly thicker (4pt) so the blockquote's left edge is
+                        // unmistakable.
+                        let ownBar = BlockDecoration(.leftBar(color: barColor, width: 4),
+                                                     inset: CGFloat(depth) * quoteMarkerWidth)
                         if depth == 0, let bg = theme.quoteBackgroundColor {
                             // Preset panel fill: the box joins the bar in a
                             // list so both draw. Plain themes (no background)
@@ -848,7 +859,7 @@ extension EditorTextView {
         case "u":
             result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
         case "mark":
-            result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: range)
+            result.addAttribute(.highlightChip, value: NSColor.systemYellow.withAlphaComponent(0.3), range: range)
         case "kbd":
             let scale = ctx.pointSize / bodyFont.pointSize
             let mono = scale == 1 ? inlineCodeFont

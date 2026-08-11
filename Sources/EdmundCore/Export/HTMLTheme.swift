@@ -222,9 +222,11 @@ enum HTMLTheme {
     /* Body color, not --code: the editor draws inline code in the body color
        too, and the two views must agree. --code still tints block code. */
     /* Radii are em, not px, so the chip's corners keep their proportion as the
-       font-size stepper moves — a fixed 4px reads as square at large sizes. */
+       font-size stepper moves — a fixed 4px reads as square at large sizes.
+       The inline-code chip gets a generous padding and a heavily rounded
+       (semicircle-ish) corner so it reads as a soft pill, not a tight box. */
     code { font-family: var(--mono-font); font-size: 0.92em; color: var(--inline-code-ink);
-           background: var(--inline-code-bg); padding: 0.1em 0.35em; border-radius: 0.25em; }
+           background: var(--inline-code-bg); padding: 0.2em 0.5em; border-radius: 0.4em; }
     pre { background: var(--code-bg); padding: 12px 14px; border-radius: 0.5em; overflow-x: auto;
           /* tab-size: browsers default to 8; match the common editor convention of 4. */
           tab-size: 4; -moz-tab-size: 4; }
@@ -249,8 +251,10 @@ enum HTMLTheme {
     .code-copy-icon { opacity: 0; transition: opacity .15s; }
     .code-block-wrap:hover .code-copy-icon { opacity: 1; }
     /* A ColaMD preset colors the bar and fills the panel (Elegant's red bar /
-       soft paper fill); otherwise the neutral dim bar, no fill. */
-    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--quote-bar);
+       soft paper fill); otherwise the neutral dim bar, no fill. The bar is
+       thicker (4px) and the vertical padding is balanced (same top and bottom)
+       so the quote reads as one aligned panel. */
+    blockquote { margin: 1em 0; padding: 0.8em 1.2em; border-left: 4px solid var(--quote-bar);
                  background: var(--quote-bg); color: var(--quote-text); }
     /* ColaMD Elegant paints bold in the accent red; other themes keep body ink. */
     strong { color: var(--strong); }
@@ -264,7 +268,9 @@ enum HTMLTheme {
     blockquote > blockquote:last-child,
     .callout-body > blockquote:last-child { margin-bottom: 0; }
     hr { border: none; border-top: 1.5px solid var(--hr); margin: 1.6em 0; }
-    mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
+    /* ==highlight==: a soft rounded pill with real padding (not the tight
+       flat wash that hugged the glyphs). Matches the Edit-mode chip. */
+    mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0.2em 0.4em; border-radius: 0.4em; }
     /* Obsidian #tag: an accent-colored pill. Style only, no navigation. */
     .tag { color: var(--accent);
            background: color-mix(in srgb, var(--accent) 14%, transparent);

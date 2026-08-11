@@ -45,13 +45,16 @@ struct BlockquoteNestingTests {
         #expect(insets == [0])
     }
 
-    @Test("Bar hugs the text top on the first line only; interior lines tile full-height")
+    @Test("Bar spans the full quote box height on every line (centered, not text-hugging)")
     func firstLineHugsTextTop() {
         let editor = makeEditor()
         let md = "> first\n> second"
         let s = editor.styleBlock(md)
+        // The bar now spans the whole quote panel (top/bottom padding included)
+        // so it reads as centered against the box — it no longer hugs the text
+        // top on any line.
         let first = s.attribute(.blockDecoration, at: 0, effectiveRange: nil) as? BlockDecoration
-        #expect(first?.hugsTextTop == true)
+        #expect(first?.hugsTextTop == false)
         let secondLoc = (md as NSString).range(of: "> second").location
         let second = s.attribute(.blockDecoration, at: secondLoc, effectiveRange: nil) as? BlockDecoration
         #expect(second?.hugsTextTop == false)

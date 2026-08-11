@@ -126,7 +126,7 @@ struct InlineStylingActiveTests {
         activateBlock(0, in: editor)
 
         let a = attrs(at: 2, in: editor)
-        let bg = a[.backgroundColor] as? NSColor
+        let bg = a[.highlightChip] as? NSColor
         #expect(bg != nil)
     }
 
@@ -343,7 +343,7 @@ struct InlineStylingInactiveTests {
         let base = editor.blocks[0].range.location
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         let a = attrs(at: base + 2, in: editor)
-        #expect(a[.backgroundColor] != nil)
+        #expect(a[.highlightChip] != nil)
     }
 
     @Test("Non-active [link](url) hides syntax, link text has underline and accent color")

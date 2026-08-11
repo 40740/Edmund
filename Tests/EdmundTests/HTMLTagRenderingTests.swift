@@ -194,7 +194,7 @@ struct HTMLTagRenderingTests {
         #expect(attr(.inlineCodeChip, at: 5, in: kbd) as? NSColor == editor.inlineCodeBackground)
 
         let mark = editor.styleBlock("<mark>M</mark>", cursorPosition: nil)
-        #expect(attr(.backgroundColor, at: 6, in: mark) != nil)
+        #expect(attr(.highlightChip, at: 6, in: mark) != nil)
 
         let sub = editor.styleBlock("<sub>2</sub>", cursorPosition: nil)
         #expect((attr(.baselineOffset, at: 5, in: sub) as? CGFloat ?? 0) < 0)

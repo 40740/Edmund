@@ -69,6 +69,11 @@ public extension NSAttributedString.Key {
     /// (TextKit 2 has no native inline background padding — see
     /// `drawInlineCodeChips`).
     static let inlineCodeChip = NSAttributedString.Key("MarkdownEditor.inlineCodeChip")
+    /// Character-level highlight (==mark==) chip background. Value: `NSColor`.
+    /// TextKit 2's `.backgroundColor` paints tight against the glyphs with no
+    /// padding or rounding, so like inline code the highlight is stored here
+    /// and drawn as a padded rounded pill in `drawInlineCodeChips`.
+    static let highlightChip = NSAttributedString.Key("MarkdownEditor.highlightChip")
 }
 
 /// Value object describing what to draw behind a decorated paragraph.
@@ -558,13 +563,17 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     }
 
     /// Extra row height needed to fit the tallest wrapped cell, beyond the
-    /// row's natural (single-line) height.
+    /// row's natural (single-line) height. The wrapped content is drawn from
+    /// the row's first-line top (`cellWrapTopInset`) downward, so its full
+    /// extent is `cellWrapTopInset + tallest`; reserving only `tallest` would
+    /// clip the last wrapped line by any positive top inset, so that too is
+    /// added.
     private var tableRowExtraHeight: CGFloat {
         guard !resolvedCellWraps.isEmpty else { return 0 }
         let tallest = resolvedCellWraps
             .map { $0.lines.reduce(0) { $0 + $1.typographicBounds.height } }
             .max() ?? 0
-        return max(0, tallest - super.layoutFragmentFrame.height)
+        return max(0, tallest + max(0, cellWrapTopInset) - super.layoutFragmentFrame.height)
     }
 
     required init?(coder: NSCoder) {
@@ -657,6 +666,23 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             if let rect = overlayRect(anchorOffset: offset, overlay: overlay) {
                 bounds = bounds.union(rect.insetBy(dx: -2, dy: -2))
             }
+        }
+        // Wrapped (overflowing) table cells are redrawn from the fragment's
+        // own coordinate space at `wrap.x` for `contentWidth`, stacked from
+        // `cellWrapTopInset` downward. Their full extent must be part of the
+        // rendering surface or the last wrapped line gets clipped — include it
+        // explicitly (the decoration box above already covers the table's full
+        // width and the extra row height, but never hurts to be exact).
+        if !resolvedCellWraps.isEmpty {
+            let xMin = resolvedCellWraps.map { $0.wrap.x }.min() ?? 0
+            let xMax = resolvedCellWraps.map { $0.wrap.x + $0.wrap.contentWidth }.max() ?? 0
+            let yMax = resolvedCellWraps.map {
+                $0.lines.reduce(0) { $0 + $1.typographicBounds.height }
+            }.max() ?? 0
+            bounds = bounds.union(CGRect(x: containerLeft + xMin,
+                                         y: min(0, cellWrapTopInset),
+                                         width: xMax - xMin,
+                                         height: yMax + max(0, cellWrapTopInset)))
         }
         // The language label sits at the container's right edge, far outside
         // this (short, invisible) fence line's own text frame.
@@ -945,9 +971,24 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 // only the fragment that starts the block (top corners) and the
                 // one that ends it (bottom corners), keeping the middle rows
                 // square so the rows tile into a single rounded panel.
-                codeBoxPath(columnRect, radius: cornerRadius,
-                            topRounded: codeBlockLabel != nil,
-                            bottomRounded: codeBlockLastLine).fill()
+                //
+                // Adjacent row fragments share an exact edge, but their fills
+                // can leave a hairline antialiasing seam that reads as a faint
+                // horizontal line across the panel. Overlap each row by a point
+                // (except the very top of the first row and the very bottom of
+                // the last, which carry the rounding) so the rows tile into one
+                // seamless pure-background block with no visible line.
+                let seam: CGFloat = 1
+                let topRounded = codeBlockLabel != nil
+                let bottomRounded = codeBlockLastLine
+                let expandTop = topRounded ? 0 : seam
+                let expandBottom = bottomRounded ? 0 : seam
+                var fillRect = columnRect
+                fillRect.origin.y -= expandTop
+                fillRect.size.height += expandTop + expandBottom
+                codeBoxPath(fillRect, radius: cornerRadius,
+                            topRounded: topRounded,
+                            bottomRounded: bottomRounded).fill()
             } else {
                 context.fill(columnRect)
             }
@@ -1109,50 +1150,58 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         return path
     }
 
-    /// Draws padded rounded pills behind inline-code spans (ColaMD's chip
-    /// look). TextKit 2 paints `.backgroundColor` tight against the glyphs
-    /// with no padding hook, so the styling code stores the color in
-    /// `.inlineCodeChip` and this pass draws the padded pill itself before
-    /// `super.draw` paints the text. Rects come from the layout manager in
-    /// container coordinates (this context's space) and are merged per line
-    /// so each span is one pill rather than per-character capsules.
+    /// Draws padded rounded pills behind inline-code spans and highlight
+    /// (==mark==) runs (the chip look). TextKit 2 paints `.backgroundColor`
+    /// tight against the glyphs with no padding hook, so the styling code
+    /// stores the colour in `.inlineCodeChip` / `.highlightChip` and this pass
+    /// draws the padded pill itself before `super.draw` paints the text. Rects
+    /// come from the layout manager in container coordinates (this context's
+    /// space) and are merged per line so each span is one pill rather than
+    /// per-character capsules.
+    ///
+    /// Padding is generous (0.32em/0.1em horizontal/vertical) and corners are
+    /// heavily rounded so chips read as soft, non-jagged pills.
     private func drawInlineCodeChips(at point: CGPoint, in context: CGContext) {
         guard let tlm = chipLayoutManager,
               let paragraph = textElement as? NSTextParagraph else { return }
         guard let paraLoc = paragraph.elementRange?.location else { return }
         let str = paragraph.attributedString
-        let padX: CGFloat = 6, padY: CGFloat = 2, radius: CGFloat = 3
-        str.enumerateAttribute(.inlineCodeChip,
-                               in: NSRange(location: 0, length: str.length),
-                               options: []) { value, range, _ in
-            guard let color = value as? NSColor, range.length > 0,
-                  let start = tlm.location(paraLoc, offsetBy: range.location),
-                  let end = tlm.location(paraLoc, offsetBy: range.location + range.length),
-                  let textRange = NSTextRange(location: start, end: end) else { return }
-            var rects: [CGRect] = []
-            tlm.enumerateTextSegments(in: textRange, type: .standard,
-                                      options: []) { _, rect, _, _ in
-                rects.append(rect)
-                return true
-            }
-            guard !rects.isEmpty else { return }
-            var merged: [CGRect] = []
-            for rect in rects.sorted(by: { $0.minX < $1.minX }) {
-                if var last = merged.last, abs(last.midY - rect.midY) < 1 {
-                    last = last.union(rect)
-                    merged[merged.count - 1] = last
-                } else {
-                    merged.append(rect)
+        let padX: CGFloat = 6, padY: CGFloat = 3, radius: CGFloat = 6
+        func drawChips(_ key: NSAttributedString.Key) {
+            str.enumerateAttribute(key,
+                                   in: NSRange(location: 0, length: str.length),
+                                   options: []) { value, range, _ in
+                guard let color = value as? NSColor, range.length > 0,
+                      let start = tlm.location(paraLoc, offsetBy: range.location),
+                      let end = tlm.location(paraLoc, offsetBy: range.location + range.length),
+                      let textRange = NSTextRange(location: start, end: end) else { return }
+                var rects: [CGRect] = []
+                tlm.enumerateTextSegments(in: textRange, type: .standard,
+                                          options: []) { _, rect, _, _ in
+                    rects.append(rect)
+                    return true
                 }
+                guard !rects.isEmpty else { return }
+                var merged: [CGRect] = []
+                for rect in rects.sorted(by: { $0.minX < $1.minX }) {
+                    if var last = merged.last, abs(last.midY - rect.midY) < 1 {
+                        last = last.union(rect)
+                        merged[merged.count - 1] = last
+                    } else {
+                        merged.append(rect)
+                    }
+                }
+                context.saveGState()
+                context.setFillColor(color.cgColor)
+                for rect in merged {
+                    let pill = rect.insetBy(dx: -padX, dy: -padY)
+                    NSBezierPath(roundedRect: pill, xRadius: radius, yRadius: radius).fill()
+                }
+                context.restoreGState()
             }
-            context.saveGState()
-            context.setFillColor(color.cgColor)
-            for rect in merged {
-                let pill = rect.insetBy(dx: -padX, dy: -padY)
-                NSBezierPath(roundedRect: pill, xRadius: radius, yRadius: radius).fill()
-            }
-            context.restoreGState()
         }
+        drawChips(.inlineCodeChip)
+        drawChips(.highlightChip)
     }
 }
 

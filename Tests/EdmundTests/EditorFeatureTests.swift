@@ -491,6 +491,6 @@ struct FullDocumentIntegrationTests {
         #expect(displayText(for: 4, in: editor) == "==highlight==")
         let b4 = editor.blocks[4].range.location
         let a4 = attrs(at: b4 + 2, in: editor)  // content starts after ==
-        #expect(a4[.backgroundColor] != nil)
+        #expect(a4[.highlightChip] != nil)
     }
 }
