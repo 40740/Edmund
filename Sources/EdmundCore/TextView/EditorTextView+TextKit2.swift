@@ -805,9 +805,18 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// indent guides). In dark mode `separatorColor` is ~10% ink and all but
     /// vanishes, so use the shared marker gray there; light mode keeps
     /// `separatorColor`. Read mode's `--table-border` matches.
+    ///
+    /// ColaMD preset overrides both appearances with a warm border
+    /// (#d8d3ce light / #3a342e dark — UI-设计文档.md §2) so table borders
+    /// match the paper palette rather than the neutral system gray.
     private var chromeLineColor: NSColor {
-        NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? EditorTextView.darkRuleGray : NSColor.separatorColor
+        let dark = NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        if let owner, owner.theme.preset == .colaElegant {
+            return dark
+                ? NSColor(srgbRed: 0x3a / 255.0, green: 0x34 / 255.0, blue: 0x2e / 255.0, alpha: 1)
+                : NSColor(srgbRed: 0xd8 / 255.0, green: 0xd3 / 255.0, blue: 0xce / 255.0, alpha: 1)
+        }
+        return dark ? EditorTextView.darkRuleGray : NSColor.separatorColor
     }
 
     /// Vertical hairlines marking a list item's indent columns, drawn under the

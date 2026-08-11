@@ -16,14 +16,19 @@ import AppKit
 extension EditorTextView {
 
     /// Background tint for a code block's box. Matches Read mode's
-    /// `--code-bg` (HTMLTheme.swift) so Edit and Read mode agree.
+    /// `--code-bg` (HTMLTheme.swift) so Edit and Read mode agree. Routes by
+    /// preset: ColaMD uses a dark panel in both appearances (#2c2c2c light /
+    /// #14110f dark) — the "technical counterpoint" to the serif body. Edmund
+    /// keeps its light gray (#f4f4f4) / dark gray (#333333).
     var codeBlockBackground: NSColor {
-        // sRGB, not the calibrated `NSColor(hex:)` helper — same reason as
-        // `editorBackgroundColor`: calibrated renders visibly lighter, and this
-        // has to land exactly on Read mode's --code-bg.
-        isDarkAppearance
-            ? NSColor(srgbRed: 0x33 / 255.0, green: 0x33 / 255.0, blue: 0x33 / 255.0, alpha: 1)
-            : (NSColor(hex: "#f4f4f4") ?? NSColor(calibratedWhite: 0.96, alpha: 1))
+        presetCodeBlockBackground
+    }
+
+    /// Ink for code-block text. ColaMD's dark panel needs a warm off-white
+    /// (#e0dcd7) so the text reads as paper, not white glare; Edmund keeps
+    /// the body foreground.
+    var codeBlockTextColor: NSColor {
+        presetCodeBlockTextColor
     }
 
     /// Applies the background box to an inactive fenced code block. Only

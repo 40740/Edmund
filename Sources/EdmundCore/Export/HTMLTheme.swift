@@ -255,7 +255,10 @@ enum HTMLTheme {
           color: var(--cola-text);
           background: var(--cola-bg);
           margin: 0;
-          padding: 48px 24px;
+          /* ColaMD uses a tighter top pad (30px) than Edmund's 48px — the spec
+             (UI-设计文档.md §4.1 — #write padding: 30px 60px 100px) keeps the
+             first heading closer to the top, like a printed page. */
+          padding: 30px 24px 100px;
           -webkit-font-smoothing: antialiased;
         }
         ::selection { background: var(--cola-selection); }
@@ -270,8 +273,9 @@ enum HTMLTheme {
         }
 
         /* Headings: deeper ink than the body, tighter letter-spacing, generous
-           top gap. h1/h2 carry a faint underline (padding-bottom + border) per
-           the spec — a subtle anchor for sections. */
+           top gap. h1/h2 carry a terracotta-tinged underline (the spec's
+           signature: the accent color anchors section headers) — see
+           UI-设计文档.md §3.2. */
         h1, h2, h3, h4, h5, h6 {
           color: var(--cola-heading);
           font-weight: 700;
@@ -279,7 +283,7 @@ enum HTMLTheme {
           letter-spacing: 0.02em;
           margin: 1.8em 0 0.65em;
         }
-        h1 { font-size: 1.8em; padding-bottom: 0.3em; border-bottom: 1px solid var(--cola-border); }
+        h1 { font-size: 1.8em; padding-bottom: 0.3em; border-bottom: 2px solid var(--cola-accent); }
         h2 { font-size: 1.5em; padding-bottom: 0.2em; border-bottom: 1px solid var(--cola-border); }
         h3 { font-size: 1.25em; }
         h4 { font-size: 1.1em; }
