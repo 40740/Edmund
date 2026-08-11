@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.5.5.3] - 2026-08-11
+
+- 修复 v0.5.5.2 编译错误:ColaThemePreset.displayName 的 switch 缺少闭合括号导致整个 enum 解析失败
+- 此修复使「优雅 Plus」主题能正常编译发布
+
+(修复前 v0.5.5.2 因编译错误无法发布,请使用 v0.5.5.3)
+
+
 ## [0.5.5.2] - 2026-08-11
 
 - 新增「优雅 Plus」主题(设置▸外观):基于 ColaMD 优雅主题,字间距加大至 0.04em,中英文更舒展

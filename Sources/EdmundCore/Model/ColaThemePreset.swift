@@ -27,6 +27,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         case .colaElegant: return "ColaMD 优雅"
         case .colaNewsprint: return "ColaMD 新闻纸"
         case .elegantPlus: return "优雅 Plus"
+        }
     }
 
     /// Whether this preset forces a dark appearance (`.system` is nil).
