@@ -12,8 +12,8 @@ enum AppSettings {
         var id: Self { self }
         var label: String {
             switch self {
-            case .createNewDocument: return "Create New Document"
-            case .doNothing: return "Do Nothing"
+            case .createNewDocument: return "创建新文档"
+            case .doNothing: return "不执行任何操作"
             }
         }
     }
@@ -26,9 +26,9 @@ enum AppSettings {
         var id: Self { self }
         var label: String {
             switch self {
-            case .matchSystem: return "Match System"
-            case .light: return "Light"
-            case .dark: return "Dark"
+            case .matchSystem: return "跟随系统"
+            case .light: return "浅色"
+            case .dark: return "深色"
             }
         }
         /// Display order in the Appearance pane (left to right).
@@ -43,8 +43,8 @@ enum AppSettings {
         var id: Self { self }
         var label: String {
             switch self {
-            case .spaces: return "Spaces"
-            case .tabs: return "Tabs"
+            case .spaces: return "空格"
+            case .tabs: return "制表符"
             }
         }
     }
@@ -55,12 +55,12 @@ enum AppSettings {
         var id: Self { self }
         var label: String {
             switch self {
-            case .oneDay: return "1 day"
-            case .twoDays: return "2 days"
-            case .oneWeek: return "1 week"
-            case .twoWeeks: return "2 weeks"
-            case .thirtyDays: return "30 days"
-            case .never: return "Never"
+            case .oneDay: return "1 天"
+            case .twoDays: return "2 天"
+            case .oneWeek: return "1 周"
+            case .twoWeeks: return "2 周"
+            case .thirtyDays: return "30 天"
+            case .never: return "永不过期"
             }
         }
         /// The retention window in seconds; `nil` means keep forever.

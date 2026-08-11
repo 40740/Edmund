@@ -53,9 +53,15 @@ enum DocumentHTML {
 
     private static func fillMath(_ html: String, theme: EditorTheme, dark: Bool) -> String {
         // Same ink as the editor draws its equations in — one definition for both
-        // modes (EditorTheme.bodyTextColor). Resolved against `dark` rather than
-        // the current appearance because an export can target either.
-        let color = EditorTheme.bodyTextColorResolved(dark: dark)
+        // modes (EditorTheme.bodyTextColor). ColaMD preset uses its warm #2c2c2c.
+        // Resolved against `dark` rather than the current appearance because an
+        // export can target either.
+        let color: NSColor
+        if theme.preset == .colaElegant {
+            color = NSColor(srgbRed: 0x2C / 255.0, green: 0x2C / 255.0, blue: 0x2C / 255.0, alpha: 1.0)
+        } else {
+            color = EditorTheme.bodyTextColorResolved(dark: dark)
+        }
         var out = replaceMatches(html, pattern: displayMathPattern) { groups in
             let id = groups[1]
             let tex = unescapeAttr(groups[2])

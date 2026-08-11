@@ -392,19 +392,36 @@ public class EditorTextView: NSTextView {
     /// ships the compiled asset catalog, and to the user's System Settings accent
     /// otherwise. Drives links, the checked-checkbox icon, the insertion point,
     /// and the selection tint so the editor matches the native AppKit controls.
-    var accentColor: NSColor { .controlAccentColor }
+    /// ColaMD preset overrides to its terracotta #c44b2b accent.
+    var accentColor: NSColor {
+        if theme.preset == .colaElegant {
+            return NSColor(srgbRed: 0xC4 / 255.0, green: 0x4B / 255.0, blue: 0x2B / 255.0, alpha: 1.0)
+        }
+        return .controlAccentColor
+    }
 
     /// Foreground color for all body text — and, through `mathOverlay`, for the
     /// math bitmaps drawn alongside it. Defined once in `EditorTheme` so Read
     /// mode's `--fg` and its embedded equations use the identical ink; see the
     /// rationale there.
     var foregroundColor: NSColor {
-        EditorTheme.bodyTextColor(dark: isDarkAppearance)
+        // ColaMD uses a warm #2c2c2c ink on the paper background.
+        if theme.preset == .colaElegant {
+            return NSColor(srgbRed: 0x2C / 255.0, green: 0x2C / 255.0, blue: 0x2C / 255.0, alpha: 1.0)
+        }
+        return EditorTheme.bodyTextColor(dark: isDarkAppearance)
     }
 
     /// Background tint for text selection. Uses system orange so selections read
     /// as warm amber rather than tracking the (potentially red) brand accent.
-    var selectionHighlightColor: NSColor { .systemOrange.withAlphaComponent(0.3) }
+    /// ColaMD preset uses the reference's `--select-text-bg-color`:
+    /// rgba(196, 75, 43, 0.2).
+    var selectionHighlightColor: NSColor {
+        if theme.preset == .colaElegant {
+            return NSColor(srgbRed: 0xC4 / 255.0, green: 0x4B / 255.0, blue: 0x2B / 255.0, alpha: 0.2)
+        }
+        return .systemOrange.withAlphaComponent(0.3)
+    }
 
     /// Background color for the editor surface. Light appearance keeps the
     /// standard `.textBackgroundColor` semantic; dark appearance uses `#292929`,
@@ -421,6 +438,11 @@ public class EditorTextView: NSTextView {
     /// sRGB hex is the same one `HTMLTheme.backgroundHex` emits so the editor
     /// surface and the Read-mode page stay pixel-identical.
     var editorBackgroundColor: NSColor {
+        // ColaMD preset uses the warm paper background (#f0edea) regardless
+        // of system appearance — matching the ColaMD elegant.css reference.
+        if theme.preset == .colaElegant {
+            return NSColor(srgbRed: 0xF0 / 255.0, green: 0xED / 255.0, blue: 0xEA / 255.0, alpha: 1.0)
+        }
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         switch theme.preset {
         case .edmund:
@@ -667,6 +689,11 @@ public class EditorTextView: NSTextView {
             + "pendingRecompose=\(pendingRecompose ? "Y" : "N") "
             + "firstResponder=\(window?.firstResponder === self ? "Y" : "N") "
             + "clicks=\(event.clickCount)")
+        // Copy button on a code block's top row.
+        if codeCopyButtonTarget(at: event) {
+            return
+        }
+
         if event.modifierFlags.contains(.command) {
             if let target = wikiTarget(at: event) {
                 followWikiLink(target)
@@ -778,6 +805,86 @@ public class EditorTextView: NSTextView {
     private func linkDestination(at event: NSEvent) -> String? {
         guard let storage = textStorage, let charIndex = clickCharIndex(at: event) else { return nil }
         return storage.attribute(.editorLinkURL, at: charIndex, effectiveRange: nil) as? String
+    }
+
+    /// Detect a click on a code block's copy button. If the click lands inside
+    /// a copy button's hit rect, copies that code block's content to the
+    /// pasteboard and returns true (the event is consumed).
+    private func codeCopyButtonTarget(at event: NSEvent) -> Bool {
+        guard let tlm = textLayoutManager,
+              let storage = textStorage else { return false }
+
+        var point = convert(event.locationInWindow, from: nil)
+        point.x -= textContainerOrigin.x
+        point.y -= textContainerOrigin.y
+
+        // Enumerate all layout fragments and check if the click is inside a
+        // copy button rect.
+        var hitFenceRange: NSRange?
+        tlm.enumerateTextLayoutFragments(
+            from: tlm.documentRange.location, options: [.ensuresLayout]
+        ) { fragment in
+            guard let decorated = fragment as? DecoratedTextLayoutFragment,
+                  decorated.codeBlockHasCopyButton,
+                  let copyRect = decorated.codeCopyButtonRect() else { return true }
+            let frame = decorated.layoutFragmentFrame
+            let buttonInView = CGRect(x: copyRect.minX + frame.minX,
+                                      y: copyRect.minY + frame.minY,
+                                      width: copyRect.width,
+                                      height: copyRect.height)
+            // Convert from container coords back to view coords.
+            let viewRect = CGRect(x: buttonInView.minX + textContainerOrigin.x,
+                                  y: buttonInView.minY + textContainerOrigin.y,
+                                  width: buttonInView.width,
+                                  height: buttonInView.height)
+            let viewPoint = convert(event.locationInWindow, from: nil)
+            if viewRect.contains(viewPoint) {
+                // Found the copy button; record the fence line's char range.
+                if let elementRange = fragment.textElement?.elementRange {
+                    let start = tlm.offset(from: tlm.documentRange.location, to: elementRange.location)
+                    let length = tlm.offset(from: elementRange.location, to: elementRange.end)
+                    hitFenceRange = NSRange(location: start, length: length)
+                }
+                return false
+            }
+            return true
+        }
+
+        guard let fenceRange = hitFenceRange else { return false }
+        // Find the code block's content between its fence lines.
+        let source = rawSource as NSString
+        let ns = storage.string as NSString
+        // The fence row's full line text.
+        let fenceLineRange = ns.lineRange(for: NSRange(location: fenceRange.location, length: 0))
+        guard fenceLineRange.location < source.length else { return false }
+        // Collect all source lines; the fence line index is determined by
+        // walking the source string.
+        let allLines = (source as String).components(separatedBy: "\n")
+        var lineStart = 0
+        var fenceLineIndex = 0
+        var found = false
+        for (i, l) in allLines.enumerated() {
+            let start = lineStart
+            let end = start + l.count
+            if fenceRange.location >= start && fenceRange.location <= end {
+                fenceLineIndex = i
+                found = true
+                break
+            }
+            lineStart += l.count + 1
+        }
+        guard found else { return false }
+        // Collect lines between the opening fence and closing fence.
+        var codeLines: [String] = []
+        for i in (fenceLineIndex + 1)..<allLines.count {
+            let l = allLines[i]
+            if l.hasPrefix("```") || l.hasPrefix("~~~") { break }
+            codeLines.append(l)
+        }
+        let code = codeLines.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code, forType: .string)
+        return true
     }
 
     // MARK: - Stranded-Composition Recovery

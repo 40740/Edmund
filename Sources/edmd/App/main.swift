@@ -194,13 +194,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Edit ▸ Find. Edmund's own commands, so they are rebindable — the standard
     /// Edit items above them (Cut/Copy/Paste, Undo) keep their system shortcuts.
     @MainActor private static let findCommands: [MenuCommand] = [
-        MenuCommand(id: "find.show", group: "Edit", submenu: "Find", title: "Find\u{2026}",
+        MenuCommand(id: "find.show", group: "Edit", submenu: "Find", title: "查找…",
                     action: #selector(EditorTextView.showFindBar(_:)), shortcut: .cmd("f")),
-        MenuCommand(id: "find.replace", group: "Edit", submenu: "Find", title: "Find and Replace\u{2026}",
+        MenuCommand(id: "find.replace", group: "Edit", submenu: "Find", title: "查找并替换…",
                     action: #selector(EditorTextView.showFindReplaceBar(_:)), shortcut: .cmdOpt("f")),
-        MenuCommand(id: "find.next", group: "Edit", submenu: "Find", title: "Find Next",
+        MenuCommand(id: "find.next", group: "Edit", submenu: "Find", title: "查找下一个",
                     action: #selector(EditorTextView.findNext(_:)), shortcut: .cmd("g")),
-        MenuCommand(id: "find.previous", group: "Edit", submenu: "Find", title: "Find Previous",
+        MenuCommand(id: "find.previous", group: "Edit", submenu: "Find", title: "查找上一个",
                     action: #selector(EditorTextView.findPrevious(_:)), shortcut: .cmdShift("g")),
     ]
 
@@ -210,23 +210,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // App menu (required for Cmd+Q)
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About Edmund",
+        appMenu.addItem(withTitle: "关于 Edmund",
                         action: #selector(AppDelegate.showAbout(_:)),
                         keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Settings\u{2026}",
+        appMenu.addItem(withTitle: "设置…",
                         action: #selector(AppDelegate.showSettings(_:)),
                         keyEquivalent: ",")
 
         let updatesItem = appMenu.addItem(
-            withTitle: "Check for Updates\u{2026}",
+            withTitle: "检查更新…",
             action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
             keyEquivalent: "")
         updatesItem.target = updaterController
 
         appMenu.addItem(NSMenuItem.separator())
 
-        appMenu.addItem(withTitle: "Quit Edmund",
+        appMenu.addItem(withTitle: "退出 Edmund",
                         action: #selector(NSApplication.terminate(_:)),
                         keyEquivalent: "q")
         appMenuItem.submenu = appMenu
@@ -234,13 +234,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         // File menu — NSDocument provides the standard actions
         let fileMenuItem = NSMenuItem()
-        let fileMenu = NSMenu(title: "File")
+        let fileMenu = NSMenu(title: "文件")
 
-        fileMenu.addItem(withTitle: "New",
+        fileMenu.addItem(withTitle: "新建",
                          action: #selector(NSDocumentController.newDocument(_:)),
                          keyEquivalent: "n")
 
-        fileMenu.addItem(withTitle: "Open\u{2026}",
+        fileMenu.addItem(withTitle: "打开…",
                          action: #selector(AppDelegate.openDocumentManually(_:)),
                          keyEquivalent: "o")
 
@@ -250,15 +250,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // a hand-made one just sits there empty (the documents *are* recorded;
         // it's only the menu that never hears about them). Fill it on open
         // instead, from NSDocumentController's own list.
-        let recentMenuItem = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
-        let recentMenu = NSMenu(title: "Open Recent")
+        let recentMenuItem = NSMenuItem(title: "打开最近", action: nil, keyEquivalent: "")
+        let recentMenu = NSMenu(title: "打开最近")
         recentMenu.delegate = self
         recentMenuItem.submenu = recentMenu
         fileMenu.addItem(recentMenuItem)
 
         fileMenu.addItem(NSMenuItem.separator())
 
-        fileMenu.addItem(withTitle: "Save",
+        fileMenu.addItem(withTitle: "保存",
                          action: #selector(NSDocument.save(_:)),
                          keyEquivalent: "s")
 
@@ -266,18 +266,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         // Edmund's own File commands are rebindable (Settings ▸ Key Bindings);
         // the standard New/Open/Save/Print above keep their system shortcuts.
-        fileMenu.addItem(MenuCommand(id: "file.rename", group: "File", title: "Rename\u{2026}",
+        fileMenu.addItem(MenuCommand(id: "file.rename", group: "File", title: "重命名…",
                                      action: #selector(Document.rename(_:))).makeItem())
 
-        fileMenu.addItem(MenuCommand(id: "file.moveTo", group: "File", title: "Move To\u{2026}",
+        fileMenu.addItem(MenuCommand(id: "file.moveTo", group: "File", title: "移动到…",
                                      action: #selector(Document.move(_:))).makeItem())
 
         fileMenu.addItem(NSMenuItem.separator())
 
-        fileMenu.addItem(MenuCommand(id: "file.exportPDF", group: "File", title: "Export as PDF\u{2026}",
+        fileMenu.addItem(MenuCommand(id: "file.exportPDF", group: "File", title: "导出为 PDF…",
                                      action: #selector(Document.exportToPDF(_:))).makeItem())
 
-        fileMenu.addItem(withTitle: "Print\u{2026}",
+        fileMenu.addItem(withTitle: "打印…",
                          action: #selector(Document.printDocument(_:)),
                          keyEquivalent: "p")
 
@@ -286,32 +286,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         // Edit menu (required for Cmd+C/V/X/A/Z)
         let editMenuItem = NSMenuItem()
-        let editMenu = NSMenu(title: "Edit")
+        let editMenu = NSMenu(title: "编辑")
 
-        editMenu.addItem(withTitle: "Undo",
+        editMenu.addItem(withTitle: "撤销",
                          action: #selector(EditorTextView.undo(_:)),
                          keyEquivalent: "z")
 
-        let redoItem = editMenu.addItem(withTitle: "Redo",
+        let redoItem = editMenu.addItem(withTitle: "重做",
                                         action: #selector(EditorTextView.redo(_:)),
                                         keyEquivalent: "z")
         redoItem.keyEquivalentModifierMask = [.command, .shift]
 
         editMenu.addItem(NSMenuItem.separator())
 
-        editMenu.addItem(withTitle: "Cut",
+        editMenu.addItem(withTitle: "剪切",
                          action: #selector(NSText.cut(_:)),
                          keyEquivalent: "x")
 
-        editMenu.addItem(withTitle: "Copy",
+        editMenu.addItem(withTitle: "复制",
                          action: #selector(NSText.copy(_:)),
                          keyEquivalent: "c")
 
-        editMenu.addItem(withTitle: "Paste",
+        editMenu.addItem(withTitle: "粘贴",
                          action: #selector(NSText.paste(_:)),
                          keyEquivalent: "v")
 
-        editMenu.addItem(withTitle: "Select All",
+        editMenu.addItem(withTitle: "全选",
                          action: #selector(NSText.selectAll(_:)),
                          keyEquivalent: "a")
 
@@ -321,7 +321,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // is selected. The manual counterpart to Settings ▸ Edit ▸ Document,
         // which only wraps files that already arrived wrapped. First-responder
         // routing like the Find items, so it greys out in Reading mode.
-        editMenu.addItem(withTitle: "Hard Wrap Paragraphs",
+        editMenu.addItem(withTitle: "硬换行段落",
                          action: #selector(EditorTextView.hardWrapParagraphs(_:)),
                          keyEquivalent: "")
 
@@ -331,10 +331,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // which forward to the document's FindController. Grays out in Reading
         // mode (the web view is first responder and implements none of these).
         let findMenuItem = NSMenuItem()
-        let findMenu = NSMenu(title: "Find")
+        let findMenu = NSMenu(title: "查找")
         for command in Self.findCommands { findMenu.addItem(command.makeItem()) }
         findMenuItem.submenu = findMenu
-        findMenuItem.title = "Find"
+        findMenuItem.title = "查找"
         editMenu.addItem(findMenuItem)
 
         // The standard text submenus, same first-responder routing as Find.
@@ -354,44 +354,44 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // and the completion machinery can strand marked text, breaking the
         // storage == rawSource invariant. Same reason "Correct Spelling
         // Automatically" is left out of Spelling and Grammar below.
-        let spellingMenu = NSMenu(title: "Spelling and Grammar")
-        spellingMenu.addItem(withTitle: "Show Spelling and Grammar",
+        let spellingMenu = NSMenu(title: "拼写和语法")
+        spellingMenu.addItem(withTitle: "显示拼写和语法",
                              action: #selector(NSText.showGuessPanel(_:)),
                              keyEquivalent: ":")
-        spellingMenu.addItem(withTitle: "Check Document Now",
+        spellingMenu.addItem(withTitle: "立即检查文档",
                              action: #selector(NSText.checkSpelling(_:)),
                              keyEquivalent: ";")
         spellingMenu.addItem(.separator())
-        spellingMenu.addItem(withTitle: "Check Spelling While Typing",
+        spellingMenu.addItem(withTitle: "输入时检查拼写",
                              action: #selector(NSTextView.toggleContinuousSpellChecking(_:)),
                              keyEquivalent: "")
-        spellingMenu.addItem(withTitle: "Check Grammar With Spelling",
+        spellingMenu.addItem(withTitle: "拼写时检查语法",
                              action: #selector(NSTextView.toggleGrammarChecking(_:)),
                              keyEquivalent: "")
         let spellingItem = NSMenuItem()
-        spellingItem.title = "Spelling and Grammar"
+        spellingItem.title = "拼写和语法"
         spellingItem.submenu = spellingMenu
         editMenu.addItem(spellingItem)
 
-        let transformMenu = NSMenu(title: "Transformations")
-        transformMenu.addItem(withTitle: "Make Upper Case",
+        let transformMenu = NSMenu(title: "转换")
+        transformMenu.addItem(withTitle: "转为大写",
                               action: #selector(NSResponder.uppercaseWord(_:)), keyEquivalent: "")
-        transformMenu.addItem(withTitle: "Make Lower Case",
+        transformMenu.addItem(withTitle: "转为小写",
                               action: #selector(NSResponder.lowercaseWord(_:)), keyEquivalent: "")
-        transformMenu.addItem(withTitle: "Capitalize",
+        transformMenu.addItem(withTitle: "首字母大写",
                               action: #selector(NSResponder.capitalizeWord(_:)), keyEquivalent: "")
         let transformItem = NSMenuItem()
-        transformItem.title = "Transformations"
+        transformItem.title = "转换"
         transformItem.submenu = transformMenu
         editMenu.addItem(transformItem)
 
-        let speechMenu = NSMenu(title: "Speech")
-        speechMenu.addItem(withTitle: "Start Speaking",
+        let speechMenu = NSMenu(title: "朗读")
+        speechMenu.addItem(withTitle: "开始朗读",
                            action: #selector(NSTextView.startSpeaking(_:)), keyEquivalent: "")
-        speechMenu.addItem(withTitle: "Stop Speaking",
+        speechMenu.addItem(withTitle: "停止朗读",
                            action: #selector(NSTextView.stopSpeaking(_:)), keyEquivalent: "")
         let speechItem = NSMenuItem()
-        speechItem.title = "Speech"
+        speechItem.title = "朗读"
         speechItem.submenu = speechMenu
         editMenu.addItem(speechItem)
 
@@ -440,7 +440,7 @@ extension AppDelegate: NSMenuDelegate {
         if !menu.items.isEmpty { menu.addItem(.separator()) }
         // nil target → the document controller picks it up off the responder
         // chain, same as every other standard document action here.
-        menu.addItem(withTitle: "Clear Menu",
+        menu.addItem(withTitle: "清除菜单",
                      action: #selector(NSDocumentController.clearRecentDocuments(_:)),
                      keyEquivalent: "")
     }

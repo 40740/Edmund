@@ -9,7 +9,7 @@ enum ViewMenu {
     /// The top-level "View" menu item (with its submenu).
     static func build() -> NSMenuItem {
         let viewMenuItem = NSMenuItem()
-        let viewMenu = NSMenu(title: "View")
+        let viewMenu = NSMenu(title: "视图")
 
         // Routes through the responder chain to the key window's Document, which
         // flips the persisted setting and retitles this item Show/Hide in
@@ -17,7 +17,7 @@ enum ViewMenu {
         // (AppKit's own toggleToolbarShown(_:) would move the toolbar behind the
         // setting's back.) The title here is the first-launch default; the real
         // one is applied every time the menu opens.
-        viewMenu.addItem(MenuCommand(id: "view.toggleToolbar", group: "View", title: "Hide Toolbar",
+        viewMenu.addItem(MenuCommand(id: "view.toggleToolbar", group: "View", title: "隐藏工具栏",
                                      action: #selector(Document.toggleToolbarShown(_:))).makeItem())
 
         // Full-screen auto-hide. Lives here rather than in Settings, next to
@@ -30,20 +30,20 @@ enum ViewMenu {
         // AppKit auto-inserts "Show Tab Bar"/"Show All Tabs" above this at
         // runtime (window tabbing is on by default) — that position isn't
         // ours to control short of disabling tabbing outright.
-        viewMenu.addItem(withTitle: "Customize Toolbar…",
+        viewMenu.addItem(withTitle: "自定义工具栏…",
                          action: #selector(NSWindow.runToolbarCustomizationPalette(_:)),
                          keyEquivalent: "")
         viewMenu.addItem(.separator())
 
         let typewriterItem = MenuCommand(id: "view.typewriterScroll", group: "View",
-                                         title: "Typewriter Scroll",
+                                         title: "打字机滚动",
                                          action: #selector(AppDelegate.toggleTypewriterMode(_:))).makeItem()
         typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
         viewMenu.addItem(typewriterItem)
 
         // Dims everything but the lines the selection touches. Same setting as
         // Settings ▸ Edit ▸ Editor, so the two always agree.
-        let focusItem = MenuCommand(id: "view.focusMode", group: "View", title: "Focus Mode",
+        let focusItem = MenuCommand(id: "view.focusMode", group: "View", title: "专注模式",
                                     action: #selector(AppDelegate.toggleFocusMode(_:))).makeItem()
         focusItem.state = AppSettings.focusMode ? .on : .off
         viewMenu.addItem(focusItem)
@@ -52,14 +52,14 @@ enum ViewMenu {
         viewMenu.addItem(.separator())
         viewMenu.addItem(FormatMenu.viewModeToggleItem())
         viewMenu.addItem(MenuCommand(id: "view.sourceMode", group: "View",
-                                     title: "Show Source in Editor",
+                                     title: "在编辑器中显示源码",
                                      action: #selector(Document.toggleSourceMode(_:))).makeItem())
 
         // Web Inspector (⌥⌘I). nil target → routes through the responder chain
         // to the key window's Document, so it works from Edit mode too: it
         // switches to Read mode and opens the inspector, and toggles the
         // inspector back off when it's already up.
-        viewMenu.addItem(MenuCommand(id: "view.inspectReader", group: "View", title: "Inspect Reader",
+        viewMenu.addItem(MenuCommand(id: "view.inspectReader", group: "View", title: "检查阅读视图",
                                      action: #selector(Document.toggleReaderInspector(_:)),
                                      shortcut: .cmdOpt("i")).makeItem())
         viewMenu.addItem(.separator())
@@ -79,14 +79,14 @@ enum ViewMenu {
     /// toolbar's own context menu is AppKit's (Icon and Text / … / Customize
     /// Toolbar…) and Apple's apps put this setting in View, the way Safari
     /// carries "Always Show Toolbar in Full Screen".
-    static let autoHideToolbarTitle = "Auto-Hide Toolbar"
+    static let autoHideToolbarTitle = "自动隐藏工具栏"
 
     private static let zoomCommands: [MenuCommand] = [
-        MenuCommand(id: "view.actualSize", group: "View", title: "Actual Size",
+        MenuCommand(id: "view.actualSize", group: "View", title: "实际大小",
                     action: #selector(Document.actualSize(_:)), shortcut: .cmd("0")),
-        MenuCommand(id: "view.zoomIn", group: "View", title: "Zoom In",
+        MenuCommand(id: "view.zoomIn", group: "View", title: "放大",
                     action: #selector(Document.zoomIn(_:)), shortcut: .cmd("=")),
-        MenuCommand(id: "view.zoomOut", group: "View", title: "Zoom Out",
+        MenuCommand(id: "view.zoomOut", group: "View", title: "缩小",
                     action: #selector(Document.zoomOut(_:)), shortcut: .cmd("-")),
     ]
 }

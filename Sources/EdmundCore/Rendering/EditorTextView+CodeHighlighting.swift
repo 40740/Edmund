@@ -10,7 +10,10 @@ import AppKit
 extension EditorTextView {
 
     private var prefersDarkCodeTheme: Bool {
-        effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        // ColaMD's code panel is always dark (#2c2c2c), so its code
+        // highlighting always uses the One Dark palette.
+        if theme.preset == .colaElegant { return true }
+        return effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
 
     /// The `NSColor` for a token kind (`nil` = plain code) in the current

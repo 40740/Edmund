@@ -10,19 +10,19 @@ enum WindowMenu {
     /// list and checkmark the key window below the static items.
     static func build() -> NSMenuItem {
         let windowMenuItem = NSMenuItem()
-        let windowMenu = NSMenu(title: "Window")
+        let windowMenu = NSMenu(title: "窗口")
 
-        windowMenu.addItem(withTitle: "Minimize",
+        windowMenu.addItem(withTitle: "最小化",
                            action: #selector(NSWindow.performMiniaturize(_:)),
                            keyEquivalent: "m")
 
-        windowMenu.addItem(withTitle: "Zoom",
+        windowMenu.addItem(withTitle: "缩放",
                            action: #selector(NSWindow.performZoom(_:)),
                            keyEquivalent: "")
 
         windowMenu.addItem(.separator())
 
-        windowMenu.addItem(withTitle: "Bring All to Front",
+        windowMenu.addItem(withTitle: "全部置于顶层",
                            action: #selector(NSApplication.arrangeInFront(_:)),
                            keyEquivalent: "")
 
