@@ -1247,6 +1247,25 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
         // fragment so its draw can disable antialiasing. (A `.codeBlockLabel`
         // line always also carries the box decoration, so it needs no extra
         // clause here.)
+        //
+        // A paragraph whose only decoration is inline chips — a `==highlight==`
+        // or inline `code` run with nothing block-level around it — still needs
+        // the decorated fragment: only its `draw(_:in:)` calls
+        // `drawInlineCodeChips`, which paints the padded pills behind the text.
+        // A plain `NSTextLayoutFragment` never runs that pass, so the chips
+        // would silently vanish from bare paragraphs (they only showed before
+        // because they sat inside a block that already forced the decorated
+        // path). Scan for either chip key across the paragraph to catch that.
+        let chipKeys: [NSAttributedString.Key] = [.inlineCodeChip, .highlightChip]
+        var hasChips = false
+        for key in chipKeys {
+            str.enumerateAttribute(key,
+                                   in: NSRange(location: 0, length: str.length),
+                                   options: []) { value, _, _ in
+                if value != nil { hasChips = true }
+            }
+            if hasChips { break }
+        }
         let invisibles = self.invisibles
         // Read only when the setting is on, so a list-heavy document keeps the
         // plain fast path with guides off (the default).
