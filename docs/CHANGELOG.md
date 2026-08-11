@@ -3,7 +3,12 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [5.8.2] - 2026-08-11
+
+### Fixed
+- 编辑模式代码块复制按钮位置：根因是 `renderedRect(forBlock:)` 用代码块首行（开 fence 行 ```）的 typographicBounds 计算矩形宽度，fence 行只有三个字符、glyph 范围很窄（约 24pt），按钮右对齐到该窄矩形就落到了面板左上角。现改为按文本容器完整宽度计算，按钮固定贴在代码块**右上角**。
+- 代码块插入体验：空行无选中插入时默认只有一行空内容、光标直接落在内容行，打字即第一行代码，无语言标签飘到右上角；选中多行包裹后光标也落在第一行内容。
+- 引用块文字垂直居中：`opticalNudge` 从 1.5pt 提升到 3.0pt，中文衬线字体墨迹重心偏移补偿更足，文字不再视觉偏下、真正光学居中。
 
 ## [5.8] - 2026-08-11
 

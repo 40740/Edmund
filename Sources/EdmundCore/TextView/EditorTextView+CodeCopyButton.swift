@@ -129,14 +129,25 @@ extension EditorTextView {
 
     /// The block's bounding box in container coordinates: first line's top to
     /// the last line's bottom.
+    ///
+    /// The opening/closing fence lines' typographic bounds are narrow (they
+    /// only hug the invisible ` ``` ` markers), so using them directly would
+    /// shrink the rect to the left edge of the panel and drop the copy button
+    /// near the block's top-LEFT. The code panel itself spans the full text
+    /// container (the paragraph style indents text inside it), so compute the
+    /// rect from the container width.
     private func renderedRect(forBlock block: Block) -> CGRect? {
         guard let first = lineRect(forCharacterAt: block.range.location),
               block.range.upperBound > block.range.location else { return nil }
         let last = lineRect(forCharacterAt: block.range.upperBound - 1) ?? first
-        let x = min(first.minX, last.minX)
-        let width = max(first.maxX, last.maxX) - x
+        // The panel fills the full container width edge-to-edge (indent is
+        // applied *inside* the panel via the paragraph style), so the rect's
+        // horizontal extent is the container's, not the fence glyphs'.
+        let containerWidth = textContainer?.size.width
+            ?? max(first.maxX, last.maxX)
+        let x: CGFloat = 0  // container left edge in container coordinates
         return CGRect(x: x, y: first.minY,
-                      width: width, height: last.maxY - first.minY)
+                      width: containerWidth, height: last.maxY - first.minY)
     }
 
     /// The code text of a fence block, fences stripped (ColaMD copies the

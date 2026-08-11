@@ -233,11 +233,25 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         let e = mk("let x = 1", NSRange(location: 0, length: 9))
         e.formatCodeBlock(nil)
         #expect(e.rawSource == "```\nlet x = 1\n```")
-        #expect(e.selectedRange() == NSRange(location: 3, length: 0))  // caret on info line
+        #expect(e.selectedRange() == NSRange(location: 4, length: 0))  // caret on first content line
         // Re-select the whole fence and toggle off.
         e.setSelectedRange(NSRange(location: 0, length: (e.rawSource as NSString).length))
         e.formatCodeBlock(nil)
         #expect(e.rawSource == "let x = 1")
+    }
+
+    @Test func codeBlockOnBlankLineInsertsSingleEmptyLineWithCaretOnContent() {
+        // Nothing selected and the caret on a blank line → a single empty
+        // content line between the fences, caret on that line (no leading
+        // return, and no top-right language tag since the opening fence names
+        // none).
+        let e = mk("", NSRange(location: 0, length: 0))
+        e.formatCodeBlock(nil)
+        #expect(e.rawSource == "```\n\n```")
+        // Caret on the blank content line, just after the opening fence's newline.
+        let caret = e.selectedRange().location
+        let prefix = (e.rawSource as NSString).substring(to: caret)
+        #expect(prefix == "```\n")
     }
 
     @Test func tableInserts3x2WithPaddedDividers() {

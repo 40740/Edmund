@@ -415,7 +415,10 @@ extension EditorTextView {
     // MARK: - Block insert
 
     /// Code block: wraps selected lines in ` ``` `…` ``` ` fences (toggle-off removes
-    /// them). Caret lands on the opening-fence line so a language tag can be typed.
+    /// them). Caret lands on the first content line so typing starts directly.
+    /// When nothing is selected, a single empty content line is inserted
+    /// (`` ``` `` / blank / `` ``` ``) with the caret on that blank line — no
+    /// leading return and no language tag shown in the block's top-right.
     private func insertCodeBlock() {
         let ctx = selectedLineContext()
         if ctx.lines.count >= 2, ctx.lines.first!.hasPrefix("```"), ctx.lines.last! == "```" {
@@ -427,12 +430,24 @@ extension EditorTextView {
                                 select: NSRange(location: ctx.range.location, length: 0))
             return
         }
+        // No selection on a blank line: insert a fresh, single-line,
+        // language-free code block — ``` / <blank content line> / ``` — with
+        // the caret on the blank line, so typing lands on the first real code
+        // line (no leading return, no top-right language tag).
+        if selectedRange().length == 0,
+           ctx.lines.allSatisfy({ $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            let replacement = "```\n\n```"
+            applyFormattingEdit(rawRange: ctx.range, replacement: replacement,
+                                select: NSRange(location: ctx.range.location + 4, length: 0))
+            return
+        }
         let content = ctx.lines.joined(separator: "\n")
         var replacement = "```\n" + content + "\n```"
         if ctx.trailingNewline { replacement += "\n" }
-        // Caret after the opening "```" so a language tag can be typed.
+        // Caret on the first content line (right after the opening fence's
+        // newline), so typing starts on the first real code line.
         applyFormattingEdit(rawRange: ctx.range, replacement: replacement,
-                            select: NSRange(location: ctx.range.location + 3, length: 0))
+                            select: NSRange(location: ctx.range.location + 4, length: 0))
     }
 
     /// Math block: wraps selected lines in `$$`…`$$` fences (toggle-off removes

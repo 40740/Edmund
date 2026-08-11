@@ -1134,9 +1134,10 @@ extension EditorTextView {
         let bottomGap = max(0, descent - inkBelow)
         // The measured ink centroid of CJK serif faces sits slightly low in
         // the line box, so a panel that makes top/bottom gaps equal still
-        // *reads* as a touch bottom-heavy. Nudge the ink up ~1.5pt so the
+        // *reads* as a touch bottom-heavy. Nudge the ink up ~3pt so the
         // quote text looks optically centered rather than leaning down.
-        let opticalNudge: CGFloat = 1.5
+        // (1.5pt in 5.8.1 was still visibly low for CJK at editor sizes.)
+        let opticalNudge: CGFloat = 3.0
         let extraAscent = topPad - (topGap - bottomGap) - opticalNudge
         return max(0, ascent + descent + leading + extraAscent)
     }
