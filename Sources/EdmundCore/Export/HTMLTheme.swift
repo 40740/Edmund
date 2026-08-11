@@ -123,6 +123,12 @@ enum HTMLTheme {
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
           --page-max-width: \(pageMaxWidth);
+          /* Letter-spacing: Elegant widens it for a typeset, breathable feel;
+             other presets keep `normal`. */
+          --letter-spacing: \(theme.preset.letterSpacing ?? "normal");
+          /* Mark/highlight background: Elegant tints it in the soft accent red;
+             others keep the default yellow wash. */
+          --mark-bg: \(theme.preset.markBackgroundHex ?? "rgba(255, 200, 0, 0.3)");
         }
         \(calloutVars(callouts, dark: dark))
         \(staticRules)
@@ -198,6 +204,7 @@ enum HTMLTheme {
       font-family: var(--body-font);
       font-size: var(--body-size);
       line-height: var(--line-height);
+      letter-spacing: var(--letter-spacing);
       color: var(--fg);
       background: var(--bg);
       margin: 0;
@@ -222,10 +229,13 @@ enum HTMLTheme {
     /* Body color, not --code: the editor draws inline code in the body color
        too, and the two views must agree. --code still tints block code. */
     /* Radii are em, not px, so the chip's corners keep their proportion as the
-       font-size stepper moves — a fixed 4px reads as square at large sizes. */
+       font-size stepper moves — a fixed 4px reads as square at large sizes.
+       Padding widened (0.15em 0.4em) so the chip doesn't hug the text. */
     code { font-family: var(--mono-font); font-size: 0.92em; color: var(--inline-code-ink);
-           background: var(--inline-code-bg); padding: 0.1em 0.35em; border-radius: 0.25em; }
-    pre { background: var(--code-bg); padding: 12px 14px; border-radius: 0.5em; overflow-x: auto;
+           background: var(--inline-code-bg); padding: 0.15em 0.4em; border-radius: 0.25em; }
+    /* Code block padding widened (18px 22px) for breathing room — the old
+       12px 14px crowded the code against the dark panel's edges. */
+    pre { background: var(--code-bg); padding: 18px 22px; border-radius: 0.5em; overflow-x: auto;
           /* tab-size: browsers default to 8; match the common editor convention of 4. */
           tab-size: 4; -moz-tab-size: 4; }
     pre code { color: var(--fg); background: none; padding: 0; font-size: var(--mono-size); }
@@ -249,32 +259,44 @@ enum HTMLTheme {
     .code-copy-icon { opacity: 0; transition: opacity .15s; }
     .code-block-wrap:hover .code-copy-icon { opacity: 1; }
     /* A ColaMD preset colors the bar and fills the panel (Elegant's red bar /
-       soft paper fill); otherwise the neutral dim bar, no fill. */
-    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--quote-bar);
-                 background: var(--quote-bg); color: var(--quote-text); }
+       soft paper fill); otherwise the neutral dim bar, no fill.
+       Padding is symmetric top/bottom (0.85em) so the box never looks
+       bottom-heavy; the left bar is 4px (was 3px) for a sturdier accent.
+       A small border-radius softens the right corners. */
+    blockquote { margin: 1.1em 0; padding: 0.85em 1.2em 0.85em 1.4em;
+                 border-left: 4px solid var(--quote-bar);
+                 background: var(--quote-bg); color: var(--quote-text);
+                 border-radius: 0 0.4em 0.4em 0; }
     /* ColaMD Elegant paints bold in the accent red; other themes keep body ink. */
     strong { color: var(--strong); }
     /* Without this, the 1em bottom margin on the last <p> inside a blockquote
        creates asymmetric vertical padding — the blockquote looks heavier at the
        bottom than at the top. Reset it so padding alone controls the spacing. */
     blockquote > p:last-child { margin-bottom: 0; }
+    blockquote > p:first-child { margin-top: 0; }
     /* A nested blockquote that is the last child of its parent blockquote (or
        callout body) would otherwise leave 1em of extra space below itself inside
        the parent's padding. Collapse it. */
     blockquote > blockquote:last-child,
     .callout-body > blockquote:last-child { margin-bottom: 0; }
     hr { border: none; border-top: 1.5px solid var(--hr); margin: 1.6em 0; }
-    mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
+    /* Mark/highlight: background comes from --mark-bg (Elegant = soft accent red,
+       others = default yellow). Padding widened (0.15em 0.4em) and rounded so
+       the highlight doesn't clamp tight against the text. */
+    mark { background: var(--mark-bg); color: inherit;
+           padding: 0.15em 0.4em; border-radius: 0.2em; }
     /* Obsidian #tag: an accent-colored pill. Style only, no navigation. */
     .tag { color: var(--accent);
            background: color-mix(in srgb, var(--accent) 14%, transparent);
            padding: 0.05em 0.5em; border-radius: 0.8em; font-size: 0.88em; white-space: nowrap; }
     /* Whitelisted inline HTML rendered in Read mode (see HTMLRenderer
        sanitizeInlineHTML). <u>/<mark> use the UA underline / the rule above;
-       <kbd> matches the editor's inline-key chrome, <sub>/<sup> get the standard
+       <kbd> matches the editor's inline-key chrome with a tactile key-cap feel
+       (bottom border 2px for depth), <sub>/<sup> get the standard
        line-height-safe reset. */
-    kbd { font-family: var(--mono-font); font-size: 0.92em; background: var(--code-bg);
-          border: 1px solid var(--rule); border-radius: 4px; padding: 0.05em 0.4em; }
+    kbd { font-family: var(--mono-font); font-size: 0.88em; background: var(--inline-code-bg);
+          border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 5px;
+          padding: 0.1em 0.45em; box-shadow: 0 1px 0 rgba(0,0,0,0.04); }
     sub, sup { font-size: 0.75em; line-height: 0; position: relative; vertical-align: baseline; }
     sup { top: -0.5em; }
     sub { bottom: -0.25em; }
@@ -350,10 +372,11 @@ enum HTMLTheme {
     .blank-line { height: calc(var(--body-size) * var(--line-height)); }
     /* Tables keep their natural (content-driven) width and scroll horizontally
        inside .table-wrap instead of squeezing columns or forcing cell text to
-       wrap — same idiom as `pre`'s overflow-x below. */
+       wrap — same idiom as `pre`'s overflow-x below. Cell padding widened
+       (8px 14px) so text doesn't crowd the gridlines. */
     .table-wrap { overflow-x: auto; margin: 1em 0; }
     table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
-    th, td { border: 1px solid var(--table-border); padding: 6px 10px; }
+    th, td { border: 1px solid var(--table-border); padding: 8px 14px; }
     th { font-weight: 600; }
     /* GitHub-style zebra: header is bold-only, every other data row is tinted
        (tr:nth-child(2n) — the header row is child 1 of thead, so it never tints). */

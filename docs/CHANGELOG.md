@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.5.5.1] - 2026-08-11
+
+- 字间距加大:ColaMD 优雅主题正文 letter-spacing 设为 0.03em,中英文均有呼吸感
+- 代码块内边距加大:pre padding 从 12px 14px 提升至 18px 22px,代码不再紧贴深色面板边缘
+- 行内代码内边距加大:padding 从 0.1em 0.35em 提升至 0.15em 0.4em
+- 高亮(mark)内边距加大:padding 从 0 0.1em 提升至 0.15em 0.4em 并加圆角;优雅主题高亮背景改用赤陶红淡色 rgba(196,75,43,0.15)
+- 引用块上下内边距一致:padding 改为 0.85em 1.2em 0.85em 1.4em(上下对称),引用条加粗至 4px,右侧加圆角
+- 键盘按键 kbd 拟物风格:底部 2px 边框 + 阴影 + 圆角 5px
+- 表格单元格内边距加大:从 6px 10px 提升至 8px 14px
+
+
 ## [0.5.5] - 2026-08-10
 
 - 修复标题下划线消失:绘制区域被 TextKit 裁剪,现已扩展;线距文字 6pt 且不再压住下一行文字

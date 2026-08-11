@@ -158,6 +158,25 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Letter-spacing for body text. Elegant widens it slightly (0.03em) so
+    /// Chinese and Latin characters both breathe; other presets keep `normal`.
+    public var letterSpacing: String? {
+        switch self {
+        case .colaElegant: return "0.03em"
+        default: return nil
+        }
+    }
+
+    /// Mark/highlight background. Elegant tints it in the soft accent red
+    /// (matching its bold/quote signature); others keep nil for the default
+    /// yellow wash.
+    public var markBackgroundHex: String? {
+        switch self {
+        case .colaElegant: return "rgba(196, 75, 43, 0.15)"
+        default: return nil
+        }
+    }
+
     /// Hairline border hex (headings' underline, ColaMD's `--border-color`).
     public var borderColorHex: String? {
         switch self {
