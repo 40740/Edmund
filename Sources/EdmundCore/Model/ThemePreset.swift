@@ -23,9 +23,14 @@ import AppKit
 // the Edit-mode surface matches the Read-mode page. Anything that only consumes
 // `EditorTheme` fields (fonts, accent hex, code hex, line spacing) needs no
 // preset awareness — those values are already preset-stamped at the source.
-public enum ThemePreset: String, CaseIterable, Sendable {
+public enum ThemePreset: String, CaseIterable, Sendable, Identifiable {
     case edmund
     case colaElegant
+
+    /// `Identifiable` conformance so the Appearance pane can iterate the
+    /// presets with `ForEach(ThemePreset.displayOrder)`. The raw value is a
+    /// stable id across launches (it's also the UserDefaults payload).
+    public var id: String { rawValue }
 
     public var displayName: String {
         switch self {
