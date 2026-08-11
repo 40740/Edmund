@@ -255,5 +255,33 @@
                        length="14003030"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 3.0.0</title>
+            <pubDate>Tue, 11 Aug 2026 03:27:47 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>The first release with <strong>selectable theme presets</strong>. Edmund ships two looks now: the original Edmund theme (unchanged) and a brand-new <strong>ColaMD Elegant</strong> port. Pick one in Settings ▸ Appearance ▸ Theme; the editor, Read mode, PDF export, and print output all flip together.</p>
+<h3>Added</h3>
+<ul>
+<li><strong>Theme presets</strong> — a new &quot;Theme:&quot; picker in Settings ▸ Appearance. Two presets ship:</li>
+<li><strong>Edmund</strong> (default): the original blue-accent-on-white look, byte-for-byte unchanged.</li>
+<li><strong>ColaMD Elegant</strong> (new): a port of [ColaMD&#x27;s <code>elegant.css</code>](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css) — warm-paper background (<code>#f0edea</code> light / <code>#1c1a18</code> dark), terracotta accent (<code>#c44b2b</code> / <code>#e0653f</code>), serif body (Songti SC by default, with a JetBrains Mono / Menlo code stack), 0.04em letter-spacing, 1.9 line-height, 4px terracotta blockquote bar, dark code panel with 20/24px breathing room, terracotta-tinted tables, and One-Dark syntax highlighting.</li>
+<li>New <code>ThemePreset</code> enum in <code>EdmundCore/Model/ThemePreset.swift</code>; <code>EditorTheme</code> carries a <code>preset</code> field that <code>HTMLTheme.css</code>, <code>HTMLTheme.backgroundColor</code>, and <code>EditorTextView.editorBackgroundColor</code> all route on.</li>
+<li>A complete ColaMD stylesheet in <code>HTMLTheme.colaElegantCSS</code>, ported from the design spec — independent of the Edmund CSS path so neither look can drift into the other.</li>
+<li><code>AppSettings.themePreset</code> (UserDefaults key <code>settings.appearance.themePreset</code>) and an <code>EditorThemePreset</code> key on the theme itself; both are kept in sync on launch.</li>
+<li><code>ThemePresetTests</code> covering palette tokens, typography, blockquote/code/table/mark/hr rules, dark-mode variants, One-Dark syntax palette, and a regression guard that the Edmund path is untouched.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Bumped <code>CFBundleShortVersionString</code> to <code>3.0.0</code> and <code>CFBundleVersion</code> to <code>11</code>. The major-version bump reflects the new theme system as a user-visible feature set, not a breaking API change.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/40740/Edmund/releases/download/v3.0.0/Edmund-3.0.0.dmg"
+                       sparkle:version="11"
+                       sparkle:shortVersionString="3.0.0"
+                       
+                       
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
