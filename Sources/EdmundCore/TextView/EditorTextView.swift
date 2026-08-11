@@ -476,11 +476,18 @@ public class EditorTextView: NSTextView {
     }
 
     var baseAttributes: [NSAttributedString.Key: Any] {
-        [
+        // `.kern` carries the preset's letter-spacing (Elegant Plus = 0.04em).
+        // 0 is a no-op for presets without letter-spacing, so this never
+        // affects system/other themes. Applied at the base level so every
+        // glyph — including spans that override font/color — inherits it.
+        let kern = theme.kernPoints
+        var attrs: [NSAttributedString.Key: Any] = [
             .font: bodyFont,
             .foregroundColor: foregroundColor,
             .paragraphStyle: bodyParagraphStyle,
         ]
+        if kern > 0 { attrs[.kern] = kern }
+        return attrs
     }
 
     var separatorLength: Int { (blockSeparator as NSString).length }

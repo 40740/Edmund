@@ -180,6 +180,24 @@ public struct EditorTheme: Equatable, Sendable {
         NSColor(hex: mathOperatorHex) ?? .systemRed
     }
 
+    /// Letter-spacing as a pt value for TextKit's `.kern` attribute, or 0.
+    /// Parses the preset's em string (e.g. "0.04em") against the body font size
+    /// so 0.04em @ 16pt = 0.64pt kern. Returns 0 when the preset has no
+    /// letter-spacing (system/other presets) so `.kern` is a no-op there.
+    public var kernPoints: CGFloat {
+        guard let ls = preset.letterSpacing else { return 0 }
+        let trimmed = ls.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasSuffix("em") {
+            let val = Double(trimmed.dropLast(2)) ?? 0
+            return CGFloat(val) * fontSize
+        }
+        if trimmed.hasSuffix("px") {
+            let val = Double(trimmed.dropLast(2)) ?? 0
+            return CGFloat(val)
+        }
+        return 0
+    }
+
     // MARK: ColaMD preset accent colors
 
     /// Bold-text ink for a ColaMD preset, or nil to keep the body color.

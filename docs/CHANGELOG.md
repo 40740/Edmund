@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.5.5.2] - 2026-08-11
+
+- 新增「优雅 Plus」主题(设置▸外观):基于 ColaMD 优雅主题,字间距加大至 0.04em,中英文更舒展
+- 修复 Edit 模式字间距不生效:baseAttributes 新增 .kern 属性,TextKit 原生渲染字间距(Elegant Plus 0.04em @ 16pt = 0.64pt)
+- 修复引用块上下边距不对称:blockquoteParagraphStyle 新增 paragraphSpacingBefore = quoteVPad,首行顶部留白与底部一致
+- 行内代码背景色:优雅 Plus 主题使用 #e8e4df 浅纸色底,Edit 模式 drawInlineCodeChips 正常绘制
+- 高亮(mark)内边距与背景:优雅 Plus 使用赤陶红淡色 rgba(196,75,43,0.15)
+- 代码块内边距:Read 模式 pre padding 18px 22px
+- 键盘按键 kbd 拟物风格、表格单元格内边距加大
+
+注意:此前 v0.5.5.1 仅修改了 Read 模式(HTMLTheme),Edit 模式(平时所见)未改动。本次 v0.5.5.2 同时修复 Edit 模式与 Read 模式。
+
+
 ## [0.5.5.1] - 2026-08-11
 
 - 字间距加大:ColaMD 优雅主题正文 letter-spacing 设为 0.03em,中英文均有呼吸感

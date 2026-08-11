@@ -215,10 +215,16 @@ extension EditorTextView {
     /// Paragraph style for blockquotes: a 2pt text inset matching the width of
     /// the left bar that the `.leftBar` BlockDecoration draws, plus a hanging
     /// indent so wrapped lines align after the `> ` marker.
+    ///
+    /// `paragraphSpacingBefore` is set to `quoteVPad` so the first line of the
+    /// quote gets the same top breathing room as the bottom (`paragraphSpacing`
+    /// already carries the bottom pad via the BlockDecoration's bottomPad).
+    /// Without this the quote looks top-short / bottom-long — the original bug.
     private func blockquoteParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
+        ps.paragraphSpacingBefore = quoteVPad
         ps.firstLineHeadIndent = 2
         ps.headIndent = 2 + quoteMarkerWidth
         return ps

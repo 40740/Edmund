@@ -14,6 +14,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
     case colaDark
     case colaElegant
     case colaNewsprint
+    case elegantPlus
 
     public var id: String { rawValue }
 
@@ -25,7 +26,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         case .colaDark: return "ColaMD 深色"
         case .colaElegant: return "ColaMD 优雅"
         case .colaNewsprint: return "ColaMD 新闻纸"
-        }
+        case .elegantPlus: return "优雅 Plus"
     }
 
     /// Whether this preset forces a dark appearance (`.system` is nil).
@@ -33,7 +34,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .system: return nil
         case .colaDark: return true
-        case .colaLight, .colaElegant, .colaNewsprint: return false
+        case .colaLight, .colaElegant, .colaNewsprint, .elegantPlus: return false
         }
     }
 
@@ -45,6 +46,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         case .colaDark: return "#0d1117"
         case .colaElegant: return "#f0edea"
         case .colaNewsprint: return "#f5f2eb"
+        case .elegantPlus: return "#f0edea"
         }
     }
 
@@ -56,6 +58,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         case .colaDark: return "#e6edf3"
         case .colaElegant: return "#2c2c2c"
         case .colaNewsprint: return "#1a1a1a"
+        case .elegantPlus: return "#2c2c2c"
         }
     }
 
@@ -67,6 +70,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         case .colaDark: return "#58a6ff"
         case .colaElegant: return "#c44b2b"
         case .colaNewsprint: return "#2c5f8a"
+        case .elegantPlus: return "#c44b2b"
         }
     }
 
@@ -74,7 +78,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
     /// Light / Dark / Newsprint leave it at the body ink.
     public var codeColorHex: String? {
         switch self {
-        case .colaElegant: return "#c44b2b"
+        case .colaElegant, .elegantPlus: return "#c44b2b"
         default: return nil
         }
     }
@@ -83,7 +87,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
     /// signature: Elegant paints bold text in the accent red.
     public var strongColorHex: String? {
         switch self {
-        case .colaElegant: return "#c44b2b"
+        case .colaElegant, .elegantPlus: return "#c44b2b"
         default: return nil
         }
     }
@@ -95,6 +99,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         case .colaDark: return "#30363d"
         case .colaElegant: return "#c44b2b"
         case .colaNewsprint: return "#999999"
+        case .elegantPlus: return "#c44b2b"
         case .system: return nil
         }
     }
@@ -103,7 +108,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
     /// whole quote on a soft paper panel.
     public var quoteBackgroundHex: String? {
         switch self {
-        case .colaElegant: return "#eae6e1"
+        case .colaElegant, .elegantPlus: return "#eae6e1"
         default: return nil
         }
     }
@@ -115,6 +120,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         case .colaDark: return "#8b949e"
         case .colaElegant: return "#777777"
         case .colaNewsprint: return "#666666"
+        case .elegantPlus: return "#555555"
         case .system: return nil
         }
     }
@@ -123,7 +129,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
     /// Elegant draws a 2px red rule under the header row.
     public var tableHeadAccentHex: String? {
         switch self {
-        case .colaElegant: return "#c44b2b"
+        case .colaElegant, .elegantPlus: return "#c44b2b"
         default: return nil
         }
     }
@@ -136,6 +142,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         case .colaDark: return "#161b22"
         case .colaElegant: return "#2c2c2c"
         case .colaNewsprint: return "#eae6de"
+        case .elegantPlus: return "#2c2c2c"
         case .system: return nil
         }
     }
@@ -144,7 +151,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
     /// keep the body ink. Elegant uses light ink on its dark panel.
     public var codeBlockTextHex: String? {
         switch self {
-        case .colaElegant: return "#e0dcd7"
+        case .colaElegant, .elegantPlus: return "#e0dcd7"
         default: return nil
         }
     }
@@ -153,7 +160,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
     /// light paper chip (its `--code-bg`), distinct from the dark block panel.
     public var inlineCodeBackgroundHex: String? {
         switch self {
-        case .colaElegant: return "#e8e4df"
+        case .colaElegant, .elegantPlus: return "#e8e4df"
         default: return nil
         }
     }
@@ -163,6 +170,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
     public var letterSpacing: String? {
         switch self {
         case .colaElegant: return "0.03em"
+        case .elegantPlus: return "0.04em"
         default: return nil
         }
     }
@@ -172,7 +180,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
     /// yellow wash.
     public var markBackgroundHex: String? {
         switch self {
-        case .colaElegant: return "rgba(196, 75, 43, 0.15)"
+        case .colaElegant, .elegantPlus: return "rgba(196, 75, 43, 0.15)"
         default: return nil
         }
     }
@@ -184,6 +192,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         case .colaDark: return "#30363d"
         case .colaElegant: return "#d8d3ce"
         case .colaNewsprint: return "#d4d0c8"
+        case .elegantPlus: return "#d8d3ce"
         case .system: return nil
         }
     }
@@ -196,6 +205,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
         case .colaDark: return "#161b22"
         case .colaElegant: return "#eae6e1"
         case .colaNewsprint: return "#eae6de"
+        case .elegantPlus: return "#eae6e1"
         }
     }
 
@@ -204,7 +214,7 @@ public enum ColaThemePreset: String, CaseIterable, Identifiable, Sendable {
     /// Georgia is a system Latin serif), so they resolve without extra fonts.
     public var fontName: String? {
         switch self {
-        case .colaElegant: return "Songti SC"
+        case .colaElegant, .elegantPlus: return "Songti SC"
         case .colaNewsprint: return "Georgia"
         default: return nil
         }
