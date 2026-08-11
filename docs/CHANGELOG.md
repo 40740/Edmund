@@ -3,6 +3,24 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2026-08-11
+
+Bug-fix release for the ColaMD Elegant preset. v3.0.0 only themed Read mode (CSS); Edit mode — the native NSTextView — still rendered with Edmund's colors. All 7 user-reported bugs stemmed from this.
+
+### Fixed
+- **Bold text not red (Edit mode)** — bold now paints in the terracotta accent (`#c44b2b` / `#e0653f`), matching the design doc. Edmund preset unchanged (bold stays body ink).
+- **Blockquote bar not red, no background (Edit mode)** — the quote bar is now 4pt terracotta (was 2pt gray), and the quote box carries a soft paper-tint background (`#eae6e1` / `#26231f`). Quote text uses a warm gray (`#555` / `#a89f96`).
+- **Inline code + highlight colors (Edit mode)** — inline code now uses the warm-paper chip (`#e8e4df` / `#2a2622`) with terracotta text; highlight uses the 15% terracotta tint instead of default yellow.
+- **Code block panel (Edit mode)** — fenced code blocks now use the dark panel (`#2c2c2c` / `#14110f`) with warm off-white text (`#e0dcd7`) in both appearances, matching the spec's "technical counterpoint" to the serif body.
+- **Table borders (Edit mode)** — table chrome now uses the warm border (`#d8d3ce` / `#3a342e`) instead of the system separator gray.
+- **Heading color (Edit mode)** — headings now paint in a deeper ink (`#1a1a1a` / `#e0dcd7`), one step darker than the body.
+- **Top padding (Read mode)** — Read-mode body padding reduced from 48px to 30px (matching the spec's `#write` padding), eliminating the blank space at the top.
+- **Heading underline (Read mode)** — h1's underline is now 2px terracotta (`#c44b2b`) instead of 1px gray, so it reads as an accent anchor.
+
+### Added
+- `EditorTextView+PresetColors.swift` — a single extension providing preset-aware alternatives for every rendering color that differs between Edmund and ColaMD (bold, inline code, highlight, blockquote bar/background/text, code block background/text, table border/header, heading color). Each property returns the ColaMD value when `theme.preset == .colaElegant` and falls through to the historical Edmund value otherwise.
+- `DecoratedTextLayoutFragment.tableBorderColor` — the border color is now captured at fragment-vend time (on the main actor) so the nonisolated `draw` path doesn't touch the main-actor-isolated `theme` property.
+
 ## [3.0.0] - 2026-08-11
 
 The first release with **selectable theme presets**. Edmund ships two looks now: the original Edmund theme (unchanged) and a brand-new **ColaMD Elegant** port. Pick one in Settings ▸ Appearance ▸ Theme; the editor, Read mode, PDF export, and print output all flip together.
