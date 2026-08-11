@@ -44,13 +44,22 @@ public struct EditorTheme: Equatable, Sendable {
     /// the user's customisations.
     public var preset: ColaThemePreset = .system
 
+    /// Whether the user has explicitly chosen a body font (via the font panel or
+    /// the size stepper). When true, the user's `fontName`/`fontSize` win over a
+    /// ColaMD preset's own serif face, so changing the font while an Elegant /
+    /// Newsprint preset is active sticks instead of snapping back to the theme's
+    /// face — and switching presets no longer resets the font. A preset's font
+    /// is still applied as a default until the user makes their own choice.
+    public var customFontOverridesPreset: Bool = false
+
     public init(fontName: String, fontSize: CGFloat, linkBlueHex: String, codeHex: String,
                 lineSpacing: CGFloat, paragraphSpacingBefore: CGFloat,
                 mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800",
                 monospaceFontName: String = "", monospaceFontSize: CGFloat = 14,
                 standardLigatures: Bool = true, monospaceLigatures: Bool = false,
                 antialias: Bool = true,
-                preset: ColaThemePreset = .system) {
+                preset: ColaThemePreset = .system,
+                customFontOverridesPreset: Bool = false) {
         self.fontName = fontName
         self.fontSize = fontSize
         self.linkBlueHex = linkBlueHex
@@ -65,6 +74,7 @@ public struct EditorTheme: Equatable, Sendable {
         self.monospaceLigatures = monospaceLigatures
         self.antialias = antialias
         self.preset = preset
+        self.customFontOverridesPreset = customFontOverridesPreset
     }
 
     // MARK: - Defaults
@@ -90,9 +100,15 @@ public struct EditorTheme: Equatable, Sendable {
     // MARK: - Derived Properties
 
     @MainActor public var bodyFont: NSFont {
-        // A ColaMD preset's serif face wins over the saved font while active;
-        // System mode (and any preset without a font) uses the user's choice.
-        let resolvedName = preset.fontName ?? fontName
+        // A ColaMD preset's serif face is the default while active, but once the
+        // user picks their own body font it wins (see `customFontOverridesPreset`)
+        // — otherwise changing the font in the Appearance pane would silently
+        // no-op while an Elegant / Newsprint preset is on, and switching presets
+        // would snap the type back to the theme's face. A preset with no face
+        // (Light / Dark / System) always uses the user's choice.
+        let resolvedName = (customFontOverridesPreset || preset.fontName == nil)
+            ? fontName
+            : preset.fontName!
         let base = NSFont(name: resolvedName, size: fontSize) ?? .systemFont(ofSize: fontSize)
         return Self.applyingLigatures(standardLigatures, to: base)
     }
@@ -247,6 +263,7 @@ public struct EditorTheme: Equatable, Sendable {
         static let mathNumberHex = "EditorMathNumberHex"
         static let lineSpacing = "EditorLineSpacing"
         static let paragraphSpacingBefore = "EditorParagraphSpacingBefore"
+        static let customFontOverridesPreset = "EditorCustomFontOverridesPreset"
         // Shared with the app layer's AppSettings.Key.themePreset — the settings
         // picker writes this key, so EditorTheme.load() must read the same one
         // or the chosen preset never reaches the editor.
@@ -285,6 +302,7 @@ public struct EditorTheme: Equatable, Sendable {
             : def.paragraphSpacingBefore
         let presetRaw = d.string(forKey: Keys.preset) ?? ""
         let preset = ColaThemePreset(rawValue: presetRaw) ?? .system
+        let customFontOverridesPreset = d.object(forKey: Keys.customFontOverridesPreset) as? Bool ?? false
 
         return EditorTheme(
             fontName: fontName,
@@ -300,7 +318,8 @@ public struct EditorTheme: Equatable, Sendable {
             standardLigatures: standardLigatures,
             monospaceLigatures: monospaceLigatures,
             antialias: antialias,
-            preset: preset
+            preset: preset,
+            customFontOverridesPreset: customFontOverridesPreset
         )
     }
 
@@ -320,6 +339,7 @@ public struct EditorTheme: Equatable, Sendable {
         d.set(Float(lineSpacing), forKey: Keys.lineSpacing)
         d.set(Float(paragraphSpacingBefore), forKey: Keys.paragraphSpacingBefore)
         d.set(preset.rawValue, forKey: Keys.preset)
+        d.set(customFontOverridesPreset, forKey: Keys.customFontOverridesPreset)
     }
 }
 

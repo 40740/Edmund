@@ -1199,31 +1199,50 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         if topRounded && bottomRounded {
             return NSBezierPath(roundedRect: rect, xRadius: r, yRadius: r)
         }
+        // Build the partial-rounded box by hand, rounding only the top or the
+        // bottom pair of corners (a fenced block's first/last row — see
+        // `drawBox`). Each corner is a true quarter-circle approximated with
+        // the standard kappa control-point offset (~0.5523·r) on the two lines
+        // flanking the corner, exactly what `NSBezierPath(roundedRect:)` uses.
+        // The old code parked both control points ON the arc's endpoints
+        // (effective kappa = 1), which pushed the curve outward into a
+        // bulge — the "hook" that made the panel's corners look jagged
+        // instead of the smooth pill Read mode gets from CSS border-radius.
+        let k = r * 0.5523
+        let left = rect.minX, right = rect.maxX
+        let top = rect.minY, bottom = rect.maxY
         let path = NSBezierPath()
-        path.move(to: NSPoint(x: rect.minX, y: rect.minY))
+        // Start at the right end of the top edge and walk clockwise:
+        // right edge → bottom edge → left edge → back across the top.
+        let topRightX = topRounded ? right - r : right
+        path.move(to: NSPoint(x: topRightX, y: top))
         if topRounded {
-            path.curve(to: NSPoint(x: rect.minX + r, y: rect.minY),
-                       controlPoint1: NSPoint(x: rect.minX, y: rect.minY + r),
-                       controlPoint2: NSPoint(x: rect.minX + r, y: rect.minY))
+            path.curve(to: NSPoint(x: right, y: top + r),
+                       controlPoint1: NSPoint(x: topRightX + k, y: top),
+                       controlPoint2: NSPoint(x: right, y: top + r - k))
         }
-        path.line(to: NSPoint(x: rect.maxX - (topRounded ? r : 0), y: rect.minY))
+        let rightBottomY = bottomRounded ? bottom - r : bottom
+        path.line(to: NSPoint(x: right, y: rightBottomY))
+        if bottomRounded {
+            path.curve(to: NSPoint(x: right - r, y: bottom),
+                       controlPoint1: NSPoint(x: right, y: rightBottomY + k),
+                       controlPoint2: NSPoint(x: right - r + k, y: bottom))
+        }
+        let bottomLeftX = bottomRounded ? left + r : left
+        path.line(to: NSPoint(x: bottomLeftX, y: bottom))
+        if bottomRounded {
+            path.curve(to: NSPoint(x: left, y: bottom - r),
+                       controlPoint1: NSPoint(x: bottomLeftX - k, y: bottom),
+                       controlPoint2: NSPoint(x: left, y: bottom - r + k))
+        }
+        let leftTopY = topRounded ? top + r : top
+        path.line(to: NSPoint(x: left, y: leftTopY))
         if topRounded {
-            path.curve(to: NSPoint(x: rect.maxX, y: rect.minY + r),
-                       controlPoint1: NSPoint(x: rect.maxX - r, y: rect.minY),
-                       controlPoint2: NSPoint(x: rect.maxX, y: rect.minY + r))
+            path.curve(to: NSPoint(x: left + r, y: top),
+                       controlPoint1: NSPoint(x: left, y: leftTopY - k),
+                       controlPoint2: NSPoint(x: left + r - k, y: top))
         }
-        path.line(to: NSPoint(x: rect.maxX, y: rect.maxY - (bottomRounded ? r : 0)))
-        if bottomRounded {
-            path.curve(to: NSPoint(x: rect.maxX - r, y: rect.maxY),
-                       controlPoint1: NSPoint(x: rect.maxX, y: rect.maxY - r),
-                       controlPoint2: NSPoint(x: rect.maxX - r, y: rect.maxY))
-        }
-        path.line(to: NSPoint(x: rect.minX + (bottomRounded ? r : 0), y: rect.maxY))
-        if bottomRounded {
-            path.curve(to: NSPoint(x: rect.minX, y: rect.maxY - r),
-                       controlPoint1: NSPoint(x: rect.minX + r, y: rect.maxY),
-                       controlPoint2: NSPoint(x: rect.minX, y: rect.maxY - r))
-        }
+        path.line(to: NSPoint(x: topRightX, y: top))
         path.close()
         return path
     }

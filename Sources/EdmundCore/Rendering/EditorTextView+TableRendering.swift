@@ -158,7 +158,13 @@ extension EditorTextView {
                 } else {
                     ps.paragraphSpacingBefore = cellVPad + ((i == 0)
                         ? bodyParagraphStyle.paragraphSpacingBefore : 0)
-                    ps.paragraphSpacing = cellVPad
+                    // The last data row also carries the table's bottom
+                    // breathing room: give it a touch more than the inter-row
+                    // gap so the boxed table doesn't hug the paragraph below
+                    // (ColaMD leaves generous space under a table).
+                    ps.paragraphSpacing = (i == lines.count - 1)
+                        ? cellVPad * 1.5
+                        : cellVPad
                 }
                 result.addAttribute(.paragraphStyle, value: ps, range: lineRange)
                 // GitHub-style zebra: every other data row gets a soft fill. The
