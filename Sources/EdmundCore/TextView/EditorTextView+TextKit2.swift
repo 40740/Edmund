@@ -631,13 +631,25 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     var decorationDrawHeight: CGFloat {
         let full = layoutFragmentFrame.height
         let lines = textLineFragments
-        guard lines.count > 1, let last = lines.last,
-              last.characterRange.length == 0 else { return full }
         // Bottom of the last line that actually holds text (fragment-local).
-        let contentBottom = lines.dropLast().map { $0.typographicBounds.maxY }.max() ?? 0
+        // Ignore a trailing zero-length line — TextKit folds the document's
+        // final empty line (from a trailing "\n") into the preceding fragment,
+        // and it must not be painted. Filtering for content lines also covers a
+        // single-line quote/callout, where the absorbed empty line is not always
+        // exposed as its own line fragment (the old `count > 1` guard missed
+        // that and left a whole extra line-height of panel fill below the text).
+        let contentLines = lines.filter { $0.characterRange.length > 0 }
+        guard let contentBottom = contentLines.map { $0.typographicBounds.maxY }.max()
+        else { return full }
         // `super` frame excludes our bottomPad; its extent past the content is
         // exactly the absorbed empty line. Remove that, keep the bottomPad.
         let emptyLineHeight = max(0, super.layoutFragmentFrame.height - contentBottom)
+        // Treat only a *full* extra line as the absorbed trailing empty line.
+        // Font-metric noise (descent/line-height rounding) is a few points at
+        // most; a real absorbed empty line is a whole line height. Requiring at
+        // least half a line keeps a mid-document box from shaving its panel.
+        let refLine = contentLines.first?.typographicBounds.height ?? full
+        guard emptyLineHeight > max(0.5, refLine * 0.5) else { return full }
         return max(0, full - emptyLineHeight)
     }
 
@@ -1282,6 +1294,7 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
         let focusMode = self.focusMode
         guard !decorations.isEmpty || !overlays.isEmpty || !cellWraps.isEmpty || !textAntialias
                 || (invisibles?.drawsAnything ?? false) || !listGuides.isEmpty || focusMode
+                || hasChips
         else {
             return NSTextLayoutFragment(textElement: textElement,
                                         range: textElement.elementRange)

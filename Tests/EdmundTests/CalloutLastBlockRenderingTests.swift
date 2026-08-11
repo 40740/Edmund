@@ -71,4 +71,33 @@ struct CalloutLastBlockRenderingTests {
         #expect(a.fill < a.frame,
                 "fill \(a.fill) must stop above the absorbed empty line (frame \(a.frame))")
     }
+
+    /// Same regression for a *single-line* plain blockquote. TextKit does not
+    /// always expose the absorbed trailing empty line as its own line fragment
+    /// on a one-line box, so the older `count > 1` guard in
+    /// `decorationDrawHeight` missed it and left a whole extra line-height of
+    /// panel fill below the quote text (the recurring "quote bottom padding too
+    /// big" report). The fill must still stop above that absorbed line.
+    @Test("Single-line quote box fill excludes the absorbed trailing empty line")
+    @MainActor func singleLineQuoteTrailingNewlineDoesNotExtendBox() {
+        let withNL = windowed()
+        withNL.loadContent("> Some quote text.\n")
+        withNL.recompose(cursorInRaw: 0)
+        guard let a = lastDecoratedFragment(withNL) else { Issue.record("no fragment"); return }
+
+        let withoutNL = windowed()
+        withoutNL.loadContent("> Some quote text.")
+        withoutNL.recompose(cursorInRaw: 0)
+        guard let b = lastDecoratedFragment(withoutNL) else { Issue.record("no fragment"); return }
+
+        // The trailing-newline document absorbs an empty line into the quote
+        // fragment (frame taller than the no-newline case)...
+        #expect(a.frame > b.frame)
+        // ...but the box is DRAWN to the same height either way — the extra
+        // empty line is not painted.
+        #expect(abs(a.fill - b.fill) < 0.5,
+                "box fill \(a.fill) (with trailing \\n) should match \(b.fill) (without)")
+        #expect(a.fill < a.frame,
+                "fill \(a.fill) must stop above the absorbed empty line (frame \(a.frame))")
+    }
 }
