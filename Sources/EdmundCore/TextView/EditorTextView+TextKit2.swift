@@ -1036,14 +1036,20 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
             return NSTextLayoutFragment(textElement: textElement,
                                         range: textElement.elementRange)
         }
-        // Capture the table border color at vend time (we're on the main actor
-        // here). The nonisolated draw path reads it from the fragment's `let`
-        // instead of touching `theme` — Swift 6 concurrency forbids the latter.
-        let tableBorderColor: NSColor? = theme.preset == .colaElegant
-            ? (isDarkAppearance
+        // Capture the table border color at vend time. This delegate method is
+        // `nonisolated` (NSTextLayoutManagerDelegate's contract), but AppKit
+        // invokes it on the main thread — `MainActor.assumeIsolated` bridges
+        // the two so we can read the main-actor-isolated `theme` /
+        // `isDarkAppearance` without violating Swift 6 concurrency. The
+        // alternative (capturing the color into a paragraph attribute at
+        // styleBlock time) is heavier and wouldn't reach the plain-fragment
+        // fast path above.
+        let tableBorderColor: NSColor? = MainActor.assumeIsolated {
+            guard theme.preset == .colaElegant else { return nil }
+            return isDarkAppearance
                 ? NSColor(srgbRed: 0x3a / 255.0, green: 0x34 / 255.0, blue: 0x2e / 255.0, alpha: 1)
-                : NSColor(srgbRed: 0xd8 / 255.0, green: 0xd3 / 255.0, blue: 0xce / 255.0, alpha: 1))
-            : nil
+                : NSColor(srgbRed: 0xd8 / 255.0, green: 0xd3 / 255.0, blue: 0xce / 255.0, alpha: 1)
+        }
         return DecoratedTextLayoutFragment(textElement: textElement,
                                            range: textElement.elementRange,
                                            decorations: decorations,
