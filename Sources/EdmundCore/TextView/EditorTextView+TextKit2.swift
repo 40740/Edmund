@@ -109,9 +109,10 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         /// (extended `verticalPad` points above and below the fragment so the
         /// stripes cover the row's paragraph spacing and tile without gaps).
         case tableRow(columnXOffsets: [CGFloat], width: CGFloat,
-                      leftInset: CGFloat, separator: Bool, bottomBorder: Bool,
-                      background: NSColor?, verticalPad: CGFloat,
-                      headerAccent: NSColor?)
+                      leftInset: CGFloat, separator: Bool, topBorder: Bool,
+                      bottomBorder: Bool, background: NSColor?,
+                      verticalPad: CGFloat, headerAccent: NSColor?,
+                      gridColor: NSColor)
         /// Horizontal hairline across the text column, drawn `centerOffset`
         /// points below the fragment's vertical center. The offset compensates
         /// for adjacent text sitting at its baseline (low in its line box), so
@@ -176,13 +177,16 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
             hasher.combine(width)
             hasher.combine(offset)
         case .tableRow(let offsets, let width, let leftInset,
-                       let separator, let bottomBorder,
-                       let background, let verticalPad, let headerAccent):
+                       let separator, let topBorder, let bottomBorder,
+                       let background, let verticalPad, let headerAccent,
+                       let gridColor):
             hasher.combine(3)
             hasher.combine(offsets)
+            hasher.combine(gridColor)
             hasher.combine(width)
             hasher.combine(leftInset)
             hasher.combine(separator)
+            hasher.combine(topBorder)
             hasher.combine(bottomBorder)
             hasher.combine(background)
             hasher.combine(verticalPad)
@@ -701,7 +705,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             // TextKit clips them away.
             for deco in decorations {
                 switch deco.kind {
-                case .tableRow(_, _, _, _, _, _, let verticalPad, _):
+                case .tableRow(_, _, _, _, _, _, _, let verticalPad, _, _):
                     minY = min(minY, frame.minY - verticalPad)
                     maxY = max(maxY, frame.maxY + verticalPad)
                 case .bottomRule(_, let width, let offset):
@@ -1091,20 +1095,9 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                                 width: width, height: barHeight))
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator,
-                       let bottomBorder, let background, let verticalPad,
-                       let headerAccent):
+                       let topBorder, let bottomBorder, let background,
+                       _, let headerAccent, let borderColor):
             // Offsets are text-relative; the fragment's origin is the text start.
-            // The zebra fill spans the whole row band: the fragment frame stops
-            // at the row's text, so extend `verticalPad` each way to cover the
-            // paragraph spacing above and below and tile with the neighbours.
-            if let background {
-                context.setFillColor(background.cgColor)
-                context.fill(CGRect(x: point.x - leftInset,
-                                    y: point.y - verticalPad,
-                                    width: width,
-                                    height: frame.height + 2 * verticalPad))
-            }
-            let borderColor = chromeLineColor
             context.setStrokeColor(borderColor.cgColor)
             context.setLineWidth(1)
             // Column borders are FILLED at exactly one device pixel rather than
@@ -1115,21 +1108,30 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             // converting a unit size into device space gives the real backing scale.
             let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
             let hairline = 1 / scale
+            // The zebra fill and verticals cover exactly this row's cell band
+            // (the fragment frame already includes the cell's vertical padding
+            // — rows tile with no gap). Nothing may extend below the frame:
+            // the next row's fragment draws later, so a fill bleeding down
+            // would paint over this row's bottom rule (the "missing line" on
+            // non-zebra rows) and read as the zebra crossing the grid lines.
+            if let background {
+                context.setFillColor(background.cgColor)
+                context.fill(CGRect(x: point.x - leftInset,
+                                    y: point.y,
+                                    width: width,
+                                    height: frame.height))
+            }
             context.setFillColor(borderColor.cgColor)
             // The table spans [textStart - leftInset, textStart - leftInset + width],
             // so box it in: column borders from `xOffsets`, plus the left and
-            // right edges (GitHub tables are fully closed). Every row's verticals
-            // extend `verticalPad` past the fragment both ways, so the lines run
-            // through the row-to-row paragraph spacing and land exactly on the
-            // zebra band — previously they stopped at the fragment edge, leaving
-            // the striped fill sticking out past the grid (a visible "shadow").
+            // right edges (GitHub tables are fully closed).
             var xs = xOffsets
             xs.append(-leftInset)
             xs.append(width - leftInset)
             for x in xs {
                 let lineX = (((point.x + x) * scale).rounded()) / scale
-                context.fill(CGRect(x: lineX, y: point.y - verticalPad,
-                                    width: hairline, height: frame.height + 2 * verticalPad))
+                context.fill(CGRect(x: lineX, y: point.y,
+                                    width: hairline, height: frame.height))
             }
             // Header rule: a 2px accent line under the header row when a ColaMD
             // preset sets one (Elegant's red), else the default 1px grid line.
@@ -1144,8 +1146,20 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 context.fill(CGRect(x: point.x - leftInset, y: y,
                                     width: width, height: max(hairline, sepWidth)))
             }
+            // Row rules are drawn INSIDE the row's own band: a stroke centered
+            // exactly on the band edge would be half-covered by the next row's
+            // zebra fill (drawn later). Ending the stroke just inside the band
+            // bottom keeps every rule visible; tiled, they read as one closed
+            // grid with the verticals.
             if bottomBorder {
-                let y = round(point.y + frame.height) + 0.5
+                let y = round(point.y + frame.height) - 0.5
+                context.move(to: CGPoint(x: point.x - leftInset, y: y))
+                context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
+            }
+            // The table's top edge: box the header row so the grid is fully
+            // closed (previously the table had no line above the header).
+            if topBorder {
+                let y = round(point.y) + 0.5
                 context.move(to: CGPoint(x: point.x - leftInset, y: y))
                 context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
             }

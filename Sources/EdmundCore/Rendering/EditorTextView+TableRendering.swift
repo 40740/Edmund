@@ -173,14 +173,24 @@ extension EditorTextView {
                                                      width: totalWidth,
                                                      leftInset: cellHPad,
                                                      separator: i == 1,
-                                                     // Fully closed grid: every data
-                                                     // row gets a rule below it,
+                                                     // Fully closed grid: the header
+                                                     // row gets a top edge (the
+                                                     // table's top border) and every
+                                                     // data row gets a rule below it,
                                                      // including the last (ColaMD
                                                      // tables are boxed all around).
+                                                     topBorder: i == 0,
                                                      bottomBorder: i > 1,
                                                      background: zebra,
                                                      verticalPad: cellVPad,
-                                                     headerAccent: theme.tableHeadAccentColor)),
+                                                     headerAccent: theme.tableHeadAccentColor,
+                                                     // A ColaMD preset's hairline
+                                                     // (Elegant's warm #d8d3ce) when
+                                                     // set — the default separator
+                                                     // gray is so faint on white that
+                                                     // the rules read as missing.
+                                                     gridColor: theme.borderColor
+                                                         ?? EditorTextView.tableGridColor)),
                     range: lineRange)
 
                 // Cells whose styled width exceeds their column's (clamped)

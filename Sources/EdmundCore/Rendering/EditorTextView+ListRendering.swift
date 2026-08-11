@@ -96,6 +96,14 @@ extension EditorTextView {
         NSColor(srgbRed: 85 / 255, green: 85 / 255, blue: 85 / 255, alpha: 1)
     }
 
+    /// Fallback ink for the table grid when no ColaMD preset supplies a border
+    /// color: the shared marker gray in dark mode, `separatorColor` in light.
+    /// Mirrors the fragment's `chromeLineColor` (see EditorTextView+TextKit2).
+    nonisolated static var tableGridColor: NSColor {
+        NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? darkRuleGray : NSColor.separatorColor
+    }
+
     /// Dark-mode ink for the `---` hairline specifically. It is thicker than a
     /// table border (3 device pixels), so it needs a dimmer gray to carry the
     /// same visual weight. Read mode's `--hr` matches.

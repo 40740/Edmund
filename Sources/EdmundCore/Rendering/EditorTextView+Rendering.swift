@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 
 extension NSAttributedString.Key {
     /// Stores a link's destination (URL string) on its visible text so a
@@ -525,10 +526,23 @@ extension EditorTextView {
                                 // cover that space), so the panel fill above
                                 // the text and the click target come for free,
                                 // and following rows tile cleanly.
+                                //
+                                // The extra ascent lands ABOVE the line's
+                                // natural typographic box, whose ink is rarely
+                                // symmetric (CJK serifs sit high, mono fonts
+                                // low), so a flat pad leaves the text visibly
+                                // off-center and the imbalance shifts with the
+                                // font size. Measure the first line's real ink
+                                // and size the extra ascent so the panel's top
+                                // and bottom padding are both `quoteVPad`.
                                 let firstPS = blockquoteParagraphStyle().mutableCopy() as! NSMutableParagraphStyle
                                 firstPS.headIndent += CGFloat(depth) * quoteMarkerWidth
                                 let lineHeight = bodyFont.pointSize + theme.lineSpacing
-                                firstPS.minimumLineHeight = lineHeight + quoteVPad
+                                firstPS.minimumLineHeight = Self.quoteCenteringLineHeight(
+                                    for: nsQuote.substring(with: row),
+                                    font: bodyFont,
+                                    topPad: quoteVPad,
+                                    fallback: lineHeight + quoteVPad)
                                 result.addAttribute(.paragraphStyle, value: firstPS, range: row)
                             }
                             let ancestor = result.attribute(.blockDecoration, at: row.location,
@@ -1055,6 +1069,71 @@ extension EditorTextView {
         isUpdating = false
 
         typingAttributes = baseAttributes
+    }
+
+    /// Minimum line height for a quote's first row that makes the panel's top
+    /// and bottom padding optically equal. The top padding is created by
+    /// raising this line's height, and TextKit 2 puts the extra entirely above
+    /// the line's natural typographic box; the ink inside that box sits
+    /// `inkTopGap` below its top and `inkBottomGap` above its bottom. The extra
+    /// ascent must therefore be `topPad - inkTopGap + inkBottomGap` for the ink
+    /// to sit `topPad` below the panel top, matching the `topPad` bottom
+    /// padding below the last line's ink. Falls back to a plain `topPad` over
+    /// the body line height when the ink can't be measured (empty line).
+    private static func quoteCenteringLineHeight(for text: String,
+                                                 font: NSFont,
+                                                 topPad: CGFloat,
+                                                 fallback: CGFloat) -> CGFloat {
+        let attributed = NSAttributedString(string: text,
+                                            attributes: [.font: font])
+        let line = CTLineCreateWithAttributedString(attributed)
+        var ascent: CGFloat = 0, descent: CGFloat = 0, leading: CGFloat = 0
+        let width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
+        // Render the line to a tiny alpha bitmap and measure where the ink
+        // actually starts/stops relative to the baseline. Glyph bounding boxes
+        // (CTFontGetBoundingRectsForGlyphs) are generous and, for CJK faces,
+        // shifted from the real strokes, which leaves the text visibly off
+        // center — the imbalance even flips direction with font size. The
+        // rendered ink is what the eye compares, so measure that.
+        let h = Int(ceil(ascent + descent + leading)) + 4
+        let w = max(1, Int(ceil(width)) + 4)
+        guard let ctx = CGContext(data: nil, width: w, height: h,
+                                  bitsPerComponent: 8, bytesPerRow: w,
+                                  space: CGColorSpaceCreateDeviceGray(),
+                                  bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue) else {
+            return fallback
+        }
+        ctx.setShouldAntialias(true)
+        // Default CGContext: origin bottom-left, y up. Draw the baseline at
+        // `descent + 2` from the bottom so the ink stays inside the buffer.
+        // The buffer's first row is the visual top (highest y), so the
+        // baseline's buffer row is `h - 1 - floor(baselineY)`.
+        let baselineY = descent + 2
+        ctx.textPosition = CGPoint(x: 2, y: baselineY)
+        CTLineDraw(line, ctx)
+        guard let data = ctx.data else { return fallback }
+        let bytes = data.assumingMemoryBound(to: UInt8.self)
+        // Ink is where any column is opaque enough to count as a stroke.
+        var inkTopRow = -1, inkBottomRow = -1
+        for row in 0..<h {
+            var hasInk = false
+            for col in 0..<w where bytes[row * w + col] > 16 { hasInk = true; break }
+            if hasInk {
+                if inkTopRow < 0 { inkTopRow = row }
+                inkBottomRow = row
+            }
+        }
+        guard inkTopRow >= 0 else { return fallback }
+        let baseRow = (h - 1) - Int(baselineY.rounded(.down))
+        // Distance from the line box top to the ink top, and from the ink
+        // bottom to the line box bottom. The line box spans `ascent` above the
+        // baseline and `descent` below it.
+        let inkAbove = CGFloat(baseRow - inkTopRow)
+        let inkBelow = CGFloat(inkBottomRow - baseRow)
+        let topGap = max(0, ascent - inkAbove)
+        let bottomGap = max(0, descent - inkBelow)
+        let extraAscent = topPad - (topGap - bottomGap)
+        return max(0, ascent + descent + leading + extraAscent)
     }
 }
 
