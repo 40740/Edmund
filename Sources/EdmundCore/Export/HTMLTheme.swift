@@ -68,6 +68,13 @@ enum HTMLTheme {
         // ColaMD preset paints its own panel (Elegant's dark #2c2c2c).
         let codeBg = theme.preset.codeBlockBackgroundHex
             ?? (dark ? "#333333" : "#f4f4f4")
+        // Table header fill. The header must stay a *light* band on light
+        // themes so its bold ink stays legible — borrowing --code-bg for it
+        // made Elegant's header render on the dark code panel (#2c2c2c) with
+        // near-black text on top, which read as black-on-black. Light themes
+        // use the zebra tint (a soft fill one step off the page); dark themes
+        // keep a step-above-page fill so the header reads as a raised band.
+        let tableHeadBg = dark ? codeBg : zebra
 
         // line-height: editor `NSParagraphStyle.lineSpacing` adds extra points
         // *between* lines on top of the font's natural line height. That natural
@@ -112,6 +119,7 @@ enum HTMLTheme {
           --marker: \(dark ? darkChrome : resolvedRGBA(.tertiaryLabelColor, dark: dark));
           --table-border: \(dark ? darkRule : rule);
           --table-zebra: \(zebra);
+          --table-head-bg: \(tableHeadBg);
           --hr: \(dark ? "#4a4a4a" : rule);
           --quote-bar: \(quoteBar);
           --quote-bg: \(quoteBg);
@@ -364,8 +372,10 @@ enum HTMLTheme {
     /* GitHub-style zebra: header is bold-only, every other data row is tinted
        (tr:nth-child(2n) — the header row is child 1 of thead, so it never tints). */
     tr:nth-child(2n) { background: var(--table-zebra); }
-    thead th { background: var(--code-bg); }
-    /* ColaMD Elegant draws a 2px accent rule under the header row. */
+    /* Table header: a light fill on light themes so the bold ink stays
+       legible (never the dark code-block panel), a step-above-page fill in
+       dark mode. ColaMD Elegant draws a 2px accent rule under the header. */
+    thead th { background: var(--table-head-bg); }
     thead th { border-bottom: 2px solid var(--table-head-accent); }
     img { max-width: 100%; }
     img.math { vertical-align: middle; }
