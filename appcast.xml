@@ -283,5 +283,35 @@
                        
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 3.0.1</title>
+            <pubDate>Tue, 11 Aug 2026 03:56:24 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Bug-fix release for the ColaMD Elegant preset. v3.0.0 only themed Read mode (CSS); Edit mode — the native NSTextView — still rendered with Edmund&#x27;s colors. All 7 user-reported bugs stemmed from this.</p>
+<h3>Fixed</h3>
+<ul>
+<li><strong>Bold text not red (Edit mode)</strong> — bold now paints in the terracotta accent (<code>#c44b2b</code> / <code>#e0653f</code>), matching the design doc. Edmund preset unchanged (bold stays body ink).</li>
+<li><strong>Blockquote bar not red, no background (Edit mode)</strong> — the quote bar is now 4pt terracotta (was 2pt gray), and the quote box carries a soft paper-tint background (<code>#eae6e1</code> / <code>#26231f</code>). Quote text uses a warm gray (<code>#555</code> / <code>#a89f96</code>).</li>
+<li><strong>Inline code + highlight colors (Edit mode)</strong> — inline code now uses the warm-paper chip (<code>#e8e4df</code> / <code>#2a2622</code>) with terracotta text; highlight uses the 15% terracotta tint instead of default yellow.</li>
+<li><strong>Code block panel (Edit mode)</strong> — fenced code blocks now use the dark panel (<code>#2c2c2c</code> / <code>#14110f</code>) with warm off-white text (<code>#e0dcd7</code>) in both appearances, matching the spec&#x27;s &quot;technical counterpoint&quot; to the serif body.</li>
+<li><strong>Table borders (Edit mode)</strong> — table chrome now uses the warm border (<code>#d8d3ce</code> / <code>#3a342e</code>) instead of the system separator gray.</li>
+<li><strong>Heading color (Edit mode)</strong> — headings now paint in a deeper ink (<code>#1a1a1a</code> / <code>#e0dcd7</code>), one step darker than the body.</li>
+<li><strong>Top padding (Read mode)</strong> — Read-mode body padding reduced from 48px to 30px (matching the spec&#x27;s <code>#write</code> padding), eliminating the blank space at the top.</li>
+<li><strong>Heading underline (Read mode)</strong> — h1&#x27;s underline is now 2px terracotta (<code>#c44b2b</code>) instead of 1px gray, so it reads as an accent anchor.</li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li><code>EditorTextView+PresetColors.swift</code> — a single extension providing preset-aware alternatives for every rendering color that differs between Edmund and ColaMD (bold, inline code, highlight, blockquote bar/background/text, code block background/text, table border/header, heading color). Each property returns the ColaMD value when <code>theme.preset == .colaElegant</code> and falls through to the historical Edmund value otherwise.</li>
+<li><code>DecoratedTextLayoutFragment.tableBorderColor</code> — the border color is now captured at fragment-vend time (on the main actor) so the nonisolated <code>draw</code> path doesn&#x27;t touch the main-actor-isolated <code>theme</code> property.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/40740/Edmund/releases/download/v3.0.1/Edmund-3.0.1.dmg"
+                       sparkle:version="12"
+                       sparkle:shortVersionString="3.0.1"
+                       
+                       
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
