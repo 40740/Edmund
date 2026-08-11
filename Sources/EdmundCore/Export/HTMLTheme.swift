@@ -240,13 +240,10 @@ enum HTMLTheme {
         """
     }
 
-    /// Static element rules for the ColaMD Elegant theme. Transcribed from the
-    /// ColaMD reference implementation (themes/elegant.css) and the design spec
-    /// (UI-设计文档.md). Where the two disagree, the spec wins (it's the
-    /// authoritative source). Where neither specifies a value, we keep the
-    /// simplest possible rule — no decorative additions.
+    /// Static element rules for the ColaMD Elegant theme. Transcribed verbatim
+    /// from the design spec (UI-设计文档.md §4). Every value is the spec's
+    /// literal value — no reference-CSS fallbacks, no simplifications.
     private static func colaStaticRules(hrGlow: String) -> String {
-        _ = hrGlow  // no longer used; hr is a plain border-top per the reference CSS
         return """
         * { box-sizing: border-box; }
         html { -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased; }
@@ -258,25 +255,20 @@ enum HTMLTheme {
           color: var(--cola-text);
           background: var(--cola-bg);
           margin: 0;
-          /* #write padding: 30px 60px 100px — spec §4.1. Side padding here is 24px
-             (Edmund's reading-column convention); the spec's 60px is the
-             Typora sidebar-era inset, which doesn't apply to a centered column. */
           padding: 30px 24px 100px;
         }
         ::selection { background: var(--cola-selection); }
         .page { max-width: var(--page-max-width); margin: 0 auto; }
 
-        /* Paragraphs — spec §4.1: margin 0.85em, justify, line-height 1.9. */
+        /* §4.1 段落: margin 0.85em, text-align justify, letter-spacing 0.04em */
         p {
           margin: 0 0 1em;
           text-align: justify;
           letter-spacing: 0.04em;
         }
 
-        /* Headings — spec §3.2 / §4.1. h1-h6: #1a1a1a, 700, line-height 1.4,
-           margin 1.8em 0 0.65em. h1/h2 have padding-bottom (spacing, NO border)
-           per the reference CSS — the spec's "带下划线" is the padding gap, not a
-           drawn line. h6 dims to #555. */
+        /* §3.2 / §4.1 标题: #1a1a1a, 700, line-height 1.4, letter-spacing 0.02em,
+           margin 1.8em 0 0.65em. h1/h2 带下划线 (padding-bottom + border-bottom). */
         h1, h2, h3, h4, h5, h6 {
           color: var(--cola-heading);
           font-weight: 700;
@@ -284,70 +276,92 @@ enum HTMLTheme {
           letter-spacing: 0.02em;
           margin: 1.8em 0 0.65em;
         }
-        h1 { font-size: 1.8em; padding-bottom: 0.3em; }
-        h2 { font-size: 1.5em; padding-bottom: 0.2em; }
+        h1 { font-size: 1.8em; padding-bottom: 0.3em; border-bottom: 1px solid var(--cola-border); }
+        h2 { font-size: 1.5em; padding-bottom: 0.2em; border-bottom: 1px solid var(--cola-border); }
         h3 { font-size: 1.25em; }
         h4 { font-size: 1.1em; }
         h5 { font-size: 1em; }
         h6 { font-size: 0.95em; color: var(--cola-text-soft); }
         :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
 
-        /* Strong — spec §4: #c44b2b. The single accent color spans bold/links/
-           quotes/code/marks. em dims to #444 (reference) / --cola-text-soft. */
+        /* §4 强调: strong #c44b2b, em #444 */
         strong, b { color: var(--cola-accent); font-weight: 700; }
         em { font-style: italic; color: var(--cola-text-soft); }
         em strong, strong em { color: var(--cola-accent); }
 
-        /* Links — reference CSS: #c44b2b, no decoration, underline on hover. */
-        a { color: var(--cola-accent); text-decoration: none; }
-        a:hover { text-decoration: underline; }
+        /* §4.7 链接: #c44b2b, hover 下划线展开动效 background-size 0%→100% 0.3s */
+        a {
+          color: var(--cola-accent);
+          text-decoration: none;
+          background-image: linear-gradient(currentColor, currentColor);
+          background-size: 0% 1px;
+          background-position: 0 100%;
+          background-repeat: no-repeat;
+          transition: background-size .3s ease;
+        }
+        a:hover { background-size: 100% 1px; }
 
-        /* <u> — reference: 2px solid #c44b2b border-bottom. */
+        /* §4.7 <u>: 2px solid #c44b2b */
         u { text-decoration: none; border-bottom: 2px solid var(--cola-accent); padding-bottom: 1px; }
 
-        /* Strikethrough — spec §4.7: #555, line-through #c44b2b, opacity 0.75. */
+        /* §4.7 del: #555, line-through #c44b2b, opacity 0.75 */
         del, s { color: var(--cola-text-soft); text-decoration: line-through var(--cola-accent); opacity: 0.75; }
 
-        /* Blockquote — spec §4.5 + reference CSS. 4px terracotta bar, paper fill,
-           15px 20px 15px 25px padding (reference), color #444. No border-radius
-           in the reference; the spec's "0 6px 6px 0" is a Typora-era flourish
-           we omit for fidelity to the reference's flat box. */
+        /* §4.5 引用块: padding 16px 22px 16px 26px (上下对称16px),
+           border-left 4px solid #c44b2b, background #eae6e1, color #555,
+           border-radius 0 6px 6px 0, margin 1.6em 0.
+           hover: border-left-width 4px→5px */
         blockquote {
-          margin: 1.5em 0;
-          padding: 15px 20px 15px 25px;
+          margin: 1.6em 0;
+          padding: 16px 22px 16px 26px;
           border-left: 4px solid var(--cola-accent);
           background: var(--cola-bg-soft);
           color: var(--cola-text-soft);
+          border-radius: 0 6px 6px 0;
+          transition: border-left-width .15s ease;
         }
+        blockquote:hover { border-left-width: 5px; }
         blockquote > p:first-child { margin-top: 0; }
         blockquote > p:last-child  { margin-bottom: 0; }
         blockquote > p { margin: 0.5em 0; }
         blockquote > blockquote:last-child,
         .callout-body > blockquote:last-child { margin-bottom: 0; }
 
-        /* Horizontal rule — reference CSS: border-top 1px solid #d8d3ce. No
-           gradient, no center dot. The spec's dot is a design-doc aspiration
-           the reference CSS never shipped; we follow the reference. */
+        /* §4.7 hr: 渐变 transparent→#d8d3ce 20%→80%→transparent, 高1px,
+           中心6px圆点 #c44b2b 50%透明 */
         hr {
+          position: relative;
           border: none;
-          border-top: 1px solid var(--cola-border);
+          height: 1px;
           margin: 2.5em 0;
-          height: 0;
+          background: linear-gradient(to right,
+            transparent 0%,
+            var(--cola-border) 20%,
+            var(--cola-border) 80%,
+            transparent 100%);
+        }
+        hr::after {
+          content: "";
+          position: absolute;
+          top: 50%; left: 50%;
+          width: 6px; height: 6px;
+          transform: translate(-50%, -50%);
+          background: \(hrGlow);
+          opacity: 0.5;
+          border-radius: 50%;
         }
 
-        /* Lists — reference CSS: padding-left 1.8em, margin 0.8em, li 0.35em /
-           line-height 1.8. */
-        ul, ol { margin: 0.8em 0; padding-left: 1.8em; }
-        li { margin: 0.35em 0; line-height: 1.8; letter-spacing: 0.02em; }
+        /* §4.1 列表: ul/ol margin 0.85em, padding-left 1.8em; li margin 0.4em, line-height 1.85 */
+        ul, ol { margin: 0.85em 0; padding-left: 1.8em; }
+        li { margin: 0.4em 0; line-height: 1.85; letter-spacing: 0.02em; }
         li > p { margin: 0; }
-        li > ul, li > ol { margin: 0.35em 0; }
+        li > ul, li > ol { margin: 0.4em 0; }
         ul { list-style-type: disc; list-style-position: outside; }
         ol { list-style-type: decimal; list-style-position: outside; }
         li::marker { color: var(--cola-text-soft); font-size: 0.85em; }
         ol > li::marker { font-size: 1em; color: var(--cola-text); }
 
-        /* Task items — Edmund's float-and-clear trick; checkbox is the Lucide
-           SVG (HTMLRenderer emits it), tinted via currentColor. */
+        /* Task items */
         li.task { list-style: none; }
         li.task > .task-check {
           float: left; width: 1.2em; height: 1.2em; line-height: 0;
@@ -362,34 +376,31 @@ enum HTMLTheme {
         li.task::after { content: ""; display: block; clear: both; }
         .blank-line { height: calc(var(--body-size) * var(--line-height)); }
 
-        /* Inline code — reference CSS: font-size 0.9em, padding 2px 6px, margin
-           0 2px, background #e8e4df, border-radius 3px, color #c44b2b. We use
-           the spec's 0.88em (§3.2) for consistency with code blocks; padding
-           and radius follow the reference exactly. */
+        /* §4.3 行内代码: padding 3px 8px, margin 2px 2px, background #e8e4df,
+           color #c44b2b, border-radius 4px, font-size 0.88em */
         code, tt {
           font-family: var(--mono-font);
           font-size: 0.88em;
-          padding: 2px 6px;
+          padding: 3px 8px;
           margin: 0 2px;
           background: var(--cola-inline-code-bg);
           color: var(--cola-accent);
-          border-radius: 3px;
+          border-radius: 4px;
           letter-spacing: 0;
         }
 
-        /* Code block — reference CSS: font-size 0.88em, line-height 1.6,
-           background #2c2c2c, color #e0dcd7, padding 18px 22px, border-radius
-           6px, margin 1.5em 0. Spec §4.2 says 20px 24px / 8px / 1.65 / 1.6em;
-           we follow the reference (the actually-shipped values). */
+        /* §4.2 代码块: padding 20px 24px, background #2c2c2c, color #e0dcd7,
+           border-radius 8px, margin 1.6em 0, font-size 0.88em, line-height 1.65,
+           tab-size 4, overflow-x auto */
         pre {
           font-family: var(--mono-font);
           font-size: 0.88em;
-          line-height: 1.6;
+          line-height: 1.65;
           background: var(--cola-code-bg);
           color: var(--cola-code-text);
-          padding: 18px 22px;
-          border-radius: 6px;
-          margin: 1.5em 0;
+          padding: 20px 24px;
+          border-radius: 8px;
+          margin: 1.6em 0;
           overflow-x: auto;
           tab-size: 4; -moz-tab-size: 4;
           letter-spacing: 0;
@@ -402,9 +413,8 @@ enum HTMLTheme {
           border-radius: 0;
           font-size: var(--mono-size);
         }
-        /* Copy button — bare hover-revealed chip, top-right. Tinted to read on
-           the dark panel. */
-        .code-block-wrap { position: relative; margin: 1.5em 0; }
+        /* Copy button — top-right, hover-revealed */
+        .code-block-wrap { position: relative; margin: 1.6em 0; }
         .code-block-wrap pre { margin: 0; }
         .code-copy-btn {
           position: absolute; top: 8px; right: 10px;
@@ -421,17 +431,19 @@ enum HTMLTheme {
         .code-copy-icon { opacity: 0; transition: opacity .15s; }
         .code-block-wrap:hover .code-copy-icon { opacity: 1; }
 
-        /* Mark / highlight — reference CSS: rgba(196,75,43,0.15), color #2c2c2c,
-           padding 1px 4px, border-radius 2px. Spec §4.4 suggests 3px 8px / 4px
-           but the reference ships the tighter values; we follow the reference. */
+        /* §4.4 高亮 Mark: padding 3px 8px (原1px 4px→加大), background rgba(196,75,43,0.15),
+           color inherit, border-radius 4px, margin 0 1px, box-decoration-break clone */
         mark {
           background: var(--cola-accent-soft);
-          color: var(--cola-text);
-          padding: 1px 4px;
-          border-radius: 2px;
+          color: inherit;
+          padding: 3px 8px;
+          border-radius: 4px;
+          margin: 0 1px;
+          -webkit-box-decoration-break: clone;
+          box-decoration-break: clone;
         }
 
-        /* Tag pill (#tag) — terracotta accent, soft tint background. */
+        /* Tag pill */
         .tag {
           color: var(--cola-accent);
           background: color-mix(in srgb, var(--cola-accent) 14%, transparent);
@@ -439,7 +451,8 @@ enum HTMLTheme {
           font-size: 0.88em; white-space: nowrap;
         }
 
-        /* kbd — spec §4.7: tactile key cap. */
+        /* §4.7 kbd: padding 3px 7px, border 1px solid, border-bottom-width 2px,
+           border-radius 5px, box-shadow 0 1px 0 rgba(0,0,0,0.06) */
         kbd {
           font-family: var(--mono-font);
           font-size: 0.92em;
@@ -455,19 +468,20 @@ enum HTMLTheme {
         sup { top: -0.5em; }
         sub { bottom: -0.25em; }
 
-        /* Footnotes — reference: 0.85em, #c44b2b for refs, #555 for the list. */
+        /* §4.7 脚注: font-size 0.85em, color #555, 顶部 1px solid #d8d3ce 分隔 */
         sup.footnote-ref a { text-decoration: none; color: var(--cola-accent); }
         hr.footnotes-sep { margin-bottom: 0.8em; }
+        hr.footnotes-sep::after { display: none; }
         ol.footnotes { font-size: 0.85em; color: var(--cola-text-soft); }
         ol.footnotes li { margin: 0.4em 0; }
         a.footnote-backref { text-decoration: none; margin-left: 0.2em; font-size: 0.9em; line-height: 1; color: var(--cola-accent); }
 
-        /* Images — reference: max-width 100%. Spec adds 8px radius. */
+        /* §4.7 图片: max-width 100%, border-radius 8px, margin 1.6em auto */
         img { max-width: 100%; border-radius: 8px; }
-        p > img:only-child { display: block; margin: 1.5em auto; }
+        p > img:only-child { display: block; margin: 1.6em auto; }
         img.math { vertical-align: middle; border-radius: 0; }
-        .math-display { text-align: center; margin: 1.5em 0; }
-        .math-display-block { display: block; text-align: center; margin: 1.5em 0; }
+        .math-display { text-align: center; margin: 1.6em 0; }
+        .math-display-block { display: block; text-align: center; margin: 1.6em 0; }
         .md-image-blocked {
           display: inline-flex; align-items: center; gap: 0.4em;
           color: var(--cola-text-soft); background: var(--cola-bg-soft);
@@ -476,31 +490,32 @@ enum HTMLTheme {
         }
         .md-image-blocked svg { width: 1.1em; height: 1.1em; flex: 0 0 auto; }
 
-        /* Tables — reference CSS: width 100%, border-collapse, margin 1.5em,
-           font-size 0.95em. th: #eae6e1 bg, 700, #1a1a1a, padding 10px 14px,
-           border-bottom 2px solid #c44b2b. td: padding 10px 14px, border-bottom
-           1px solid #d8d3ce. tr:hover td: rgba(196,75,43,0.04). NO outer
-           container border, NO zebra striping — the reference ships neither. */
-        .table-wrap { overflow-x: auto; margin: 1.5em 0; }
+        /* §4.6 表格: 容器 border-radius 8px + border 1px solid #d8d3ce,
+           表头 background #eae6e1 + border-bottom 2px solid #c44b2b + padding 12px 16px,
+           单元格 padding 11px 16px + border-bottom 1px solid #d8d3ce,
+           斑马纹 tr:nth-child(even) #eae6e1 50%透明,
+           hover rgba(196,75,43,0.04),
+           font-size 0.95em */
+        .table-wrap { overflow-x: auto; margin: 1.6em 0; border: 1px solid var(--cola-border); border-radius: 8px; }
         table { border-collapse: collapse; width: 100%; font-size: 0.95em; letter-spacing: 0.02em; }
         thead th {
           background: var(--cola-bg-soft);
           color: var(--cola-heading);
           font-weight: 700;
-          padding: 10px 14px;
+          padding: 12px 16px;
           border-bottom: 2px solid var(--cola-accent);
           text-align: left;
         }
-        td { padding: 10px 14px; border-bottom: 1px solid var(--cola-border); color: var(--cola-text); }
+        td { padding: 11px 16px; border-bottom: 1px solid var(--cola-border); color: var(--cola-text); }
         tr:last-child td { border-bottom: none; }
+        tbody tr:nth-child(even) { background: color-mix(in srgb, var(--cola-bg-soft) 50%, transparent); }
         tbody tr:hover td { background: color-mix(in srgb, var(--cola-accent) 4%, transparent); }
 
-        /* Callouts — keep the Edmund structure (tinted box + colored title +
-           Lucide icon) recolored via the per-type --c-* vars. Square corners. */
+        /* Callouts */
         .callout {
           background: var(--c-bg);
           border-radius: 0;
-          margin: 1.5em 0;
+          margin: 1.6em 0;
           padding: calc(1.22em - (var(--line-height) - 0.78) * 0.5em) 1.24em 1.14em;
         }
         .callout-title { display: flex; align-items: flex-start; gap: 0.3em; font-weight: 600; color: var(--c-accent); }
@@ -527,7 +542,7 @@ enum HTMLTheme {
         .callout-body > :last-child { margin-bottom: 0; }
         .callout-body > .callout:last-child { margin-top: 0; }
 
-        /* Scrollbar — reference CSS: 6px, #ccc8c2 thumb, 3px radius. */
+        /* Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: #ccc8c2; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #b5b0aa; }

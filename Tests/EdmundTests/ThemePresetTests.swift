@@ -76,59 +76,72 @@ struct ThemePresetTests {
         #expect(css.contains("letter-spacing: 0.02em;"))
     }
 
-    @Test("ColaMD blockquote carries the 4px terracotta bar and paper fill")
+    @Test("ColaMD blockquote carries the 4px terracotta bar and spec padding")
     func colaBlockquote() {
         let css = HTMLTheme.css(theme(.colaElegant), callouts: Callout.defaultStyles, dark: false)
         #expect(css.contains("border-left: 4px solid var(--cola-accent);"))
-        // Reference CSS padding: 15px 20px 15px 25px
-        #expect(css.contains("padding: 15px 20px 15px 25px;"))
-        // First/last child margins collapse so the pads read as symmetric.
+        // Spec §4.5: padding 16px 22px 16px 26px (上下对称16px)
+        #expect(css.contains("padding: 16px 22px 16px 26px;"))
+        // Spec §4.5: border-radius 0 6px 6px 0
+        #expect(css.contains("border-radius: 0 6px 6px 0;"))
+        // Spec §4.5: hover border-left-width 4px→5px
+        #expect(css.contains("blockquote:hover { border-left-width: 5px; }"))
         #expect(css.contains("blockquote > p:first-child { margin-top: 0; }"))
         #expect(css.contains("blockquote > p:last-child  { margin-bottom: 0; }"))
     }
 
-    @Test("ColaMD code block uses the dark panel with 18/22 breathing room")
+    @Test("ColaMD code block uses the dark panel with spec padding 20px 24px")
     func colaCodeBlock() {
         let css = HTMLTheme.css(theme(.colaElegant), callouts: Callout.defaultStyles, dark: false)
-        // Reference CSS: padding 18px 22px, border-radius 6px
-        #expect(css.contains("padding: 18px 22px;"))
+        // Spec §4.2: padding 20px 24px, border-radius 8px, line-height 1.65
+        #expect(css.contains("padding: 20px 24px;"))
         #expect(css.contains("background: var(--cola-code-bg);"))
-        #expect(css.contains("border-radius: 6px;"))
+        #expect(css.contains("border-radius: 8px;"))
+        #expect(css.contains("line-height: 1.65;"))
     }
 
-    @Test("ColaMD inline code is a terracotta chip with 2/6 padding")
+    @Test("ColaMD inline code is a terracotta chip with spec padding 3px 8px")
     func colaInlineCode() {
         let css = HTMLTheme.css(theme(.colaElegant), callouts: Callout.defaultStyles, dark: false)
-        // Reference CSS: padding 2px 6px, border-radius 3px
-        #expect(css.contains("padding: 2px 6px;"))
+        // Spec §4.3: padding 3px 8px, border-radius 4px
+        #expect(css.contains("padding: 3px 8px;"))
         #expect(css.contains("background: var(--cola-inline-code-bg);"))
         #expect(css.contains("color: var(--cola-accent);"))
-        #expect(css.contains("border-radius: 3px;"))
+        #expect(css.contains("border-radius: 4px;"))
     }
 
-    @Test("ColaMD table header carries the 2px terracotta underline (no zebra, no outer border)")
+    @Test("ColaMD table has outer border, terracotta header underline, and zebra striping")
     func colaTable() {
         let css = HTMLTheme.css(theme(.colaElegant), callouts: Callout.defaultStyles, dark: false)
+        // Spec §4.6: container border 1px solid #d8d3ce + border-radius 8px
+        #expect(css.contains("border: 1px solid var(--cola-border); border-radius: 8px;"))
+        // Spec §4.6: header border-bottom 2px solid #c44b2b
         #expect(css.contains("border-bottom: 2px solid var(--cola-accent);"))
-        // Reference CSS ships NO zebra striping — only header bg + hover.
-        #expect(!css.contains("tr:nth-child(even)"))
-        // Reference CSS ships NO outer container border.
-        #expect(!css.contains(".table-wrap { overflow-x: auto; margin: 1.5em 0; border:"))
+        // Spec §4.6: header padding 12px 16px
+        #expect(css.contains("padding: 12px 16px;"))
+        // Spec §4.6: cell padding 11px 16px
+        #expect(css.contains("padding: 11px 16px;"))
+        // Spec §4.6: zebra striping tr:nth-child(even)
+        #expect(css.contains("tr:nth-child(even)"))
     }
 
-    @Test("ColaMD mark uses the terracotta tint, not default yellow")
-    func colaMark() {
+    @Test("ColaMD h1/h2 have underline per spec §4.1")
+    func colaHeadingUnderline() {
         let css = HTMLTheme.css(theme(.colaElegant), callouts: Callout.defaultStyles, dark: false)
-        #expect(css.contains("background: var(--cola-accent-soft);"))
+        // Spec §4.1: h1/h2 带下划线
+        #expect(css.contains("h1 { font-size: 1.8em; padding-bottom: 0.3em; border-bottom: 1px solid var(--cola-border); }"))
+        #expect(css.contains("h2 { font-size: 1.5em; padding-bottom: 0.2em; border-bottom: 1px solid var(--cola-border); }"))
     }
 
-    @Test("ColaMD hr is a plain border-top hairline (no dot, no gradient)")
+    @Test("ColaMD hr has the gradient hairline with centered terracotta dot")
     func colaHR() {
         let css = HTMLTheme.css(theme(.colaElegant), callouts: Callout.defaultStyles, dark: false)
-        #expect(css.contains("border-top: 1px solid var(--cola-border);"))
-        // Reference CSS has no ::after pseudo-element.
-        #expect(!css.contains("hr::after"))
-        #expect(!css.contains("border-radius: 50%;"))
+        // Spec §4.7: gradient transparent→#d8d3ce 20%→80%→transparent
+        #expect(css.contains("linear-gradient(to right,"))
+        // Spec §4.7: center 6px dot #c44b2b 50%透明
+        #expect(css.contains("hr::after"))
+        #expect(css.contains("width: 6px; height: 6px;"))
+        #expect(css.contains("border-radius: 50%;"))
     }
 
     // MARK: ColaMD CSS — dark mode
