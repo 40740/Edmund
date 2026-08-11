@@ -189,26 +189,6 @@ final class FontSettings: NSObject, ObservableObject {
         applyToDocuments(updated)
     }
 
-    /// Apply a named preset (Edmund or ColaMD) to the whole app. Stamps the
-    /// preset's seed values onto `EditorTheme` (font, accent, spacing, …) and
-    /// pushes it to every open document.
-    func applyPreset(_ preset: ThemePreset) {
-        let seed: EditorTheme = preset == .colaElegant ? .colaElegant : .default
-        // Adopt the preset's font/line-height values too, so the picker rows
-        // and the editable font fields stay consistent.
-        standardFont = seed.bodyFont
-        monospaceFont = seed.monospaceFont()
-        standardLigatures = seed.standardLigatures
-        monospaceLigatures = seed.monospaceLigatures
-        antialias = seed.antialias
-        let size = seed.bodyFont.pointSize
-        lineHeight = size > 0 ? max(1, min(3, (size + seed.lineSpacing) / size)) : 1
-
-        theme = seed
-        seed.save()
-        applyToDocuments(seed)
-    }
-
     /// The currently-selected preset (for the settings picker).
     var currentPreset: ThemePreset { theme.preset }
 
