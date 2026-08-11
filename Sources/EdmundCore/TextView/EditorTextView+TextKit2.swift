@@ -666,8 +666,29 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         var bounds = super.renderingSurfaceBounds
         let frame = layoutFragmentFrame
         if !decorations.isEmpty {
-            bounds = bounds.union(CGRect(x: containerLeft - 4, y: 0,
-                                         width: containerWidth + 8, height: frame.height))
+            // The surface rect is expressed in fragment-local coordinates where
+            // y = 0 is the text top. A box's top padding extends the fill ABOVE
+            // that origin (and a table row's zebra band/vertical grid lines
+            // extend `verticalPad` above it), while a heading's underline sits
+            // BELOW the frame's bottom edge — union all of them in, or TextKit
+            // clips those bands away (the quote's top padding vanished, so the
+            // text read as top-aligned instead of vertically centered).
+            var minY = -boxTopPad
+            var maxY = frame.height
+            for deco in decorations {
+                switch deco.kind {
+                case .bottomRule(_, let width, let offset):
+                    maxY = max(maxY, frame.height + offset + width)
+                case .tableRow(_, _, _, _, _, _, let verticalPad, _):
+                    minY = min(minY, -verticalPad)
+                    maxY = max(maxY, frame.height + verticalPad)
+                default:
+                    break
+                }
+            }
+            bounds = bounds.union(CGRect(x: containerLeft - 4, y: minY,
+                                         width: containerWidth + 8,
+                                         height: maxY - minY))
         }
         // Guides sit left of the item's text, outside the text-hugging frame.
         if !listGuides.isEmpty {
@@ -1293,8 +1314,7 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
         // turning the mode *off* takes effect on the next redraw.
         let focusMode = self.focusMode
         guard !decorations.isEmpty || !overlays.isEmpty || !cellWraps.isEmpty || !textAntialias
-                || (invisibles?.drawsAnything ?? false) || !listGuides.isEmpty || focusMode
-                || hasChips
+                || (invisibles?.drawsAnything ?? false) || !listGuides.isEmpty || focusMode || hasChips
         else {
             return NSTextLayoutFragment(textElement: textElement,
                                         range: textElement.elementRange)

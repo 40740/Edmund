@@ -19,7 +19,15 @@ public enum SyntaxHighlighter {
     /// as colored source. Single source of truth shared by the editor's
     /// `parseHTMLTags` (Edit mode) and `HTMLRenderer.sanitizeInlineHTML` (Read
     /// mode), so the two back-ends can't drift on which tags are allowed.
-    public static let htmlFormatTags: Set<String> = ["u", "kbd", "mark", "sub", "sup", "small"]
+    ///
+    /// Read mode passes raw HTML through (GFM §6.10), so `<i>/<em>/<del>/<s>`/
+    /// `<strike>/<code>/<b>/<strong>` already render natively there — these
+    /// extra names keep Edit mode in sync, styling a pair's content the same
+    /// way as the equivalent markdown syntax instead of showing colored source.
+    public static let htmlFormatTags: Set<String> = [
+        "u", "kbd", "mark", "sub", "sup", "small",
+        "i", "em", "b", "strong", "del", "s", "strike", "code",
+    ]
 
     // MARK: - Model
 

@@ -287,9 +287,13 @@ enum HTMLTheme {
        sanitizeInlineHTML). <u>/<mark> use the UA underline / the rule above;
        <kbd> matches the editor's inline-key chrome, <sub>/<sup> get the standard
        line-height-safe reset. */
+    /* <kbd> is an inline element, so it uses the *inline*-code chip colors
+       (light paper on a light page, with the inline-code ink), not the dark
+       fenced-block `--code-bg` — the old rule painted Elegant's dark #2c2c2c
+       block panel behind near-black body ink, i.e. black text on black. */
     kbd { font-family: var(--mono-font); font-size: 0.92em; color: var(--inline-code-ink);
-          background: var(--inline-code-bg);
-          border: 1px solid var(--rule); border-radius: 4px; padding: 0.05em 0.4em; }
+          background: var(--inline-code-bg); border: 1px solid var(--rule);
+          border-radius: 4px; padding: 0.05em 0.4em; }
     sub, sup { font-size: 0.75em; line-height: 0; position: relative; vertical-align: baseline; }
     sup { top: -0.5em; }
     sub { bottom: -0.25em; }

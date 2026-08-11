@@ -4,9 +4,10 @@ import AppKit
 @testable import EdmundCore
 
 // HTML tags in edit mode: every recognized tag is colored source (name red,
-// brackets dimmed); a whitelist (u/kbd/mark/sub/sup) additionally renders its
-// formatting when the caret is outside the token. Read mode passes raw HTML
-// through per GFM, filtered by tagfilter (§6.11) + hardening.
+// brackets dimmed); a whitelist (u/kbd/mark/sub/sup/small, i/em/b/strong,
+// del/s/strike, code) additionally renders its formatting when the caret is
+// outside the token. Read mode passes raw HTML through per GFM, filtered by
+// tagfilter (§6.11) + hardening.
 
 @Suite("SyntaxHighlighter — HTML tags")
 struct HTMLTagParseTests {
@@ -205,6 +206,33 @@ struct HTMLTagRenderingTests {
         let small = editor.styleBlock("<small>fine</small>", cursorPosition: nil)
         let f = attr(.font, at: 8, in: small) as? NSFont
         #expect(f != nil && f!.pointSize < editor.bodyFont.pointSize)
+    }
+
+    @Test("i/em, b/strong, del/s/strike, code render like their markdown forms")
+    func extendedFormatMap() {
+        let editor = makeEditor()
+
+        let i = editor.styleBlock("<i>X</i>", cursorPosition: nil)
+        let it = attr(.font, at: 3, in: i) as? NSFont
+        #expect(it != nil && NSFontManager.shared.traits(of: it!).contains(.italicFontMask))
+
+        let em = editor.styleBlock("<em>X</em>", cursorPosition: nil)
+        let et = attr(.font, at: 4, in: em) as? NSFont
+        #expect(et != nil && NSFontManager.shared.traits(of: et!).contains(.italicFontMask))
+
+        let b = editor.styleBlock("<b>X</b>", cursorPosition: nil)
+        let bt = attr(.font, at: 3, in: b) as? NSFont
+        #expect(bt != nil && NSFontManager.shared.traits(of: bt!).contains(.boldFontMask))
+
+        let del = editor.styleBlock("<del>X</del>", cursorPosition: nil)
+        #expect(attr(.strikethroughStyle, at: 5, in: del) as? Int == NSUnderlineStyle.single.rawValue)
+
+        let strike = editor.styleBlock("<strike>X</strike>", cursorPosition: nil)
+        #expect(attr(.strikethroughStyle, at: 8, in: strike) as? Int == NSUnderlineStyle.single.rawValue)
+
+        let code = editor.styleBlock("<code>X</code>", cursorPosition: nil)
+        #expect((attr(.font, at: 6, in: code) as? NSFont) == editor.inlineCodeFont)
+        #expect(attr(.inlineCodeChip, at: 6, in: code) as? NSColor == editor.inlineCodeBackground)
     }
 
     @Test("HTML comment: dimmed in edit view, hidden in reading view")
