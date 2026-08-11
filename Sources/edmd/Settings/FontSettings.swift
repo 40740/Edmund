@@ -45,7 +45,7 @@ final class FontSettings: NSObject, ObservableObject {
 
     func setStandardSize(_ size: CGFloat) {
         standardFont = NSFont(descriptor: standardFont.fontDescriptor, size: size) ?? standardFont
-        applyTheme()
+        applyTheme(overridePresetFont: true)
     }
 
     func setMonospaceSize(_ size: CGFloat) {
@@ -62,7 +62,7 @@ final class FontSettings: NSObject, ObservableObject {
         switch target {
         case .standard:
             standardFont = sender.convert(standardFont)
-            applyTheme()
+            applyTheme(overridePresetFont: true)
         case .monospace:
             monospaceFont = sender.convert(monospaceFont)
             applyMonospace()
@@ -104,11 +104,17 @@ final class FontSettings: NSObject, ObservableObject {
         applyToDocuments(updated)
     }
 
-    private func applyTheme() {
+    private func applyTheme(overridePresetFont: Bool = false) {
         var updated = theme
         updated.fontName = standardFont.fontName
         updated.fontSize = standardFont.pointSize
         updated.lineSpacing = max(0, (lineHeight - 1) * standardFont.pointSize)
+        // A real font edit (not a line-height tweak) marks the user's own face
+        // as authoritative, so it keeps winning over any ColaMD preset's serif
+        // while that preset stays active (see EditorTheme.bodyFont).
+        if overridePresetFont {
+            updated.customFontOverridesPreset = true
+        }
         theme = updated
         updated.save()
         applyToDocuments(updated)
