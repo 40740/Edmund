@@ -389,12 +389,12 @@ class Document: NSDocument, HeadingNavigable {
               let window = windowControllers.first?.window else { return }
 
         let alert = NSAlert()
-        alert.messageText = "Inconsistent Line Endings"
-        alert.informativeText = "This document mixes different line endings. "
-            + "It will be saved using \(editor?.originalLineEnding.displayName ?? "LF") throughout."
-        alert.addButton(withTitle: "OK")
+        alert.messageText = "换行符不一致"
+        alert.informativeText = "此文档混合使用了不同的换行符。"
+            + "将统一使用 \(editor?.originalLineEnding.displayName ?? "LF") 保存。"
+        alert.addButton(withTitle: "确定")
         alert.showsSuppressionButton = true
-        alert.suppressionButton?.title = "Do not warn about inconsistent line endings"
+        alert.suppressionButton?.title = "不再提示换行符不一致" 
         alert.beginSheetModal(for: window) { _ in
             if alert.suppressionButton?.state == .on {
                 AppSettings.suppressInconsistentLineEndingWarning = true

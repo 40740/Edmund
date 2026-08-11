@@ -189,6 +189,9 @@ final class FontSettings: NSObject, ObservableObject {
         applyToDocuments(updated)
     }
 
+    /// The currently-selected preset (for the settings picker).
+    var currentPreset: ThemePreset { theme.preset }
+
     private func applyToDocuments(_ theme: EditorTheme) {
         for case let document as Document in NSDocumentController.shared.documents {
             document.editor?.applyTheme(theme)

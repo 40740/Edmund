@@ -16,26 +16,21 @@ enum HTMLTheme {
     /// The page background hex for the given appearance — shared by the CSS
     /// `--bg` variable and `ReadModeWebView.underPageBackgroundColor` so the
     /// webview's own background can't drift from the page it's about to show.
-    ///
-    /// Routes by preset: ColaMD's Elegant theme paints a warm-paper page
-    /// (`#f0edea` light / `#1c1a18` dark) instead of the default white /
-    /// `#292929`. The same hex reaches `underPageBackgroundColor`, killing the
-    /// white flash before first paint in either look.
-    private static func backgroundHex(dark: Bool, preset: ThemePreset = .edmund) -> String {
-        switch preset {
+    /// ColaMD theme uses the warm paper color (#f0edea) regardless of dark mode.
+    private static func backgroundHex(theme: EditorTheme, dark: Bool) -> String {
+        switch theme.preset {
+        case .colaElegant:
+            // ColaMD always uses warm paper — no dark mode variant.
+            return "#f0edea"
         case .edmund:
             return dark ? "#292929" : "#ffffff"
-        case .colaElegant:
-            return dark ? "#1c1a18" : "#f0edea"
         }
     }
 
     /// `NSColor` form of `backgroundHex`, for `WKWebView.underPageBackgroundColor`.
-    /// Resolves the preset from the live theme so a preset switch updates the
-    /// flash color along with the page.
     @MainActor
-    static func backgroundColor(dark: Bool, preset: ThemePreset = .edmund) -> NSColor {
-        NSColor(hex: backgroundHex(dark: dark, preset: preset)) ?? .textBackgroundColor
+    static func backgroundColor(theme: EditorTheme = .default, dark: Bool) -> NSColor {
+        NSColor(hex: backgroundHex(theme: theme, dark: dark)) ?? .textBackgroundColor
     }
 
     @MainActor
@@ -43,45 +38,24 @@ enum HTMLTheme {
                     callouts: [String: CalloutStyle],
                     dark: Bool,
                     maxContentWidthPoints: Double = .greatestFiniteMagnitude) -> String {
-        // Route by preset: ColaMD Elegant has its own complete stylesheet
-        // (warm paper, terracotta accent, serif body, One-Dark code panel) that
-        // can't be expressed as a recolor of the Edmund CSS — spacing, blockquote
-        // treatment, table chrome and code-block padding all differ. Dispatching
-        // here keeps the existing call sites (`DocumentHTML.full`, `MarkdownPrinter`,
-        // `ReadModeWebView.underPageBackgroundColor`) preset-agnostic.
-        switch theme.preset {
-        case .edmund:
-            return edmundCSS(theme, callouts: callouts, dark: dark,
-                             maxContentWidthPoints: maxContentWidthPoints)
-        case .colaElegant:
-            return colaElegantCSS(theme, callouts: callouts, dark: dark,
-                                  maxContentWidthPoints: maxContentWidthPoints)
-        }
-    }
-
-    // MARK: - Edmund (default) CSS
-
-    @MainActor
-    private static func edmundCSS(_ theme: EditorTheme,
-                                  callouts: [String: CalloutStyle],
-                                  dark: Bool,
-                                  maxContentWidthPoints: Double) -> String {
-        let bg = backgroundHex(dark: dark, preset: .edmund)
+        let isCola = theme.preset == .colaElegant
+        let bg = backgroundHex(theme: theme, dark: dark)
         // Body ink comes from the editor's own definition, not a second hex, so
         // Edit and Read mode can never drift apart again (EditorTheme
         // .bodyTextColor). This was `#1a1a1a` in light mode, 10% lighter than
         // what the editor paints.
-        let fg = EditorTheme.bodyTextColorResolved(dark: dark).hexString
-        let faint = dark ? "#9a9a9a" : "#6a6a6a"
-        let rule = dark ? "#3a3a3a" : "#e0e0e0"
+        let fg = isCola
+            ? "#2c2c2c" // ColaMD text color
+            : EditorTheme.bodyTextColorResolved(dark: dark).hexString
+        let faint = isCola ? "#555555" : (dark ? "#9a9a9a" : "#6a6a6a")
+        let rule = isCola ? "#d8d3ce" : (dark ? "#3a3a3a" : "#e0e0e0")
         // Markers, rules and table borders in dark mode: the same gray the editor
         // draws them at (EditorTextView.darkChromeGray, 0.41 white).
-        let darkChrome = "#696969"
+        let darkChrome = isCola ? "#d8d3ce" : "#696969"
         // Rules and table borders sit a step dimmer (EditorTextView.darkRuleGray).
-        let darkRule = "#555555"
-        // #2a2a2a sat one level above the #292929 page background — code blocks
-        // and table header rows had no visible tint at all in dark mode.
-        let codeBg = dark ? "#333333" : "#f4f4f4"
+        let darkRule = isCola ? "#d8d3ce" : "#555555"
+        // ColaMD uses a dark #2c2c2c code block background on warm paper.
+        let codeBg = isCola ? "#2c2c2c" : (dark ? "#333333" : "#f4f4f4")
 
         // line-height: editor `NSParagraphStyle.lineSpacing` adds extra points
         // *between* lines on top of the font's natural line height. That natural
@@ -120,19 +94,19 @@ enum HTMLTheme {
           --code-bg: \(codeBg);
           /* Inline code sits directly on --bg, where the block --code-bg is only
              one level lighter and reads as nothing; dark mode needs its own step. */
-          --inline-code-bg: \(dark ? "#3c3c3c" : codeBg);
-          --marker: \(dark ? darkChrome : resolvedRGBA(.tertiaryLabelColor, dark: dark));
-          --table-border: \(dark ? darkRule : rule);
-          --hr: \(dark ? "#4a4a4a" : rule);
-          --quote-bar: \(dark ? darkChrome : rule);
-          --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
+          --inline-code-bg: \(isCola ? "#e8e4df" : (dark ? "#3c3c3c" : codeBg));
+          --marker: \(isCola ? "#555555" : (dark ? darkChrome : resolvedRGBA(.tertiaryLabelColor, dark: dark)));
+          --table-border: \(isCola ? "#d8d3ce" : (dark ? darkRule : rule));
+          --hr: \(isCola ? "#d8d3ce" : (dark ? "#4a4a4a" : rule));
+          --quote-bar: \(isCola ? "#c44b2b" : (dark ? darkChrome : rule));
+          --check-fill: \(isCola ? "#c44b2b" : resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
           --page-max-width: \(pageMaxWidth);
         }
         \(calloutVars(callouts, dark: dark))
-        \(staticRules)
-        \(codeTokenRules(dark: dark))
+        \(staticRules(isCola: isCola))
+        \(codeTokenRules(dark: dark, isCola: isCola))
         """
     }
 
@@ -142,9 +116,9 @@ enum HTMLTheme {
     /// `CodeSyntaxPalette` so Read mode matches the editor token-for-token. The
     /// `pre code` rule overrides the static `var(--fg)` so plain (un-tokenized)
     /// code uses the palette's plain color too, like the editor.
-    private static func codeTokenRules(dark: Bool) -> String {
+    private static func codeTokenRules(dark: Bool, isCola: Bool = false) -> String {
         func rule(_ selector: String, _ type: CodeHighlighter.TokenType?) -> String {
-            "\(selector) { color: \(CodeSyntaxPalette.hex(type, dark: dark)); }"
+            "\(selector) { color: \(CodeSyntaxPalette.hex(type, dark: isCola || dark)); }"
         }
         return [
             rule("pre code", nil),
@@ -158,437 +132,6 @@ enum HTMLTheme {
             rule("pre code .tok-string", .string),
             rule("pre code .tok-comment", .comment),
         ].joined(separator: "\n")
-    }
-
-    // MARK: - ColaMD "Elegant Plus" CSS
-    //
-    // A complete stylesheet for the ColaMD Elegant preset, ported from
-    // https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css and the
-    // design spec in `UI-设计文档.md`. Independent from `edmundCSS` because the
-    // look differs in kind, not just in color: paper-warm background, generous
-    // 0.04em tracking, 1.9 line-height, 4px terracotta blockquote bar, dark
-    // code panel with 20/24px breathing room, terracotta-tinted table headers,
-    // and One-Dark syntax colors. Same `EditorTheme` fields feed both paths so
-    // user font/size/spacing tweaks still apply.
-    @MainActor
-    private static func colaElegantCSS(_ theme: EditorTheme,
-                                       callouts: [String: CalloutStyle],
-                                       dark: Bool,
-                                       maxContentWidthPoints: Double) -> String {
-        // Palette tokens — see UI-设计文档.md §2. Each appearance has its own
-        // accent ramp: the terracotta is lifted in dark mode so it reads
-        // against the warm-black page (#1c1a18, not pure black).
-        let bg           = dark ? "#1c1a18" : "#f0edea"
-        let bgSoft       = dark ? "#26231f" : "#eae6e1"
-        let text         = dark ? "#d8d3ce" : "#2c2c2c"
-        let textSoft     = dark ? "#a89f96" : "#555555"
-        let heading      = dark ? "#e0dcd7" : "#1a1a1a"
-        let accent       = dark ? "#e0653f" : "#c44b2b"
-        let accentSoft   = dark ? "rgba(224, 101, 63, 0.18)" : "rgba(196, 75, 43, 0.15)"
-        let selection    = dark ? "rgba(224, 101, 63, 0.25)" : "rgba(196, 75, 43, 0.20)"
-        let border       = dark ? "#3a342e" : "#d8d3ce"
-        let codeBg       = dark ? "#14110f" : "#2c2c2c"
-        let codeFg       = "#e0dcd7"
-        let inlineCodeBg = dark ? "#2a2622" : "#e8e4df"
-        let hrGlow       = accent
-
-        // Body font: prefer the user's picked family (Songti SC by default),
-        // then macOS CJK serifs (Source Han Serif, Songti SC, SimSun), then a
-        // Latin serif fallback chain. LXGW WenKai goes first if the user has
-        // installed it — it's the design doc's preferred face.
-        let bodyStack = cssFontStack(theme.fontName, generic: "serif")
-        // Mono stack: JetBrains Mono → Fira Code → SF Mono → Menlo → system mono.
-        // The user's monospaceFontName is honored if non-empty.
-        let monoName = theme.monospaceFontName.isEmpty ? "Menlo" : theme.monospaceFontName
-        let monoStack = "\"\(monoName)\", \"JetBrains Mono\", \"Fira Code\", \"SF Mono\", ui-monospace, Menlo, Consolas, monospace"
-
-        // line-height: the editor measures the natural line height of the body
-        // font, then adds `theme.lineSpacing` between lines. The ColaMD preset
-        // sets `lineSpacing = 8.4` which (for Songti SC at 16pt) lands at the
-        // spec's 1.9 cadence; we compute it the same way `edmundCSS` does so
-        // the size stepper keeps Edit and Read in lockstep.
-        let naturalLineHeight = NSLayoutManager().defaultLineHeight(for: theme.bodyFont)
-        let lineHeight = (naturalLineHeight + theme.lineSpacing) / theme.fontSize
-
-        let pageMaxWidth = maxContentWidthPoints < 100_000
-            ? "\(trim(CGFloat(maxContentWidthPoints)))px" : "none"
-
-        return """
-        :root {
-          --cola-bg: \(bg);
-          --cola-bg-soft: \(bgSoft);
-          --cola-text: \(text);
-          --cola-text-soft: \(textSoft);
-          --cola-accent: \(accent);
-          --cola-accent-soft: \(accentSoft);
-          --cola-border: \(border);
-          --cola-code-bg: \(codeBg);
-          --cola-code-text: \(codeFg);
-          --cola-inline-code-bg: \(inlineCodeBg);
-          --cola-selection: \(selection);
-          --cola-heading: \(heading);
-          --body-font: \(bodyStack);
-          --body-size: \(trim(theme.fontSize))px;
-          --mono-font: \(monoStack);
-          --mono-size: \(trim(theme.monospaceFontSize))px;
-          --line-height: \(trim(lineHeight));
-          --page-max-width: \(pageMaxWidth);
-        }
-        \(calloutVars(callouts, dark: dark))
-        \(colaStaticRules(hrGlow: hrGlow))
-        \(colaCodeTokenRules(dark: dark))
-        """
-    }
-
-    /// Static element rules for the ColaMD Elegant theme. Transcribed verbatim
-    /// from the design spec (UI-设计文档.md §4). Every value is the spec's
-    /// literal value — no reference-CSS fallbacks, no simplifications.
-    private static func colaStaticRules(hrGlow: String) -> String {
-        return """
-        * { box-sizing: border-box; }
-        html { -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased; }
-        body {
-          font-family: var(--body-font);
-          font-size: var(--body-size);
-          line-height: var(--line-height);
-          letter-spacing: 0.04em;
-          color: var(--cola-text);
-          background: var(--cola-bg);
-          margin: 0;
-          padding: 30px 24px 100px;
-        }
-        ::selection { background: var(--cola-selection); }
-        .page { max-width: var(--page-max-width); margin: 0 auto; }
-
-        /* §4.1 段落: margin 0.85em, text-align justify, letter-spacing 0.04em */
-        p {
-          margin: 0 0 1em;
-          text-align: justify;
-          letter-spacing: 0.04em;
-        }
-
-        /* §3.2 / §4.1 标题: #1a1a1a, 700, line-height 1.4, letter-spacing 0.02em,
-           margin 1.8em 0 0.65em. h1/h2 带下划线 (padding-bottom + border-bottom). */
-        h1, h2, h3, h4, h5, h6 {
-          color: var(--cola-heading);
-          font-weight: 700;
-          line-height: 1.4;
-          letter-spacing: 0.02em;
-          margin: 1.8em 0 0.65em;
-        }
-        h1 { font-size: 1.8em; padding-bottom: 0.3em; border-bottom: 1px solid var(--cola-border); }
-        h2 { font-size: 1.5em; padding-bottom: 0.2em; border-bottom: 1px solid var(--cola-border); }
-        h3 { font-size: 1.25em; }
-        h4 { font-size: 1.1em; }
-        h5 { font-size: 1em; }
-        h6 { font-size: 0.95em; color: var(--cola-text-soft); }
-        :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
-
-        /* §4 强调: strong #c44b2b, em #444 */
-        strong, b { color: var(--cola-accent); font-weight: 700; }
-        em { font-style: italic; color: var(--cola-text-soft); }
-        em strong, strong em { color: var(--cola-accent); }
-
-        /* §4.7 链接: #c44b2b, hover 下划线展开动效 background-size 0%→100% 0.3s */
-        a {
-          color: var(--cola-accent);
-          text-decoration: none;
-          background-image: linear-gradient(currentColor, currentColor);
-          background-size: 0% 1px;
-          background-position: 0 100%;
-          background-repeat: no-repeat;
-          transition: background-size .3s ease;
-        }
-        a:hover { background-size: 100% 1px; }
-
-        /* §4.7 <u>: 2px solid #c44b2b */
-        u { text-decoration: none; border-bottom: 2px solid var(--cola-accent); padding-bottom: 1px; }
-
-        /* §4.7 del: #555, line-through #c44b2b, opacity 0.75 */
-        del, s { color: var(--cola-text-soft); text-decoration: line-through var(--cola-accent); opacity: 0.75; }
-
-        /* §4.5 引用块: padding 16px 22px 16px 26px (上下对称16px),
-           border-left 4px solid #c44b2b, background #eae6e1, color #555,
-           border-radius 0 6px 6px 0, margin 1.6em 0.
-           hover: border-left-width 4px→5px */
-        blockquote {
-          margin: 1.6em 0;
-          padding: 16px 22px 16px 26px;
-          border-left: 4px solid var(--cola-accent);
-          background: var(--cola-bg-soft);
-          color: var(--cola-text-soft);
-          border-radius: 0 6px 6px 0;
-          transition: border-left-width .15s ease;
-        }
-        blockquote:hover { border-left-width: 5px; }
-        blockquote > p:first-child { margin-top: 0; }
-        blockquote > p:last-child  { margin-bottom: 0; }
-        blockquote > p { margin: 0.5em 0; }
-        blockquote > blockquote:last-child,
-        .callout-body > blockquote:last-child { margin-bottom: 0; }
-
-        /* §4.7 hr: 渐变 transparent→#d8d3ce 20%→80%→transparent, 高1px,
-           中心6px圆点 #c44b2b 50%透明 */
-        hr {
-          position: relative;
-          border: none;
-          height: 1px;
-          margin: 2.5em 0;
-          background: linear-gradient(to right,
-            transparent 0%,
-            var(--cola-border) 20%,
-            var(--cola-border) 80%,
-            transparent 100%);
-        }
-        hr::after {
-          content: "";
-          position: absolute;
-          top: 50%; left: 50%;
-          width: 6px; height: 6px;
-          transform: translate(-50%, -50%);
-          background: \(hrGlow);
-          opacity: 0.5;
-          border-radius: 50%;
-        }
-
-        /* §4.1 列表: ul/ol margin 0.85em, padding-left 1.8em; li margin 0.4em, line-height 1.85 */
-        ul, ol { margin: 0.85em 0; padding-left: 1.8em; }
-        li { margin: 0.4em 0; line-height: 1.85; letter-spacing: 0.02em; }
-        li > p { margin: 0; }
-        li > ul, li > ol { margin: 0.4em 0; }
-        ul { list-style-type: disc; list-style-position: outside; }
-        ol { list-style-type: decimal; list-style-position: outside; }
-        li::marker { color: var(--cola-text-soft); font-size: 0.85em; }
-        ol > li::marker { font-size: 1em; color: var(--cola-text); }
-
-        /* Task items */
-        li.task { list-style: none; }
-        li.task > .task-check {
-          float: left; width: 1.2em; height: 1.2em; line-height: 0;
-          margin-top: 0.1em; margin-right: 0.3em; margin-left: -1.45em;
-        }
-        li.task > .task-check svg { display: block; width: 1.2em; height: 1.2em; }
-        .task-check--unchecked { color: var(--cola-text-soft); }
-        .task-check--checked   { color: var(--cola-accent); }
-        li.task--checked > p { opacity: 0.45; text-decoration: line-through; }
-        li.task > p { display: inline; margin: 0; }
-        li.task > ul, li.task > ol { clear: left; }
-        li.task::after { content: ""; display: block; clear: both; }
-        .blank-line { height: calc(var(--body-size) * var(--line-height)); }
-
-        /* §4.3 行内代码: padding 3px 8px, margin 2px 2px, background #e8e4df,
-           color #c44b2b, border-radius 4px, font-size 0.88em */
-        code, tt {
-          font-family: var(--mono-font);
-          font-size: 0.88em;
-          padding: 3px 8px;
-          margin: 0 2px;
-          background: var(--cola-inline-code-bg);
-          color: var(--cola-accent);
-          border-radius: 4px;
-          letter-spacing: 0;
-        }
-
-        /* §4.2 代码块: padding 20px 24px, background #2c2c2c, color #e0dcd7,
-           border-radius 8px, margin 1.6em 0, font-size 0.88em, line-height 1.65,
-           tab-size 4, overflow-x auto */
-        pre {
-          font-family: var(--mono-font);
-          font-size: 0.88em;
-          line-height: 1.65;
-          background: var(--cola-code-bg);
-          color: var(--cola-code-text);
-          padding: 20px 24px;
-          border-radius: 8px;
-          margin: 1.6em 0;
-          overflow-x: auto;
-          tab-size: 4; -moz-tab-size: 4;
-          letter-spacing: 0;
-        }
-        pre code {
-          background: transparent;
-          color: inherit;
-          padding: 0;
-          margin: 0;
-          border-radius: 0;
-          font-size: var(--mono-size);
-        }
-        /* Copy button — top-right, hover-revealed */
-        .code-block-wrap { position: relative; margin: 1.6em 0; }
-        .code-block-wrap pre { margin: 0; }
-        .code-copy-btn {
-          position: absolute; top: 8px; right: 10px;
-          display: flex; align-items: center; gap: 4px;
-          font-family: var(--mono-font); font-size: 11px; font-weight: 500;
-          color: rgba(224, 220, 215, 0.7);
-          background: rgba(255, 255, 255, 0.06);
-          padding: 3px 6px; border-radius: 5px;
-          text-decoration: none; cursor: pointer;
-        }
-        .code-copy-btn:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
-        .code-copy-btn.copied { color: var(--cola-accent); }
-        .code-copy-btn svg { width: 13px; height: 13px; stroke: currentColor; }
-        .code-copy-icon { opacity: 0; transition: opacity .15s; }
-        .code-block-wrap:hover .code-copy-icon { opacity: 1; }
-
-        /* §4.4 高亮 Mark: padding 3px 8px (原1px 4px→加大), background rgba(196,75,43,0.15),
-           color inherit, border-radius 4px, margin 0 1px, box-decoration-break clone */
-        mark {
-          background: var(--cola-accent-soft);
-          color: inherit;
-          padding: 3px 8px;
-          border-radius: 4px;
-          margin: 0 1px;
-          -webkit-box-decoration-break: clone;
-          box-decoration-break: clone;
-        }
-
-        /* Tag pill */
-        .tag {
-          color: var(--cola-accent);
-          background: color-mix(in srgb, var(--cola-accent) 14%, transparent);
-          padding: 0.05em 0.5em; border-radius: 0.8em;
-          font-size: 0.88em; white-space: nowrap;
-        }
-
-        /* §4.7 kbd: padding 3px 7px, border 1px solid, border-bottom-width 2px,
-           border-radius 5px, box-shadow 0 1px 0 rgba(0,0,0,0.06) */
-        kbd {
-          font-family: var(--mono-font);
-          font-size: 0.92em;
-          background: var(--cola-bg-soft);
-          color: var(--cola-text);
-          border: 1px solid var(--cola-border);
-          border-bottom-width: 2px;
-          border-radius: 5px;
-          padding: 3px 7px;
-          box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
-        }
-        sub, sup { font-size: 0.75em; line-height: 0; position: relative; vertical-align: baseline; }
-        sup { top: -0.5em; }
-        sub { bottom: -0.25em; }
-
-        /* §4.7 脚注: font-size 0.85em, color #555, 顶部 1px solid #d8d3ce 分隔 */
-        sup.footnote-ref a { text-decoration: none; color: var(--cola-accent); }
-        hr.footnotes-sep { margin-bottom: 0.8em; }
-        hr.footnotes-sep::after { display: none; }
-        ol.footnotes { font-size: 0.85em; color: var(--cola-text-soft); }
-        ol.footnotes li { margin: 0.4em 0; }
-        a.footnote-backref { text-decoration: none; margin-left: 0.2em; font-size: 0.9em; line-height: 1; color: var(--cola-accent); }
-
-        /* §4.7 图片: max-width 100%, border-radius 8px, margin 1.6em auto */
-        img { max-width: 100%; border-radius: 8px; }
-        p > img:only-child { display: block; margin: 1.6em auto; }
-        img.math { vertical-align: middle; border-radius: 0; }
-        .math-display { text-align: center; margin: 1.6em 0; }
-        .math-display-block { display: block; text-align: center; margin: 1.6em 0; }
-        .md-image-blocked {
-          display: inline-flex; align-items: center; gap: 0.4em;
-          color: var(--cola-text-soft); background: var(--cola-bg-soft);
-          border: 1px dashed var(--cola-border); border-radius: 6px;
-          padding: 0.3em 0.6em; font-size: 0.9em;
-        }
-        .md-image-blocked svg { width: 1.1em; height: 1.1em; flex: 0 0 auto; }
-
-        /* §4.6 表格: 容器 border-radius 8px + border 1px solid #d8d3ce,
-           表头 background #eae6e1 + border-bottom 2px solid #c44b2b + padding 12px 16px,
-           单元格 padding 11px 16px + border-bottom 1px solid #d8d3ce,
-           斑马纹 tr:nth-child(even) #eae6e1 50%透明,
-           hover rgba(196,75,43,0.04),
-           font-size 0.95em */
-        .table-wrap { overflow-x: auto; margin: 1.6em 0; border: 1px solid var(--cola-border); border-radius: 8px; }
-        table { border-collapse: collapse; width: 100%; font-size: 0.95em; letter-spacing: 0.02em; }
-        thead th {
-          background: var(--cola-bg-soft);
-          color: var(--cola-heading);
-          font-weight: 700;
-          padding: 12px 16px;
-          border-bottom: 2px solid var(--cola-accent);
-          text-align: left;
-        }
-        td { padding: 11px 16px; border-bottom: 1px solid var(--cola-border); color: var(--cola-text); }
-        tr:last-child td { border-bottom: none; }
-        tbody tr:nth-child(even) { background: color-mix(in srgb, var(--cola-bg-soft) 50%, transparent); }
-        tbody tr:hover td { background: color-mix(in srgb, var(--cola-accent) 4%, transparent); }
-
-        /* Callouts */
-        .callout {
-          background: var(--c-bg);
-          border-radius: 0;
-          margin: 1.6em 0;
-          padding: calc(1.22em - (var(--line-height) - 0.78) * 0.5em) 1.24em 1.14em;
-        }
-        .callout-title { display: flex; align-items: flex-start; gap: 0.3em; font-weight: 600; color: var(--c-accent); }
-        .callout-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; height: calc(var(--body-size) * var(--line-height)); }
-        .callout-icon svg { width: 1em; height: 1em; transform: translateY(-0.06em); }
-        .callout-info .callout-icon, .callout-todo .callout-icon,
-        .callout-question .callout-icon, .callout-help .callout-icon, .callout-faq .callout-icon,
-        .callout-quote .callout-icon, .callout-cite .callout-icon { padding-top: 0.05em; }
-        .callout-warning .callout-icon, .callout-attention .callout-icon,
-        .callout-bug .callout-icon { padding-top: 0.06em; }
-        .callout-example .callout-icon { padding-top: 0.1em; }
-        .callout-success .callout-icon, .callout-check .callout-icon, .callout-done .callout-icon,
-        .callout-failure .callout-icon, .callout-fail .callout-icon,
-        .callout-missing .callout-icon { padding-top: 0.15em; }
-        .callout-title-text { flex: 1 1 auto; }
-        .callout-collapsible > summary { cursor: pointer; list-style: none; }
-        .callout-collapsible > summary::-webkit-details-marker { display: none; }
-        .callout-collapsible > summary::after { content: "›"; flex: 0 0 auto; margin-left: 0.3em; transition: transform 0.15s ease; }
-        .callout-collapsible[open] > summary::after { transform: rotate(90deg); }
-        .callout-body { margin-top: 0.4em; }
-        .callout-body:empty { margin-top: 0; }
-        .callout-body > p { margin-bottom: 0.5em; }
-        .callout-body > :first-child { margin-top: 0; }
-        .callout-body > :last-child { margin-bottom: 0; }
-        .callout-body > .callout:last-child { margin-top: 0; }
-
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-thumb { background: #ccc8c2; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #b5b0aa; }
-        ::-webkit-scrollbar-track { background: transparent; }
-
-        @media print {
-          html { font-size: 13px; }
-          body { padding: 0; background: #fff; color: #000; }
-          * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .callout, pre, blockquote, .table-wrap, .math-display,
-          .math-display-block { break-inside: avoid; }
-          h1, h2, h3, h4, h5, h6 { break-after: avoid; }
-          thead { display: table-header-group; }
-          pre { background: #f5f5f5; color: #333; border: 1px solid #ddd; }
-          thead th { background: #f5f5f5; }
-        }
-        """
-    }
-
-    /// One-Dark syntax palette for the ColaMD Elegant code panel, matching the
-    /// spec §5 colors. The Edmund palette (Tomorrow/One-Dark hybrid from
-    /// `CodeSyntaxPalette`) is reused where it agrees with the spec; the
-    /// handful of token colors that differ (comment gray, function-name blue)
-    /// are overridden here so Read mode's code blocks match the design doc
-    /// rather than the editor's Edit-mode palette. Plain `pre code` (untokenized)
-    /// inherits the panel's foreground.
-    private static func colaCodeTokenRules(dark: Bool) -> String {
-        // One-Dark palette — same hexes in both appearances because the code
-        // panel is always dark (#2c2c2c light / #14110f dark). The `dark`
-        // parameter is accepted for symmetry with `codeTokenRules` and in case
-        // a future variant wants to differentiate.
-        _ = dark
-        let palette: [(String, String)] = [
-            ("pre code",                          "#e0dcd7"),
-            ("pre code .tok-keyword",             "#c678dd"),
-            ("pre code .tok-command",             "#c678dd"),
-            ("pre code .tok-type",                "#e5c07b"),
-            ("pre code .tok-attribute",           "#e06c75"),
-            ("pre code .tok-variable",            "#e06c75"),
-            ("pre code .tok-value",               "#98c379"),
-            ("pre code .tok-number",              "#d19a66"),
-            ("pre code .tok-string",              "#98c379"),
-            ("pre code .tok-comment",             "#7c7873"),
-        ]
-        return palette.map { "\($0.0) { color: \($0.1); }" }
-            .joined(separator: "\n")
     }
 
     // MARK: Callout custom properties
@@ -628,7 +171,127 @@ enum HTMLTheme {
 
     // MARK: Static element rules
 
-    private static let staticRules = """
+    /// ColaMD-specific CSS overrides: warm-paper background, serif body with
+    /// justify text, accent-colored strong/link/underline, dark code panels.
+    /// 100% transcribes the reference `elegant.css` from marswaveai/ColaMD.
+    private static let colaRules = """
+    /* ColaMD Elegant theme — from marswaveai/ColaMD themes/elegant.css */
+    body {
+      background-color: #f0edea;
+      color: #2c2c2c;
+      text-align: justify;
+      -webkit-font-smoothing: antialiased;
+    }
+    p { margin: 0.8em 0; line-height: 1.9; text-align: justify; }
+    h1, h2, h3, h4, h5, h6 {
+      color: #1a1a1a;
+      font-weight: 700;
+      line-height: 1.4;
+      margin-top: 1.8em;
+      margin-bottom: 0.6em;
+    }
+    h1 { font-size: 1.8em; padding-bottom: 0.3em; }
+    h2 { font-size: 1.5em; padding-bottom: 0.2em; }
+    h3 { font-size: 1.25em; }
+    h4 { font-size: 1.1em; }
+    h5 { font-size: 1em; }
+    h6 { font-size: 0.95em; color: #555; }
+    strong { color: #c44b2b; font-weight: 700; }
+    em { font-style: italic; color: #444; }
+    em strong, strong em { color: #c44b2b; }
+    a { color: #c44b2b; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    u { text-decoration: none; border-bottom: 2px solid #c44b2b; padding-bottom: 1px; }
+    blockquote {
+      margin: 1.5em 0;
+      padding: 15px 20px 15px 25px;
+      border-left: 4px solid #c44b2b;
+      background: #eae6e1;
+      color: #444;
+    }
+    blockquote p { margin: 0.5em 0; }
+    blockquote > p:last-child { margin-bottom: 0; }
+    blockquote > blockquote:last-child,
+    .callout-body > blockquote:last-child { margin-bottom: 0; }
+    hr { border: none; border-top: 1px solid #d8d3ce; margin: 2.5em 0; height: 0; }
+    ul, ol { padding-left: 1.8em; margin: 0.8em 0; }
+    li { margin: 0.35em 0; line-height: 1.8; }
+    ul { list-style-type: disc; list-style-position: outside; }
+    ol { list-style-type: decimal; list-style-position: outside; }
+    li::marker { color: #555; font-size: 0.85em; }
+    ol > li::marker { font-size: 1em; }
+    code, tt {
+      font-family: var(--mono-font);
+      font-size: 0.9em;
+      padding: 2px 6px;
+      margin: 0 2px;
+      background: #e8e4df;
+      border-radius: 3px;
+      color: #c44b2b;
+    }
+    pre {
+      font-family: var(--mono-font);
+      font-size: 0.88em;
+      line-height: 1.6;
+      background: #2c2c2c;
+      color: #e0dcd7;
+      padding: 18px 22px;
+      border-radius: 6px;
+      margin: 1.5em 0;
+      overflow-x: auto;
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      margin: 0;
+      border-radius: 0;
+      font-size: 0.88em;
+    }
+    table { width: 100%; border-collapse: collapse; margin: 1.5em 0; font-size: 0.95em; }
+    table th {
+      background: #eae6e1;
+      font-weight: 700;
+      color: #1a1a1a;
+      padding: 10px 14px;
+      border-bottom: 2px solid #c44b2b;
+      text-align: left;
+    }
+    table td { padding: 10px 14px; border-bottom: 1px solid #d8d3ce; }
+    table tr:hover td { background: rgba(196, 75, 43, 0.04); }
+    img { max-width: 100%; }
+    p > img:only-child { display: block; margin: 1.5em auto; }
+    mark {
+      background: rgba(196, 75, 43, 0.15);
+      color: #2c2c2c;
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+    /* Selection */
+    ::selection {
+      background: rgba(196, 75, 43, 0.2);
+    }
+    /* Code block copy button */
+    .code-block-wrap { position: relative; margin: 1.5em 0; }
+    .code-block-wrap pre { margin: 0; }
+    .code-copy-btn {
+      position: absolute; top: 8px; right: 10px;
+      display: flex; align-items: center; gap: 4px;
+      font-family: var(--mono-font); font-size: 11px; font-weight: 500;
+      color: #aaa; background: transparent; padding: 3px 6px;
+      border-radius: 5px; text-decoration: none; cursor: pointer;
+    }
+    .code-copy-btn:hover { background: rgba(255, 255, 255, 0.12); }
+    .code-copy-btn svg { width: 13px; height: 13px; stroke: #aaa; }
+    .code-copy-icon { opacity: 0; transition: opacity .15s; }
+    .code-block-wrap:hover .code-copy-icon { opacity: 1; }
+    """
+
+    private static func staticRules(isCola: Bool = false) -> String {
+        isCola ? colaRules : baseStaticRules
+    }
+
+    private static let baseStaticRules = """
     * { box-sizing: border-box; }
     html { -webkit-text-size-adjust: 100%; }
     body {

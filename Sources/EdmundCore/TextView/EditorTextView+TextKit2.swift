@@ -409,6 +409,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// handed over at vend time (the fragment has no theme access).
     let codeBlockLabelFont: NSFont
 
+    /// Whether this fragment is a code block's top row (fence line) and thus
+    /// should paint a copy button at its top-right.
+    let codeBlockHasCopyButton: Bool
+
     /// Whitespace-mark config, or nil when invisibles are off. Drawn over the
     /// real glyphs after `super.draw` — see EditorTextView+Invisibles.
     let invisibles: InvisiblesConfig?
@@ -438,6 +442,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
          codeBlockLabel: String? = nil,
          codeBlockLabelAnchor: String? = nil,
          codeBlockLabelFont: NSFont = .monospacedSystemFont(ofSize: 10, weight: .regular),
+         codeBlockHasCopyButton: Bool = false,
          invisibles: InvisiblesConfig? = nil,
          listGuides: [CGFloat] = [],
          tableBorderColor: NSColor? = nil,
@@ -451,6 +456,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         self.codeBlockLabel = codeBlockLabel
         self.codeBlockLabelAnchor = codeBlockLabelAnchor
         self.codeBlockLabelFont = codeBlockLabelFont
+        self.codeBlockHasCopyButton = codeBlockHasCopyButton
         self.invisibles = invisibles
         var resolved: [(wrap: TableCellWrap, lines: [NSTextLineFragment])] = []
         var stacks: [(NSTextContentStorage, NSTextLayoutManager, NSTextContainer)] = []
@@ -614,6 +620,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         if let rect = codeBlockLabelRect() {
             bounds = bounds.union(rect.insetBy(dx: -2, dy: -2))
         }
+        // Copy button sits at the top-right, right of the language label.
+        if codeBlockHasCopyButton, let rect = codeCopyButtonRect() {
+            bounds = bounds.union(rect.insetBy(dx: -2, dy: -2))
+        }
         // The line-ending mark (¬) sits just past the last glyph — give it room.
         if invisibles != nil {
             let frame = layoutFragmentFrame
@@ -695,6 +705,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             }
         }
         drawCodeBlockLabel(at: point, in: context)
+        drawCodeCopyButton(at: point, in: context)
         drawInvisibles(at: point, in: context)
     }
 
@@ -763,6 +774,51 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         NSAttributedString(string: label, attributes: [
             .font: codeBlockLabelFont, .foregroundColor: NSColor.secondaryLabelColor,
         ]).draw(at: drawRect.origin)
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// Fragment-local rect for the code block's copy button, pinned to the
+    /// top-right corner just left of the language label. Draws a small
+    /// "复制" text chip.
+    func codeCopyButtonRect() -> CGRect? {
+        guard codeBlockHasCopyButton else { return nil }
+        let title = "复制" as NSString
+        let font = NSFont.systemFont(ofSize: 11)
+        let size = title.size(withAttributes: [.font: font])
+        let inset: CGFloat = 10
+        // Right edge: just left of the language label if it exists.
+        let labelWidth: CGFloat = {
+            guard let label = codeBlockLabelAnchor, !label.isEmpty else { return 0 }
+            return (label as NSString).size(withAttributes: [.font: codeBlockLabelFont]).width + 8
+        }()
+        let buttonW = ceil(size.width) + 14
+        let buttonH = ceil(size.height) + 6
+        let rightX = containerLeft + containerWidth - inset - labelWidth
+        let boxTop = -(textLineFragments.first?.typographicBounds.height ?? 14)
+        return CGRect(x: rightX - buttonW, y: boxTop + inset - 3,
+                      width: buttonW, height: buttonH)
+    }
+
+    /// Draws the copy button chip at the code block's top-right.
+    private func drawCodeCopyButton(at point: CGPoint, in context: CGContext) {
+        guard let rect = codeCopyButtonRect() else { return }
+        let drawRect = rect.offsetBy(dx: point.x, dy: point.y)
+        // Rounded background chip.
+        let path = NSBezierPath(roundedRect: drawRect, xRadius: 4, yRadius: 4)
+        NSColor(white: 0.5, alpha: 0.12).setFill()
+        path.fill()
+        let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = nsContext
+        let attr: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ]
+        let size = ("复制" as NSString).size(withAttributes: attr)
+        ("复制" as NSString).draw(
+            at: CGPoint(x: drawRect.midX - size.width / 2,
+                        y: drawRect.midY - size.height / 2),
+            withAttributes: attr)
         NSGraphicsContext.restoreGraphicsState()
     }
 
@@ -1011,6 +1067,9 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
         let cellWraps = (cellWrapsValue as? TableCellWrapList)?.wraps ?? []
         let codeBlockLabelValue = str.attribute(.codeBlockLabel, at: 0, effectiveRange: nil) as? String
         let codeBlockLabelAnchorValue = str.attribute(.codeBlockLabelAnchor, at: 0, effectiveRange: nil) as? String
+        // Code block's fence (first) row gets a copy button. `codeBlockLabel`
+        // is set on the fence row (possibly empty string for no language).
+        let isCodeFenceRow = codeBlockLabelValue != nil
         // A plain fragment suffices only when there's nothing to draw over the
         // text and antialiasing is on (the default); otherwise vend the custom
         // fragment so its draw can disable antialiasing. (A `.codeBlockLabel`
@@ -1059,6 +1118,7 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                            codeBlockLabel: codeBlockLabelValue,
                                            codeBlockLabelAnchor: codeBlockLabelAnchorValue,
                                            codeBlockLabelFont: codeBlockLabelFont,
+                                           codeBlockHasCopyButton: isCodeFenceRow,
                                            invisibles: invisibles,
                                            listGuides: listGuides,
                                            tableBorderColor: tableBorderColor,

@@ -170,9 +170,8 @@ public final class ReadModeWebView: WKWebView {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         // Kills the white flash between `loadHTMLString` and first paint (most
         // visible in dark mode): the page background shows immediately instead
-        // of the system default white. The preset is honored so a ColaMD
-        // Elegant page doesn't flash white before its warm-paper paint lands.
-        underPageBackgroundColor = HTMLTheme.backgroundColor(dark: dark, preset: p.theme.preset)
+        // of the system default white.
+        underPageBackgroundColor = HTMLTheme.backgroundColor(theme: p.theme, dark: dark)
         let html = DocumentHTML.full(markdown: p.markdown, theme: p.theme,
                                      callouts: p.callouts, dark: dark,
                                      baseURL: p.baseURL, options: p.options)

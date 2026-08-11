@@ -12,12 +12,15 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppSettings.Key.maxContentWidthCm) private var maxContentWidthCm = AppSettings.defaultMaxContentWidthCm
     /// "" follows the locale; "cm"/"in" override it (toggled via the unit button).
     @AppStorage(AppSettings.Key.contentWidthUnit) private var unitOverride = ""
-    /// The theme preset — bound to `@AppStorage` so it persists, with a custom
-    /// `onChange` that hands the actual application off to `FontSettings`
-    /// (which knows how to reseed `EditorTheme` and refresh open documents).
-    /// `fonts.themePreset` is the source of truth on the @Published side; this
-    /// @AppStorage mirrors it so SwiftUI re-renders when it changes externally.
-    @AppStorage(AppSettings.Key.themePreset) private var presetRaw = ThemePreset.edmund.rawValue
+
+    /// Two-way binding for the theme preset picker. Selecting a preset applies
+    /// it app-wide immediately (fonts, colors, spacing).
+    private var presetBinding: Binding<ThemePreset> {
+        Binding(
+            get: { fonts.currentPreset },
+            set: { fonts.applyPreset($0) }
+        )
+    }
 
     // MARK: - Unit helpers
 
@@ -60,33 +63,27 @@ struct AppearanceSettingsView: View {
             GridRow {
                 Text("Theme:")
                     .gridColumnAlignment(.trailing)
-                // A picker rather than a radio group: future presets slot in
-                // without rebuilding the layout. The selection is mirrored
-                // between `presetRaw` (persisted by @AppStorage) and
-                // `fonts.themePreset` (which drives the live document refresh).
-                Picker("", selection: Binding(
-                    get: { ThemePreset(rawValue: presetRaw) ?? .edmund },
-                    set: { newValue in
-                        presetRaw = newValue.rawValue
-                        // Drive the full reseed + document refresh through
-                        // `applyPreset`; the @AppStorage write above persists
-                        // the choice and `applyPreset` mirrors it into
-                        // `fonts.themePreset` so SwiftUI re-renders the font rows.
-                        fonts.applyPreset(newValue)
+                Picker("", selection: presetBinding) {
+                    ForEach(ThemePreset.displayOrder) { preset in
+                        VStack(alignment: .leading) {
+                            Text(preset.displayName)
+                            Text(preset.subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .tag(preset)
                     }
-                )) {
-                    ForEach(ThemePreset.displayOrder) { Text($0.displayName).tag($0) }
                 }
-                .pickerStyle(.menu)
+                .pickerStyle(.radioGroup)
                 .labelsHidden()
-                .frame(maxWidth: 240, alignment: .leading)
-                Text((ThemePreset(rawValue: presetRaw) ?? .edmund).subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             GridRow {
-                Text("Appearance:")
+                Divider().gridCellColumns(2)
+            }
+
+            GridRow {
+                Text("外观:")
                     .gridColumnAlignment(.trailing)
                 Picker("", selection: $appearanceMode) {
                     ForEach(AppSettings.AppearanceMode.displayOrder) { Text($0.label).tag($0) }
@@ -98,7 +95,7 @@ struct AppearanceSettingsView: View {
             }
 
             GridRow {
-                Text("Max content width:")
+                Text("最大内容宽度:")
                     .gridColumnAlignment(.trailing)
                 HStack(spacing: 8) {
                     ContentWidthSlider(
@@ -123,7 +120,7 @@ struct AppearanceSettingsView: View {
                     // .plain strips all button chrome so only the text shows.
                     Button(action: toggleUnit) { Text(unitLabel) }
                         .buttonStyle(.plain)
-                        .help("Switch between centimetres and inches")
+                        .help("在厘米和英寸之间切换")
                 }
                 .onChange(of: maxContentWidthCm) { applyContentWidthToOpenDocuments() }
             }
@@ -133,7 +130,7 @@ struct AppearanceSettingsView: View {
             }
 
             GridRow {
-                Text("Standard font:")
+                Text("标准字体:")
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     fontRow(summary: fonts.standardSummary,
@@ -143,14 +140,14 @@ struct AppearanceSettingsView: View {
                                           set: { fonts.setStandardSize(CGFloat($0)) }),
                             select: fonts.selectStandardFont)
                     HStack(spacing: 16) {
-                        Toggle("Antialias", isOn: $fonts.antialias)
-                        Toggle("Ligatures", isOn: $fonts.standardLigatures)
+                        Toggle("抗锯齿", isOn: $fonts.antialias)
+                        Toggle("连字", isOn: $fonts.standardLigatures)
                     }
                 }
             }
 
             GridRow {
-                Text("Monospaced font:")
+                Text("等宽字体:")
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     fontRow(summary: fonts.monospaceSummary,
@@ -160,14 +157,14 @@ struct AppearanceSettingsView: View {
                                           set: { fonts.setMonospaceSize(CGFloat($0)) }),
                             select: fonts.selectMonospaceFont)
                     HStack(spacing: 16) {
-                        Toggle("Antialias", isOn: $fonts.antialias)
-                        Toggle("Ligatures", isOn: $fonts.monospaceLigatures)
+                        Toggle("抗锯齿", isOn: $fonts.antialias)
+                        Toggle("连字", isOn: $fonts.monospaceLigatures)
                     }
                 }
             }
 
             GridRow {
-                Text("Line height:")
+                Text("行高:")
                     .gridColumnAlignment(.trailing)
                 HStack(spacing: 6) {
                     let lineHeight = Binding(get: { Double(fonts.lineHeight) },
@@ -205,7 +202,7 @@ struct AppearanceSettingsView: View {
                 .frame(width: 240)
             Stepper("", value: size, in: 8...72, step: 1)
                 .labelsHidden()
-            Button("Select…", action: select)
+            Button("选择…", action: select)
                 .fixedSize()
         }
     }

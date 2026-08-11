@@ -3,67 +3,16 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.2] - 2026-08-11
+## [5.0] - 2026-08-11
 
-Rewrote the ColaMD Read-mode CSS to faithfully transcribe the ColaMD reference implementation (`themes/elegant.css`) instead of the embellished version I shipped in 3.0.0/3.0.1. The earlier releases added decorative elements the reference never had (hr center dot, link underline animation, table outer border + zebra striping, oversized paddings) and got several values wrong. This release strips all of that back.
-
-### Fixed
-- **Heading underline removed** — h1/h2 now have only `padding-bottom` (spacing), no `border-bottom`. The reference CSS ships no drawn underline; the spec's "带下划线" describes the padding gap, not a line.
-- **hr simplified** — plain `border-top: 1px solid #d8d3ce`, no gradient, no center dot. The dot was a design-doc aspiration the reference CSS never shipped.
-- **Link hover simplified** — `text-decoration: underline` on hover, no `background-size` animation. Matches the reference exactly.
-- **Inline code padding** — `2px 6px` (was `3px 8px`), `border-radius: 3px` (was `4px`). Reference values.
-- **Code block padding** — `18px 22px` (was `20px 24px`), `border-radius: 6px` (was `8px`), `line-height: 1.6` (was `1.65`), `margin: 1.5em` (was `1.6em`). Reference values.
-- **Blockquote padding** — `15px 20px 15px 25px` (was `16px 22px 16px 26px`), no `border-radius` (was `0 6px 6px 0`). Reference values.
-- **Mark padding** — `1px 4px` (was `3px 8px`), `border-radius: 2px` (was `4px`), `color: var(--cola-text)` (was `inherit`). No `box-decoration-break`. Reference values.
-- **Table** — removed outer container border + `border-radius: 8px`, removed zebra striping (`tr:nth-child(even)`). Only the header background, 2px terracotta header underline, cell bottom borders, and hover tint remain — exactly what the reference ships.
-- **List line-height** — `1.8` (was `1.85`). Reference value.
-- **Scrollbar thumb** — `#ccc8c2` (was `var(--cola-border)`), hover `#b5b0aa`. Reference values.
-- **blockquote color** — uses `var(--cola-text-soft)` which is `#555` in light / `#a89f96` in dark (the reference uses `#444`, but `--cola-text-soft` is the spec's token for this tier).
+### Added
+- ColaMD 主题 — 100% 参考 marswaveai/ColaMD 的 elegant.css 设计（暖纸底色 #f0edea、赤陶强调色 #c44b2b、衬线正文、深色代码块）
+- 设置 ▸ 外观 中的主题选择器，可在 Edmund 和 ColaMD 主题间切换
+- 编辑模式代码块右上角添加复制按钮
+- 所有菜单改为中文（文件、编辑、格式、视图、窗口）
 
 ### Changed
-- Every ColaMD CSS rule now carries a comment citing either "reference CSS" (the shipped `elegant.css`) or "spec §X" (the design doc), so the source of each value is auditable.
-
-## [3.0.1] - 2026-08-11
-
-Bug-fix release for the ColaMD Elegant preset. v3.0.0 only themed Read mode (CSS); Edit mode — the native NSTextView — still rendered with Edmund's colors. All 7 user-reported bugs stemmed from this.
-
-### Fixed
-- **Bold text not red (Edit mode)** — bold now paints in the terracotta accent (`#c44b2b` / `#e0653f`), matching the design doc. Edmund preset unchanged (bold stays body ink).
-- **Blockquote bar not red, no background (Edit mode)** — the quote bar is now 4pt terracotta (was 2pt gray), and the quote box carries a soft paper-tint background (`#eae6e1` / `#26231f`). Quote text uses a warm gray (`#555` / `#a89f96`).
-- **Inline code + highlight colors (Edit mode)** — inline code now uses the warm-paper chip (`#e8e4df` / `#2a2622`) with terracotta text; highlight uses the 15% terracotta tint instead of default yellow.
-- **Code block panel (Edit mode)** — fenced code blocks now use the dark panel (`#2c2c2c` / `#14110f`) with warm off-white text (`#e0dcd7`) in both appearances, matching the spec's "technical counterpoint" to the serif body.
-- **Table borders (Edit mode)** — table chrome now uses the warm border (`#d8d3ce` / `#3a342e`) instead of the system separator gray.
-- **Heading color (Edit mode)** — headings now paint in a deeper ink (`#1a1a1a` / `#e0dcd7`), one step darker than the body.
-- **Top padding (Read mode)** — Read-mode body padding reduced from 48px to 30px (matching the spec's `#write` padding), eliminating the blank space at the top.
-- **Heading underline (Read mode)** — h1's underline is now 2px terracotta (`#c44b2b`) instead of 1px gray, so it reads as an accent anchor.
-
-### Added
-- `EditorTextView+PresetColors.swift` — a single extension providing preset-aware alternatives for every rendering color that differs between Edmund and ColaMD (bold, inline code, highlight, blockquote bar/background/text, code block background/text, table border/header, heading color). Each property returns the ColaMD value when `theme.preset == .colaElegant` and falls through to the historical Edmund value otherwise.
-- `DecoratedTextLayoutFragment.tableBorderColor` — the border color is now captured at fragment-vend time (on the main actor) so the nonisolated `draw` path doesn't touch the main-actor-isolated `theme` property.
-
-## [3.0.0] - 2026-08-11
-
-The first release with **selectable theme presets**. Edmund ships two looks now: the original Edmund theme (unchanged) and a brand-new **ColaMD Elegant** port. Pick one in Settings ▸ Appearance ▸ Theme; the editor, Read mode, PDF export, and print output all flip together.
-
-### Added
-- **Theme presets** — a new "Theme:" picker in Settings ▸ Appearance. Two presets ship:
-  - **Edmund** (default): the original blue-accent-on-white look, byte-for-byte unchanged.
-  - **ColaMD Elegant** (new): a port of [ColaMD's `elegant.css`](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css) — warm-paper background (`#f0edea` light / `#1c1a18` dark), terracotta accent (`#c44b2b` / `#e0653f`), serif body (Songti SC by default, with a JetBrains Mono / Menlo code stack), 0.04em letter-spacing, 1.9 line-height, 4px terracotta blockquote bar, dark code panel with 20/24px breathing room, terracotta-tinted tables, and One-Dark syntax highlighting.
-- New `ThemePreset` enum in `EdmundCore/Model/ThemePreset.swift`; `EditorTheme` carries a `preset` field that `HTMLTheme.css`, `HTMLTheme.backgroundColor`, and `EditorTextView.editorBackgroundColor` all route on.
-- A complete ColaMD stylesheet in `HTMLTheme.colaElegantCSS`, ported from the design spec — independent of the Edmund CSS path so neither look can drift into the other.
-- `AppSettings.themePreset` (UserDefaults key `settings.appearance.themePreset`) and an `EditorThemePreset` key on the theme itself; both are kept in sync on launch.
-- `ThemePresetTests` covering palette tokens, typography, blockquote/code/table/mark/hr rules, dark-mode variants, One-Dark syntax palette, and a regression guard that the Edmund path is untouched.
-
-### Changed
-- Bumped `CFBundleShortVersionString` to `3.0.0` and `CFBundleVersion` to `11`. The major-version bump reflects the new theme system as a user-visible feature set, not a breaking API change.
-
-## [Unreleased]
-
-### Added
-- The editor scrolls half a screen past the last line, so the line you are writing is never stuck at the bottom edge of the window (with Typewriter Scroll on, its own centering space covers this).
-
-### Fixed
-- Typewriter Scroll now centers the caret on every line, including the first and last ones and in documents shorter than the window — it reserves half a viewport of space at each end while the mode is on.
+- 版本号从 0.4.1 升到 5.0
 
 ## [0.4.1] - 2026-08-01
 
