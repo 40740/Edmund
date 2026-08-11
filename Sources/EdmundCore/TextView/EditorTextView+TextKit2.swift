@@ -417,6 +417,13 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// when the item is top-level or the setting is off. Drawn under the text.
     let listGuides: [CGFloat]
 
+    /// The border color to use for table chrome (and list indent guides) when
+    /// drawing. Captured at vend time from the owning editor's theme preset so
+    /// the nonisolated `draw` path doesn't have to touch the main-actor-isolated
+    /// `theme` property. Nil → fall back to the Edmund default (system separator
+    /// / darkRuleGray), resolved live from the current drawing appearance.
+    let tableBorderColor: NSColor?
+
     /// The editor that vended this fragment, for the settings its draw reads
     /// *live* rather than capturing (`focusMode`). Weak — the layout manager
     /// outlives no editor, but a fragment must never keep one alive.
@@ -433,8 +440,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
          codeBlockLabelFont: NSFont = .monospacedSystemFont(ofSize: 10, weight: .regular),
          invisibles: InvisiblesConfig? = nil,
          listGuides: [CGFloat] = [],
+         tableBorderColor: NSColor? = nil,
          owner: EditorTextView? = nil) {
         self.listGuides = listGuides
+        self.tableBorderColor = tableBorderColor
         self.owner = owner
         self.decorations = decorations
         self.overlays = overlays
@@ -808,14 +817,13 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     ///
     /// ColaMD preset overrides both appearances with a warm border
     /// (#d8d3ce light / #3a342e dark — UI-设计文档.md §2) so table borders
-    /// match the paper palette rather than the neutral system gray.
+    /// match the paper palette rather than the neutral system gray. The
+    /// ColaMD color is captured at vend time into `tableBorderColor` (a let)
+    /// because this property is read from the nonisolated `draw` path and
+    /// can't touch the main-actor-isolated `theme`.
     private var chromeLineColor: NSColor {
+        if let tableBorderColor { return tableBorderColor }
         let dark = NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        if let owner, owner.theme.preset == .colaElegant {
-            return dark
-                ? NSColor(srgbRed: 0x3a / 255.0, green: 0x34 / 255.0, blue: 0x2e / 255.0, alpha: 1)
-                : NSColor(srgbRed: 0xd8 / 255.0, green: 0xd3 / 255.0, blue: 0xce / 255.0, alpha: 1)
-        }
         return dark ? EditorTextView.darkRuleGray : NSColor.separatorColor
     }
 
@@ -1028,6 +1036,14 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
             return NSTextLayoutFragment(textElement: textElement,
                                         range: textElement.elementRange)
         }
+        // Capture the table border color at vend time (we're on the main actor
+        // here). The nonisolated draw path reads it from the fragment's `let`
+        // instead of touching `theme` — Swift 6 concurrency forbids the latter.
+        let tableBorderColor: NSColor? = theme.preset == .colaElegant
+            ? (isDarkAppearance
+                ? NSColor(srgbRed: 0x3a / 255.0, green: 0x34 / 255.0, blue: 0x2e / 255.0, alpha: 1)
+                : NSColor(srgbRed: 0xd8 / 255.0, green: 0xd3 / 255.0, blue: 0xce / 255.0, alpha: 1))
+            : nil
         return DecoratedTextLayoutFragment(textElement: textElement,
                                            range: textElement.elementRange,
                                            decorations: decorations,
@@ -1039,6 +1055,7 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                            codeBlockLabelFont: codeBlockLabelFont,
                                            invisibles: invisibles,
                                            listGuides: listGuides,
+                                           tableBorderColor: tableBorderColor,
                                            owner: self)
     }
 }
