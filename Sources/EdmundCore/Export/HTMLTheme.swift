@@ -100,14 +100,16 @@ enum HTMLTheme {
         // `AppSettings.Key.detail*`.)
         let dHeadingRuleOffset = Self.detailDouble(Self.kHeadingRuleOffset, 6)
         let dQuoteVPad         = Self.detailDouble(Self.kQuoteVPad, 15)
-        let dInlineCodePadX    = Self.detailDouble(Self.kInlineCodePadX, 6)
-        let dInlineCodePadY    = Self.detailDouble(Self.kInlineCodePadY, 3)
+        let dInlineCodePadX    = Self.detailDouble(Self.kInlineCodePadX, 8)
+        let dInlineCodePadY    = Self.detailDouble(Self.kInlineCodePadY, 4)
         let dCodeCornerRadius  = Self.detailDouble(Self.kCodeCornerRadius, 6)
         let dCodeBlockHPad     = Self.detailDouble(Self.kCodeBlockHPad, 16)
-        let dCodeBlockVPad     = Self.detailDouble(Self.kCodeBlockVPad, 16)
-        let dQuoteMargin       = Self.detailDouble(Self.kQuoteMargin, 16)
-        let dListLineHeight    = Self.detailDouble(Self.kListLineHeight, 1.8)
-        let dHighlightPad      = Self.detailDouble(Self.kHighlightPad, 4)
+        let dCodeBlockVPad     = Self.detailDouble(Self.kCodeBlockVPad, 20)
+        let dQuoteMarginTop    = Self.detailDouble(Self.kQuoteMarginTop, 16, legacyKey: Self.kQuoteMarginLegacy)
+        let dQuoteMarginBottom = Self.detailDouble(Self.kQuoteMarginBottom, 16, legacyKey: Self.kQuoteMarginLegacy)
+        let dListLineHeight    = Self.detailDouble(Self.kListLineHeight, 2.0)
+        let dHighlightPadX     = Self.detailDouble(Self.kHighlightPadX, 6, legacyKey: Self.kHighlightPadLegacy)
+        let dHighlightPadY     = Self.detailDouble(Self.kHighlightPadY, 2, legacyKey: Self.kHighlightPadLegacy)
 
         return """
         :root {
@@ -144,10 +146,12 @@ enum HTMLTheme {
           /* Theme-detail knobs (Settings ▸ 外观 ▸ 细节样式), driven by sliders. */
           --heading-rule-offset: \(trim(CGFloat(dHeadingRuleOffset)))px;
           --quote-vpad: \(trim(CGFloat(dQuoteVPad)))px;
-          --quote-margin: \(trim(CGFloat(dQuoteMargin)))px;
+          --quote-margin-top: \(trim(CGFloat(dQuoteMarginTop)))px;
+          --quote-margin-bottom: \(trim(CGFloat(dQuoteMarginBottom)))px;
           --inline-code-pad-x: \(trim(CGFloat(dInlineCodePadX)))px;
           --inline-code-pad-y: \(trim(CGFloat(dInlineCodePadY)))px;
-          --highlight-pad: \(trim(CGFloat(dHighlightPad)))px;
+          --highlight-pad-x: \(trim(CGFloat(dHighlightPadX)))px;
+          --highlight-pad-y: \(trim(CGFloat(dHighlightPadY)))px;
           --code-hpad: \(trim(CGFloat(dCodeBlockHPad)))px;
           --code-vpad: \(trim(CGFloat(dCodeBlockVPad)))px;
           --code-radius: \(trim(CGFloat(dCodeCornerRadius)))px;
@@ -280,7 +284,7 @@ enum HTMLTheme {
     .code-block-wrap:hover .code-copy-icon { opacity: 1; }
     /* A ColaMD preset colors the bar and fills the panel (Elegant's red bar /
        soft paper fill); otherwise the neutral dim bar, no fill. */
-    blockquote { margin: var(--quote-margin) 0; padding: var(--quote-vpad) 1em; border-left: 3px solid var(--quote-bar);
+    blockquote { margin: var(--quote-margin-top) 0 var(--quote-margin-bottom); padding: var(--quote-vpad) 1em; border-left: 3px solid var(--quote-bar);
                  background: var(--quote-bg); color: var(--quote-text); }
     /* ColaMD Elegant paints bold in the accent red; other themes keep body ink. */
     strong { color: var(--strong); }
@@ -294,7 +298,7 @@ enum HTMLTheme {
     blockquote > blockquote:last-child,
     .callout-body > blockquote:last-child { margin-bottom: 0; }
     hr { border: none; border-top: 1.5px solid var(--hr); margin: 1.6em 0; }
-    mark { background: rgba(255, 200, 0, 0.35); color: inherit; padding: var(--highlight-pad); border-radius: 0.2em; }
+    mark { background: rgba(255, 200, 0, 0.35); color: inherit; padding: var(--highlight-pad-y) var(--highlight-pad-x); border-radius: 0.2em; }
     /* Obsidian #tag: an accent-colored pill. Style only, no navigation. */
     .tag { color: var(--accent);
            background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -561,9 +565,14 @@ enum HTMLTheme {
     private static let kCodeCornerRadius  = "settings.appearance.detail.codeCornerRadius"
     private static let kCodeBlockHPad     = "settings.appearance.detail.codeBlockHPad"
     private static let kCodeBlockVPad     = "settings.appearance.detail.codeBlockVPad"
-    private static let kQuoteMargin       = "settings.appearance.detail.quoteMargin"
+    private static let kQuoteMarginTop    = "settings.appearance.detail.quoteMarginTop"
+    private static let kQuoteMarginBottom = "settings.appearance.detail.quoteMarginBottom"
     private static let kListLineHeight    = "settings.appearance.detail.listLineHeight"
-    private static let kHighlightPad      = "settings.appearance.detail.highlightPad"
+    private static let kHighlightPadX     = "settings.appearance.detail.highlightPadX"
+    private static let kHighlightPadY     = "settings.appearance.detail.highlightPadY"
+    // Legacy single-key names (kept for backward-compat fallback).
+    private static let kQuoteMarginLegacy  = "settings.appearance.detail.quoteMargin"
+    private static let kHighlightPadLegacy = "settings.appearance.detail.highlightPad"
 
     /// Every UserDefaults key whose value changes Read-mode output: the ten
     /// detail sliders plus the appearance knobs (Cola preset, light/dark mode,
@@ -585,11 +594,22 @@ enum HTMLTheme {
 
     /// Reads a theme-detail slider value from UserDefaults, falling back to
     /// `fallback` when the key was never written (so an untouched slider renders
-    /// the intended default).
-    private static func detailDouble(_ key: String, _ fallback: Double) -> Double {
-        guard let obj = UserDefaults.standard.object(forKey: key) else { return fallback }
-        if let d = obj as? Double { return d }
-        if let i = obj as? Int { return Double(i) }
+    /// the intended default). Supports a `legacyKey` for smooth migration when
+    /// a single value was split into two.
+    private static func detailDouble(_ key: String, _ fallback: Double,
+                                     legacyKey: String? = nil) -> Double {
+        if let obj = UserDefaults.standard.object(forKey: key) {
+            if let d = obj as? Double { return d }
+            if let i = obj as? Int { return Double(i) }
+        }
+        // Fall back to a legacy single key when the new split key was never set.
+        if let legacy = legacyKey,
+           UserDefaults.standard.object(forKey: legacy) != nil {
+            if let obj = UserDefaults.standard.object(forKey: legacy) {
+                if let d = obj as? Double { return d }
+                if let i = obj as? Int { return Double(i) }
+            }
+        }
         return fallback
     }
 }

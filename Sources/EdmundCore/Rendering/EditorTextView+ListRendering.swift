@@ -41,7 +41,7 @@ extension EditorTextView {
         let ps = NSMutableParagraphStyle()
         // listLineHeightMultiplier (Settings ▸ 列表行距) scales list item
         // spacing relative to body, matching ColaMD's looser list rhythm.
-        // Multiplier 1.0 keeps body spacing; default 1.8.
+        // Multiplier 1.0 keeps body spacing; default 2.0.
         let mult = max(1.0, listLineHeightMultiplier)
         let baseLS = bodyParagraphStyle.lineSpacing
         let fontSize = bodyFont.pointSize

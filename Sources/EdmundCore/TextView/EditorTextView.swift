@@ -618,8 +618,10 @@ public class EditorTextView: NSTextView {
         let keys = [DetailStyleKey.headingRuleOffset, DetailStyleKey.quoteVPad,
                     DetailStyleKey.inlineCodePadX, DetailStyleKey.inlineCodePadY,
                     DetailStyleKey.codeCornerRadius, DetailStyleKey.codeBlockHPad,
-                    DetailStyleKey.codeBlockVPad, DetailStyleKey.quoteMargin,
-                    DetailStyleKey.listLineHeight, DetailStyleKey.highlightPad]
+                    DetailStyleKey.codeBlockVPad,
+                    DetailStyleKey.quoteMarginTop, DetailStyleKey.quoteMarginBottom,
+                    DetailStyleKey.listLineHeight,
+                    DetailStyleKey.highlightPadX, DetailStyleKey.highlightPadY]
         let now = Dictionary(uniqueKeysWithValues: keys.map {
             ($0, UserDefaults.standard.double(forKey: $0))
         })

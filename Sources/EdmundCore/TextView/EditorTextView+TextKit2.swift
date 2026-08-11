@@ -1137,10 +1137,12 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         guard let paraLoc = paragraph.elementRange?.location else { return }
         let str = paragraph.attributedString
         // Inline-code padding (Settings ▸ 行内代码左右/上下内边距).
-        let codePadX = CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadX, default: 6))
-        let codePadY = CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadY, default: 3))
-        // Highlight padding (Settings ▸ 高亮内边距) — single value for both axes.
-        let hlPad = CGFloat(DetailStyleValue.value(DetailStyleKey.highlightPad, default: 4))
+        let codePadX = CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadX, default: 8))
+        let codePadY = CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadY, default: 4))
+        // Highlight padding (Settings ▸ 高亮左右/上下内边距) — now split
+        // X/Y like inline code so each axis is independently tunable.
+        let hlPadX = CGFloat(DetailStyleValue.value(DetailStyleKey.highlightPadX, default: 6))
+        let hlPadY = CGFloat(DetailStyleValue.value(DetailStyleKey.highlightPadY, default: 2))
         let radius: CGFloat = 3
 
         func drawChips(attribute: NSAttributedString.Key, padX: CGFloat, padY: CGFloat) {
@@ -1178,7 +1180,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         }
 
         drawChips(attribute: .inlineCodeChip, padX: codePadX, padY: codePadY)
-        drawChips(attribute: .highlightChip, padX: hlPad, padY: hlPad)
+        drawChips(attribute: .highlightChip, padX: hlPadX, padY: hlPadY)
     }
 }
 

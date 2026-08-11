@@ -54,18 +54,20 @@ enum AppSettings {
 
     static let detailHeadingRuleOffset = DetailSetting(key: Key.detailHeadingRuleOffset, defaultValue: 6)
     static let detailQuoteVPad = DetailSetting(key: Key.detailQuoteVPad, defaultValue: 15)
-    static let detailInlineCodePadX = DetailSetting(key: Key.detailInlineCodePadX, defaultValue: 6)
-    static let detailInlineCodePadY = DetailSetting(key: Key.detailInlineCodePadY, defaultValue: 3)
+    static let detailInlineCodePadX = DetailSetting(key: Key.detailInlineCodePadX, defaultValue: 8)
+    static let detailInlineCodePadY = DetailSetting(key: Key.detailInlineCodePadY, defaultValue: 4)
     static let detailCodeCornerRadius = DetailSetting(key: Key.detailCodeCornerRadius, defaultValue: 6)
     static let detailCodeBlockHPad = DetailSetting(key: Key.detailCodeBlockHPad, defaultValue: 16)
-    static let detailHighlightPad = DetailSetting(key: Key.detailHighlightPad, defaultValue: 4)
-    // Blockquote outer top/bottom margin (one value keeps top & bottom balanced).
-    static let detailQuoteMargin = DetailSetting(key: Key.detailQuoteMargin, defaultValue: 16)
+    static let detailHighlightPadX = DetailSetting(key: Key.detailHighlightPadX, defaultValue: 6)
+    static let detailHighlightPadY = DetailSetting(key: Key.detailHighlightPadY, defaultValue: 2)
+    // Blockquote outer margin (balanced top/bottom by default).
+    static let detailQuoteMarginTop = DetailSetting(key: Key.detailQuoteMarginTop, defaultValue: 16)
+    static let detailQuoteMarginBottom = DetailSetting(key: Key.detailQuoteMarginBottom, defaultValue: 16)
     // Code block vertical padding (paired with detailCodeBlockHPad so the
     // highlight's padding is fully dynamic, not hardcoded).
-    static let detailCodeBlockVPad = DetailSetting(key: Key.detailCodeBlockVPad, defaultValue: 16)
+    static let detailCodeBlockVPad = DetailSetting(key: Key.detailCodeBlockVPad, defaultValue: 20)
     // List item line-height; looser than body text per the ColaMD reference.
-    static let detailListLineHeight = DetailSetting(key: Key.detailListLineHeight, defaultValue: 1.8)
+    static let detailListLineHeight = DetailSetting(key: Key.detailListLineHeight, defaultValue: 2.0)
 
     enum IndentStyle: String, CaseIterable, Identifiable {
         case spaces
@@ -128,8 +130,10 @@ enum AppSettings {
         static let detailInlineCodePadY = "settings.appearance.detail.inlineCodePadY"
         static let detailCodeCornerRadius = "settings.appearance.detail.codeCornerRadius"
         static let detailCodeBlockHPad = "settings.appearance.detail.codeBlockHPad"
-        static let detailHighlightPad = "settings.appearance.detail.highlightPad"
-        static let detailQuoteMargin = "settings.appearance.detail.quoteMargin"
+        static let detailHighlightPadX = "settings.appearance.detail.highlightPadX"
+        static let detailHighlightPadY = "settings.appearance.detail.highlightPadY"
+        static let detailQuoteMarginTop = "settings.appearance.detail.quoteMarginTop"
+        static let detailQuoteMarginBottom = "settings.appearance.detail.quoteMarginBottom"
         static let detailCodeBlockVPad = "settings.appearance.detail.codeBlockVPad"
         static let detailListLineHeight = "settings.appearance.detail.listLineHeight"
         static let diagnosticLogging = "settings.general.diagnosticLogging"

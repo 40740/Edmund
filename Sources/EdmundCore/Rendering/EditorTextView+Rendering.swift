@@ -50,9 +50,14 @@ enum DetailStyleKey {
     static let codeCornerRadius = "settings.appearance.detail.codeCornerRadius"
     static let codeBlockHPad = "settings.appearance.detail.codeBlockHPad"
     static let codeBlockVPad = "settings.appearance.detail.codeBlockVPad"
-    static let quoteMargin = "settings.appearance.detail.quoteMargin"
+    // Split top/bottom for independent tuning; falls back to old single key
+    // for users who already set it.
+    static let quoteMarginTop = "settings.appearance.detail.quoteMarginTop"
+    static let quoteMarginBottom = "settings.appearance.detail.quoteMarginBottom"
     static let listLineHeight = "settings.appearance.detail.listLineHeight"
-    static let highlightPad = "settings.appearance.detail.highlightPad"
+    // Split X/Y so highlight padding matches inline code's two-axis control.
+    static let highlightPadX = "settings.appearance.detail.highlightPadX"
+    static let highlightPadY = "settings.appearance.detail.highlightPadY"
 }
 
 /// Reads one detail setting from UserDefaults, falling back to ColaMD's value
@@ -78,12 +83,12 @@ extension EditorTextView {
 
     /// Horizontal padding (pt) around inline code's chip background.
     var inlineCodePadX: CGFloat {
-        CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadX, default: 6))
+        CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadX, default: 8))
     }
 
     /// Vertical padding (pt) around inline code's chip background.
     var inlineCodePadY: CGFloat {
-        CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadY, default: 3))
+        CGFloat(DetailStyleValue.value(DetailStyleKey.inlineCodePadY, default: 4))
     }
 
     /// Corner radius (pt) of fenced code blocks' rounded panel.
@@ -98,22 +103,27 @@ extension EditorTextView {
 
     /// Vertical padding (pt) inside fenced code blocks' panel (top/bottom).
     var codeBlockVPad: CGFloat {
-        CGFloat(DetailStyleValue.value(DetailStyleKey.codeBlockVPad, default: 16))
+        CGFloat(DetailStyleValue.value(DetailStyleKey.codeBlockVPad, default: 20))
     }
 
     /// Outer vertical margin (pt) above and below a block quote (paragraph spacing).
-    var quoteMargin: CGFloat {
-        CGFloat(DetailStyleValue.value(DetailStyleKey.quoteMargin, default: 16))
+    var quoteMarginTop: CGFloat {
+        // Backward-compat: if the old single key was set, use it for top too.
+        if UserDefaults.standard.object(forKey: "settings.appearance.detail.quoteMargin") != nil {
+            return CGFloat(DetailStyleValue.value("settings.appearance.detail.quoteMargin", default: 16))
+        }
+        return CGFloat(DetailStyleValue.value(DetailStyleKey.quoteMarginTop, default: 16))
+    }
+    var quoteMarginBottom: CGFloat {
+        if UserDefaults.standard.object(forKey: "settings.appearance.detail.quoteMargin") != nil {
+            return CGFloat(DetailStyleValue.value("settings.appearance.detail.quoteMargin", default: 16))
+        }
+        return CGFloat(DetailStyleValue.value(DetailStyleKey.quoteMarginBottom, default: 16))
     }
 
-    /// List-item line-height multiplier (1.0 = body; ColaMD-like default 1.8).
+    /// List-item line-height multiplier (1.0 = body; ColaMD-like default 2.0).
     var listLineHeightMultiplier: CGFloat {
-        CGFloat(DetailStyleValue.value(DetailStyleKey.listLineHeight, default: 1.8))
-    }
-
-    /// Horizontal/vertical padding (pt) around ==highlight== chips.
-    var highlightPad: CGFloat {
-        CGFloat(DetailStyleValue.value(DetailStyleKey.highlightPad, default: 4))
+        CGFloat(DetailStyleValue.value(DetailStyleKey.listLineHeight, default: 2.0))
     }
 
     /// Color for dimmed syntax delimiters (*, **, `, #, …) and for the ink of
@@ -154,17 +164,19 @@ extension EditorTextView {
         return font
     }
 
-    /// Subtle background color for inline code spans. The old 10–14% wash
-    /// reads as "no background" on white (≈ #EDEDED, ~1.16:1 against the page),
-    /// which is why the chip looked like it disappeared — ColaMD's reference
-    /// chip (#e8e4df) sits at ~0.91, clearly visible. 0.20 lands at #E6E6E6
-    /// (≈1.28:1) on white; dark mode keeps a bigger step against the near-black
-    /// page. A ColaMD preset paints its own chip (Elegant's light paper).
+    /// Visible background for inline code spans (ColaMD's chip look).
+    /// Uses sRGB — calibrated white renders visibly lighter and nearly
+    /// disappears against the page (see CodeBlockRendering.swift's same note).
+    /// A ColaMD preset paints its own chip (Elegant's #e8e4df).
     var inlineCodeBackground: NSColor {
         if let hex = theme.preset.inlineCodeBackgroundHex, let color = NSColor(hex: hex) {
             return color
         }
-        return NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.40 : 0.20)
+        // Match Read mode's --inline-code-bg step: light #eaeaea ≈ 8% gray,
+        // dark #3c3c3c ≈ 24% gray. sRGB keeps the two modes in agreement.
+        return isDarkAppearance
+            ? NSColor(srgbRed: 0x3c / 255.0, green: 0x3c / 255.0, blue: 0x3c / 255.0, alpha: 1)
+            : (NSColor(hex: "#eaeaea")!)
     }
 
     /// Inline-code ink: a ColaMD preset's code tint when it has one (Elegant's
@@ -249,11 +261,11 @@ extension EditorTextView {
     private func blockquoteParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
-        // Outer margin (Settings ▸ 引用块上下外边距) — balanced top/bottom so
-        // the quote panel has breathing room against neighbouring blocks.
-        let margin = quoteMargin
-        ps.paragraphSpacingBefore = max(bodyParagraphStyle.paragraphSpacingBefore, margin)
-        ps.paragraphSpacing = max(bodyParagraphStyle.paragraphSpacing, margin)
+        // Outer margin — now independently tunable top vs bottom
+        // (Settings ▸ 引用块上/下外边距) so the quote panel is balanced
+        // or asymmetrically spaced against neighbouring blocks.
+        ps.paragraphSpacingBefore = max(bodyParagraphStyle.paragraphSpacingBefore, quoteMarginTop)
+        ps.paragraphSpacing = max(bodyParagraphStyle.paragraphSpacing, quoteMarginBottom)
         ps.firstLineHeadIndent = 2
         ps.headIndent = 2 + quoteMarkerWidth
         return ps

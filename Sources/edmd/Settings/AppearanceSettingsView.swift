@@ -150,17 +150,20 @@ struct AppearanceSettingsView: View {
             detailSliderRow("标题下划线距离:",
                             key: AppSettings.Key.detailHeadingRuleOffset, fallback: 6,
                             range: 0...24, format: "%.0f pt")
-            detailSliderRow("引用块上下边距:",
+            detailSliderRow("引用块上下内边距:",
                             key: AppSettings.Key.detailQuoteVPad, fallback: 15,
                             range: 0...40, format: "%.0f pt")
             detailSliderRow("行内代码左右内边距:",
-                            key: AppSettings.Key.detailInlineCodePadX, fallback: 6,
+                            key: AppSettings.Key.detailInlineCodePadX, fallback: 8,
                             range: 0...16, format: "%.0f pt")
             detailSliderRow("行内代码上下内边距:",
-                            key: AppSettings.Key.detailInlineCodePadY, fallback: 3,
+                            key: AppSettings.Key.detailInlineCodePadY, fallback: 4,
                             range: 0...12, format: "%.0f pt")
-            detailSliderRow("高亮内边距:",
-                            key: AppSettings.Key.detailHighlightPad, fallback: 4,
+            detailSliderRow("高亮左右内边距:",
+                            key: AppSettings.Key.detailHighlightPadX, fallback: 6,
+                            range: 0...16, format: "%.0f pt")
+            detailSliderRow("高亮上下内边距:",
+                            key: AppSettings.Key.detailHighlightPadY, fallback: 2,
                             range: 0...12, format: "%.0f pt")
             detailSliderRow("代码块圆角:",
                             key: AppSettings.Key.detailCodeCornerRadius, fallback: 6,
@@ -169,14 +172,17 @@ struct AppearanceSettingsView: View {
                             key: AppSettings.Key.detailCodeBlockHPad, fallback: 16,
                             range: 0...40, format: "%.0f pt")
             detailSliderRow("代码块上下内边距:",
-                            key: AppSettings.Key.detailCodeBlockVPad, fallback: 16,
+                            key: AppSettings.Key.detailCodeBlockVPad, fallback: 20,
                             range: 0...40, format: "%.0f pt")
-            detailSliderRow("引用块上下外边距:",
-                            key: AppSettings.Key.detailQuoteMargin, fallback: 16,
+            detailSliderRow("引用块上外边距:",
+                            key: AppSettings.Key.detailQuoteMarginTop, fallback: 16,
+                            range: 0...40, format: "%.0f pt")
+            detailSliderRow("引用块下外边距:",
+                            key: AppSettings.Key.detailQuoteMarginBottom, fallback: 16,
                             range: 0...40, format: "%.0f pt")
             detailSliderRow("列表行距:",
-                            key: AppSettings.Key.detailListLineHeight, fallback: 1.8,
-                            range: 1.0...2.5, format: "%.2f 倍", step: 0.05)
+                            key: AppSettings.Key.detailListLineHeight, fallback: 2.0,
+                            range: 1.0...3.0, format: "%.2f 倍", step: 0.05)
 
             GridRow {
                 Divider().gridCellColumns(2)

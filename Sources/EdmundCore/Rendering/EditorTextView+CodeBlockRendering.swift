@@ -69,13 +69,12 @@ extension EditorTextView {
         }
     }
 
-    /// Text inset for a code block's box (matches Read mode's `padding: 12px
-    /// 14px`). No hanging indent — code has no per-line marker to hang under.
+    /// Text inset for a code block's box (matches Read mode's `pre { padding }`).
+    /// No hanging indent — code has no per-line marker to hang under.
     private var codeBlockParagraphStyle: NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
-        // ColaMD's `pre { padding: 16px }` — roomier than the old 12pt so the
-        // code doesn't hug the panel edges; user-tunable in Settings.
+        // User-tunable in Settings (default hPad 16, vPad 20).
         let hPad = codeBlockHPad
         ps.firstLineHeadIndent = hPad
         ps.headIndent = hPad
