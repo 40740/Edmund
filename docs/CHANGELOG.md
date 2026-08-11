@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-11
+
+### Fixed
+- **代码块连续面板**: 代码块行间距从 body 继承的 `lineSpacing` 改为独立的 `minimumLineHeight/maximumLineHeight` 固定行高 + `lineSpacing: 0`，消除行间间隙，使代码块渲染为连续的圆角面板而非一行一行断裂
+- **代码块文字重叠**: 代码块段落样式设置 `paragraphSpacing=0`，避免 TextKit 2 分发的段落间距导致代码块与相邻普通文本重叠
+- **代码块面板颜色对齐 ColaMD**: 默认浅色 `#f6f8fa`、深色 `#161b22`（与 ColaMD `--code-block-bg` 一致）
+- **代码块语法高亮跟随面板**: `prefersDarkCodeTheme` 现在跟随代码面板颜色（Elegant 的深色面板始终用深色语法高亮），而非窗口外观
+- **代码块面板文字色**: 新增 `codeBlockTextColor` 属性，Elegant 预设使用 `#e0dcd7` 暖色文字于深色面板上
+- **代码块重置字间距**: 代码块和代码段显式设置 `kern: 0`，不受正文字间距影响
+- **正文字间距**: `baseAttributes` 添加 `kern` 属性（Elegant 0.18 / 其他 0.12），改善中文和衬线体的可读性
+- **引用块独立排版**: `blockquoteParagraphStyle` 使用独立的 `minimumLineHeight/maximumLineHeight` 和 `lineSpacing: 0`，不再继承 body 的 lineSpacing，解决嵌套引用视觉碰撞
+- **浅色/深色主题切换完整**: `applyTheme` 现在同步更新 `backgroundColor`、`insertionPointColor`、`selectedTextAttributes`，并始终 `invalidateLayout`，修复主题/预设切换后半生效的问题
+- **bodyParagraphStyle 稳定性**: 用显式的 `minimumLineHeight/maximumLineHeight`（=fontSize+lineSpacing）替代 `lineSpacing`，防止 TextKit 2 在相邻块使用自定义段落样式时压缩行高
+
 ## [0.5.9] - 2026-08-11
 
 ### Fixed

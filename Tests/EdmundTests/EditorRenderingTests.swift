@@ -1260,3 +1260,40 @@ struct QuoteCalloutHangingIndentTests {
         #expect(abs((ps?.headIndent ?? 0) - (ps?.firstLineHeadIndent ?? 0)) < 0.5)
     }
 }
+
+
+@Suite("EditorTextView — Code block typography")
+@MainActor
+struct CodeBlockTypographyTests {
+
+    @Test("Fenced code uses a fixed line box and zero paragraph spacing")
+    func codeParagraphMetricsAreIndependent() throws {
+        let editor = makeEditor()
+        let s = editor.styleBlock("```swift\nlet value = 1\nprint(value)\n```")
+
+        let ps = try #require(
+            s.attribute(.paragraphStyle, at: 5, effectiveRange: nil)
+                as? NSParagraphStyle
+        )
+        #expect(ps.lineSpacing == 0)
+        #expect(ps.paragraphSpacing == 0)
+        #expect(ps.minimumLineHeight > 0)
+        #expect(ps.maximumLineHeight == ps.minimumLineHeight)
+    }
+
+    @Test("Fenced code has a dedicated panel and resets body tracking")
+    func codeHasPanelAndNoBodyTracking() throws {
+        let editor = makeEditor()
+        let s = editor.styleBlock("```swift\nlet value = 1\n```")
+
+        let decoration = try #require(
+            s.attribute(.blockDecoration, at: 5, effectiveRange: nil)
+        )
+        #expect(decoration is BlockDecoration)
+
+        let kern = try #require(
+            s.attribute(.kern, at: 5, effectiveRange: nil) as? NSNumber
+        )
+        #expect(kern.doubleValue == 0)
+    }
+}

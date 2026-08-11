@@ -450,10 +450,21 @@ public class EditorTextView: NSTextView {
 
     var bodyParagraphStyle: NSParagraphStyle {
         if let cachedBodyParagraphStyle { return cachedBodyParagraphStyle }
+
         let ps = NSMutableParagraphStyle()
-        ps.lineSpacing = theme.lineSpacing
+
+        // ColaMD's elegant typography relies on generous leading.  Keep the
+        // user's lineSpacing control, but make the minimum line box explicit so
+        // TextKit 2 cannot collapse it when neighboring blocks use custom
+        // paragraph styles.
+        let minimumLineHeight = bodyFont.pointSize + max(0, theme.lineSpacing)
+        ps.minimumLineHeight = minimumLineHeight
+        ps.maximumLineHeight = minimumLineHeight
+        ps.lineSpacing = 0
+
         ps.paragraphSpacingBefore = theme.paragraphSpacingBefore
         ps.paragraphSpacing = 0
+
         let style = ps.copy() as! NSParagraphStyle
         cachedBodyParagraphStyle = style
         return style
@@ -466,12 +477,30 @@ public class EditorTextView: NSTextView {
         let antialiasChanged = theme.antialias != newTheme.antialias
         theme = newTheme
         if persist { theme.save(to: themeDefaults) }
+
+        // `backgroundColor` / selection / insertion-point colors are view
+        // properties, not attributed-string attributes. Updating only the
+        // attributed text made Light/Dark/Cola presets appear half-applied.
+        backgroundColor = editorBackgroundColor
+        insertionPointColor = accentColor
+        selectedTextAttributes = [
+            .backgroundColor: selectionHighlightColor,
+            .foregroundColor: foregroundColor,
+        ]
+
         typingAttributes = baseAttributes
         recomposeAllDirty()
+
         // Antialiasing isn't a text attribute, so a recompose alone won't re-vend
-        // the layout fragments — force a full re-layout when it changes.
-        if antialiasChanged, let tlm = textLayoutManager {
+        // the layout fragments — force a full re-layout when it changes. Theme
+        // changes also alter metrics/colors used by custom fragments, so invalidate
+        // the layout unconditionally.
+        if let tlm = textLayoutManager {
             tlm.invalidateLayout(for: tlm.documentRange)
+        }
+
+        if antialiasChanged {
+            needsDisplay = true
         }
     }
 
@@ -479,6 +508,9 @@ public class EditorTextView: NSTextView {
         [
             .font: bodyFont,
             .foregroundColor: foregroundColor,
+            // A small amount of tracking improves Chinese and serif body
+            // readability. Code explicitly resets this to zero.
+            .kern: CGFloat(theme.preset == .colaElegant ? 0.18 : 0.12),
             .paragraphStyle: bodyParagraphStyle,
         ]
     }

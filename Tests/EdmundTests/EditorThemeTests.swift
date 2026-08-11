@@ -34,3 +34,26 @@ struct EditorThemeMathColorTests {
         #expect(t.mathNumberColor == NSColor.systemOrange)
     }
 }
+
+
+@Suite("ColaMD preset palette")
+struct ColaThemePresetPaletteTests {
+
+    @Test("Light and dark presets provide complete page/code palettes")
+    func lightDarkPalettes() {
+        #expect(ColaThemePreset.colaLight.backgroundColorHex != nil)
+        #expect(ColaThemePreset.colaLight.textColorHex != nil)
+        #expect(ColaThemePreset.colaLight.codeBlockBackgroundHex != nil)
+
+        #expect(ColaThemePreset.colaDark.backgroundColorHex != nil)
+        #expect(ColaThemePreset.colaDark.textColorHex != nil)
+        #expect(ColaThemePreset.colaDark.codeBlockBackgroundHex != nil)
+    }
+
+    @Test("Elegant uses a dark fenced-code panel with light code ink")
+    func elegantCodePalette() {
+        #expect(ColaThemePreset.colaElegant.codeBlockBackgroundHex == "#2c2c2c")
+        #expect(ColaThemePreset.colaElegant.codeBlockTextHex == "#e0dcd7")
+        #expect(ColaThemePreset.colaElegant.quoteBackgroundHex == "#eae6e1")
+    }
+}

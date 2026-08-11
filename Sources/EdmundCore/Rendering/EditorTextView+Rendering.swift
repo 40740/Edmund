@@ -260,14 +260,27 @@ extension EditorTextView {
     /// indent so wrapped lines align after the `> ` marker.
     private func blockquoteParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
-        ps.lineSpacing = bodyParagraphStyle.lineSpacing
-        // Outer margin — now independently tunable top vs bottom
-        // (Settings ▸ 引用块上/下外边距) so the quote panel is balanced
-        // or asymmetrically spaced against neighbouring blocks.
-        ps.paragraphSpacingBefore = max(bodyParagraphStyle.paragraphSpacingBefore, quoteMarginTop)
-        ps.paragraphSpacing = max(bodyParagraphStyle.paragraphSpacing, quoteMarginBottom)
+
+        // Quote metrics are independent from body metrics.  In particular,
+        // do not reuse body lineSpacing here: the TextKit 2 fragment's box and
+        // bar are painted per paragraph, so inherited leading creates uneven
+        // top/bottom gaps and makes nested quotes visually collide.
+        let lineHeight = bodyFont.pointSize + max(0, theme.lineSpacing)
+        ps.minimumLineHeight = lineHeight
+        ps.maximumLineHeight = lineHeight
+        ps.lineSpacing = 0
+
+        // The decoration supplies the visible panel padding.  Paragraph spacing
+        // is reserved for the outer margin only.
+        ps.paragraphSpacingBefore = quoteMarginTop
+        ps.paragraphSpacing = quoteMarginBottom
+
+        // 2pt for the bar + the hidden `> ` marker width. Wrapped lines align
+        // with the quote text rather than under the marker.
         ps.firstLineHeadIndent = 2
         ps.headIndent = 2 + quoteMarkerWidth
+        ps.tailIndent = 0
+
         return ps
     }
 
@@ -381,6 +394,8 @@ extension EditorTextView {
                 // line keeps its natural (now code-line) height whether shown
                 // dimmed (active) or ink-cleared (rendered, blockquote-style).
                 result.addAttribute(.font, value: codeBlockFont, range: span.fullRange)
+                result.addAttribute(.foregroundColor, value: codeBlockTextColor, range: span.fullRange)
+                result.addAttribute(.kern, value: 0, range: span.fullRange)
                 highlightCodeBlock(result, contentRange: span.contentRange, language: language)
                 if !cursorInToken {
                     styleCodeBlockBox(result, span: span, language: language)
@@ -544,6 +559,11 @@ extension EditorTextView {
                     let ps = blockquoteParagraphStyle().mutableCopy() as! NSMutableParagraphStyle
                     ps.headIndent += CGFloat(depth) * quoteMarkerWidth
                     result.addAttribute(.paragraphStyle, value: ps, range: paraRange)
+                    // Quote text should use the body tracking, not accidentally
+                    // inherit a code/list tracking value from an adjacent run.
+                    result.addAttribute(.kern,
+                                        value: CGFloat(theme.preset == .colaElegant ? 0.18 : 0.12),
+                                        range: paraRange)
 
                     // The quote's own bar hugs the text top on its *first* line
                     // only (see BlockDecoration.hugsTextTop) — interior lines

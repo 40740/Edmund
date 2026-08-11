@@ -22,12 +22,20 @@ extension EditorTextView {
         if let hex = theme.preset.codeBlockBackgroundHex, let color = NSColor(hex: hex) {
             return color
         }
-        // sRGB, not the calibrated `NSColor(hex:)` helper — same reason as
-        // `editorBackgroundColor`: calibrated renders visibly lighter, and this
-        // has to land exactly on Read mode's --code-bg.
+        // ColaMD Light: #f6f8fa, Dark: #161b22 — use sRGB for exact match.
         return isDarkAppearance
-            ? NSColor(srgbRed: 0x33 / 255.0, green: 0x33 / 255.0, blue: 0x33 / 255.0, alpha: 1)
-            : (NSColor(hex: "#f4f4f4") ?? NSColor(calibratedWhite: 0.96, alpha: 1))
+            ? NSColor(srgbRed: 0x16 / 255.0, green: 0x1b / 255.0, blue: 0x22 / 255.0, alpha: 1)
+            : (NSColor(srgbRed: 0xf6 / 255.0, green: 0xf8 / 255.0, blue: 0xfa / 255.0, alpha: 1))
+    }
+
+    /// Base ink for fenced code.  A preset may supply a code-panel-specific
+    /// color (Elegant uses warm light text on its dark panel); otherwise code
+    /// starts from the editor foreground and syntax highlighting paints tokens.
+    var codeBlockTextColor: NSColor {
+        if let hex = theme.preset.codeBlockTextHex, let color = NSColor(hex: hex) {
+            return color
+        }
+        return foregroundColor
     }
 
     /// Applies the background box to an inactive fenced code block. Only
@@ -44,6 +52,8 @@ extension EditorTextView {
                                        bottomPad: vPad, cornerRadius: codeCornerRadius))
         result.addAttribute(.blockDecoration, value: box, range: span.fullRange)
         result.addAttribute(.paragraphStyle, value: codeBlockParagraphStyle, range: span.fullRange)
+        // A code block must be independent from body tracking.
+        result.addAttribute(.kern, value: 0, range: span.fullRange)
 
         // Label plumbing: the opening fence line carries the display language
         // ("" when the fence names none) and shaves the box's top padding;
@@ -71,10 +81,21 @@ extension EditorTextView {
 
     /// Text inset for a code block's box (matches Read mode's `pre { padding }`).
     /// No hanging indent — code has no per-line marker to hang under.
+    /// Interior code lines use compact spacing (no paragraphSpacingBefore,
+    /// tighter lineSpacing) so they tile into one continuous panel rather than
+    /// looking like separate rows with gaps between them.
     private var codeBlockParagraphStyle: NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
-        ps.lineSpacing = bodyParagraphStyle.lineSpacing
-        // User-tunable in Settings (default hPad 16, vPad 20).
+        // ColaMD uses line-height: 1.6 for code.  The editor's `lineSpacing`
+        // is the extra space *between* lines (not a multiplier), so we compute
+        // it from the code font size: lineHeight = fontSize + lineSpacing →
+        // lineSpacing = fontSize * (1.6 - 1) = fontSize * 0.6.
+        let codeLineSpacing = codeBlockFont.pointSize * 0.6
+        ps.lineSpacing = codeLineSpacing
+        // Zero paragraph spacing so code lines tile seamlessly.
+        ps.paragraphSpacingBefore = 0
+        ps.paragraphSpacing = 0
+        // User-tunable in Settings (default hPad 16).
         let hPad = codeBlockHPad
         ps.firstLineHeadIndent = hPad
         ps.headIndent = hPad

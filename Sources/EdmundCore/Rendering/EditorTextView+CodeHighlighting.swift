@@ -10,7 +10,17 @@ import AppKit
 extension EditorTextView {
 
     private var prefersDarkCodeTheme: Bool {
-        effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        // Elegant deliberately uses a dark code panel even though the preset
+        // itself forces the app into a light appearance.  Therefore syntax
+        // highlighting must follow the *code panel*, not the window appearance.
+        switch theme.preset {
+        case .colaDark, .colaElegant:
+            return true
+        case .colaLight, .colaNewsprint:
+            return false
+        case .system:
+            return effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        }
     }
 
     /// The `NSColor` for a token kind (`nil` = plain code) in the current
