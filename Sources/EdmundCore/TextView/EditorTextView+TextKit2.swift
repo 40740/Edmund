@@ -1145,7 +1145,15 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                                     width: width, height: max(hairline, sepWidth)))
             }
             if bottomBorder {
-                let y = round(point.y + frame.height) + 0.5
+                // Draw the row rule at the BOTTOM of the row's full band
+                // (text frame plus its `verticalPad` paragraph spacing), not
+                // at the bare text-frame bottom. The column borders and zebra
+                // fill already span `point.y .. point.y+frame.height+verticalPad`,
+                // so a rule drawn higher up left the grid open — the striped
+                // fill visibly poked below the line ("zebra crossing every row
+                // line") and the box wasn't closed. Aligning it here lets the
+                // rule meet the verticals exactly and closes the table.
+                let y = round(point.y + frame.height + verticalPad) + 0.5
                 context.move(to: CGPoint(x: point.x - leftInset, y: y))
                 context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
             }

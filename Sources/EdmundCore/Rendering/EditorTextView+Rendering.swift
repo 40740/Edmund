@@ -527,8 +527,19 @@ extension EditorTextView {
                                 // and following rows tile cleanly.
                                 let firstPS = blockquoteParagraphStyle().mutableCopy() as! NSMutableParagraphStyle
                                 firstPS.headIndent += CGFloat(depth) * quoteMarkerWidth
-                                let lineHeight = bodyFont.pointSize + theme.lineSpacing
-                                firstPS.minimumLineHeight = lineHeight + quoteVPad
+                                // Raise the first line by EXACTLY the panel's
+                                // top padding. The natural line height must be
+                                // measured from the font (NSLayoutManager's
+                                // `defaultLineHeight` agrees with TextKit 2's
+                                // layout — see HTMLTheme), NOT assumed as
+                                // `pointSize + lineSpacing`: those two differ by
+                                // the font's true ascender+descender+leading, so
+                                // a proxy added quoteVPad on top of a WRONG
+                                // baseline and the top padding drifted off the
+                                // bottom padding (top-heavy, un-centered).
+                                let naturalLineHeight = NSLayoutManager()
+                                    .defaultLineHeight(for: bodyFont)
+                                firstPS.minimumLineHeight = naturalLineHeight + quoteVPad
                                 result.addAttribute(.paragraphStyle, value: firstPS, range: row)
                             }
                             let ancestor = result.attribute(.blockDecoration, at: row.location,

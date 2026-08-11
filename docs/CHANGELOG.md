@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [5.7] - 2026-08-11
+
+### Fixed
+- 编辑模式引用块文字垂直居中（顶部比底部多一截）：v5.6 用抬高首行最小行高来做出面板顶内边距，但基线用的是 `fontSize + lineSpacing` 的近似值，而真正基线应取字体本身的行高（`NSLayoutManager.defaultLineHeight`）。两者相差字体真实的 ascender/descender/leading，导致实际顶内边距偏离底内边距，引用文字偏下、不居中。现改为按字体真实行高抬高首行，顶/底内边距严格一致，文字真正垂直居中。
+- 编辑模式表格行线未闭合、斑马纹越过行线：表格行的水平下框线原先画在文本帧底边，而列竖线与斑马纹填充都延伸到整行带底边，导致斑马纹下沿越过行线、格子下边没有闭合。现把行下框线移到行带底边（`point.y + frame.height + verticalPad`），与列竖线/斑马纹对齐，网格完整闭合。
+
 ## [5.6] - 2026-08-11
 
 ### Fixed
