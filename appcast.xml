@@ -345,5 +345,16 @@
                        
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 3.0.3</title>
+            <pubDate>Tue, 11 Aug 2026 04:15:29 +0000</pubDate>
+
+            <enclosure url="https://github.com/40740/Edmund/releases/download/v3.0.3/Edmund-3.0.3.dmg"
+                       sparkle:version="14"
+                       sparkle:shortVersionString="3.0.3"
+                       
+                       
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
