@@ -30,7 +30,7 @@ public struct EditorTheme: Equatable, Sendable {
     /// records the seed so the renderer knows which look to reproduce.
     ///
     /// `.edmund` is the historical default; `.colaElegant` ports the ColaMD
-    /// "Elegant Plus" theme (warm paper, terracotta accent, serif body).
+    /// "Elegant" theme (warm paper, terracotta accent, serif body).
     public var preset: ThemePreset
 
     // MARK: - Colors (hex strings, e.g. "#3366E6")
@@ -81,19 +81,19 @@ public struct EditorTheme: Equatable, Sendable {
         preset: .edmund
     )
 
-    /// The ColaMD "Elegant Plus" preset — warm-paper background, terracotta
-    /// accent, serif body. See `ThemePreset.colaElegant` and `UI-设计文档.md`.
-    /// Line spacing is sized so light-mode line-height lands at ~1.9 (16pt ×
-    /// natural ~1.375 + 8.4pt lineSpacing ÷ 16 ≈ 1.9), the spec's "breathing"
-    /// cadence. Math colors reuse the warm palette so equations don't read as
-    /// a foreign accent.
+    /// The ColaMD "Elegant" preset — warm-paper background (#f0edea),
+    /// terracotta accent (#c44b2b), serif body. See `ThemePreset.colaElegant`
+    /// and the reference `elegant.css` from marswaveai/ColaMD.
+    /// Fonts mirror ColaMD: LXGW WenKai / Noto Serif SC for body,
+    /// JetBrains Mono / SF Mono for code. On macOS we use Songti SC (bundled)
+    /// and Menlo (bundled) as closest available faces.
     public static let colaElegant: EditorTheme = {
         // macOS ships Songti SC as the system serif; on systems without it,
         // NSFont falls back to a generic serif, which is fine. We expose the
         // family name so the user can swap in LXGW WenKai (or anything else)
         // via the font picker after applying the preset.
         let serifFamily = "Songti SC"
-        let monoFamily = "Menlo" // JetBrains Mono isn't bundled with macOS; Menlo is the closest system mono and ships everywhere.
+        let monoFamily = "Menlo" // JetBrains Mono isn't bundled with macOS; Menlo is the closest system mono.
         return EditorTheme(
             fontName: serifFamily,
             fontSize: 16,
@@ -258,9 +258,8 @@ public struct EditorTheme: Equatable, Sendable {
             return v > 0 ? v : presetSeed.fontSize
         }()
         // The accent color is not user-customizable within a preset; always
-        // use the preset's seed so a stale persisted value (e.g. left over
-        // from the removed in-app accent picker) can't leak in and recolor
-        // links. Between presets the accent DOES differ (Edmund = blue,
+        // use the preset's seed so a stale persisted value can't leak in and
+        // recolor links. Between presets the accent DOES differ (Edmund = blue,
         // ColaMD = terracotta), which is why we fall back to `presetSeed`
         // rather than the historical `def`.
         let linkBlueHex = presetSeed.linkBlueHex

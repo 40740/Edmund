@@ -43,7 +43,11 @@ extension EditorTextView {
     /// so the whole dim tier moves to the marker gray — one tertiary substitute
     /// for every dimmed thing on the dark side. Light mode is untouched.
     var syntaxDimColor: NSColor {
-        isDarkAppearance ? Self.darkChromeGray : .tertiaryLabelColor
+        // ColaMD uses its warm control text color #555 for dimmed syntax.
+        if theme.preset == .colaElegant {
+            return NSColor(srgbRed: 0x55 / 255.0, green: 0x55 / 255.0, blue: 0x55 / 255.0, alpha: 1.0)
+        }
+        return isDarkAppearance ? Self.darkChromeGray : .tertiaryLabelColor
     }
 
     /// Color for links and wikilinks — always the theme's accent blue, independent of
@@ -75,12 +79,16 @@ extension EditorTextView {
         return font
     }
 
-    /// Subtle background color for inline code spans. Routes by preset —
-    /// ColaMD uses a warm-paper chip, Edmund a 10% neutral wash.
-    /// Kept as a computed property for backward compatibility; the rendering
-    /// paths now call `presetInlineCodeBackground` (same value, clearer name).
+    /// Subtle background color for inline code spans. The 10% wash reads fine
+    /// on white but nearly disappears on the dark background (it lands ~4 levels
+    /// above it), so dark mode more than doubles the alpha to hold the same
+    /// visible step as Read mode's --inline-code-bg.
     var inlineCodeBackground: NSColor {
-        presetInlineCodeBackground
+        // ColaMD uses #e8e4df (the sidebar bg color) for inline code.
+        if theme.preset == .colaElegant {
+            return NSColor(srgbRed: 0xE8 / 255.0, green: 0xE4 / 255.0, blue: 0xDF / 255.0, alpha: 1.0)
+        }
+        return NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.22 : 0.1)
     }
 
     /// Stable cache-key representation for dynamic AppKit colors. Hash values
@@ -235,11 +243,6 @@ extension EditorTextView {
                 let ctx = contextFont(at: span.contentRange.location)
                 let bold = NSFontManager.shared.convert(ctx, toHaveTrait: .boldFontMask)
                 result.addAttribute(.font, value: bold, range: span.contentRange)
-                // ColaMD preset paints bold in the terracotta accent (a single
-                // accent color spans bold/links/quotes/code per the design doc).
-                // Edmund keeps the body ink — the weight change alone carries
-                // the emphasis.
-                result.addAttribute(.foregroundColor, value: boldTextColor, range: span.contentRange)
 
             case .italic:
                 guard span.contentRange.upperBound <= result.length else { continue }
@@ -252,14 +255,13 @@ extension EditorTextView {
                 let ctx = contextFont(at: span.contentRange.location)
                 let bi = NSFontManager.shared.convert(ctx, toHaveTrait: [.boldFontMask, .italicFontMask])
                 result.addAttribute(.font, value: bi, range: span.contentRange)
-                result.addAttribute(.foregroundColor, value: boldTextColor, range: span.contentRange)
 
             case .code:
                 guard span.contentRange.upperBound <= result.length else { continue }
                 let ctx = contextFont(at: span.contentRange.location)
                 result.addAttribute(.font, value: monoFont(for: ctx), range: span.contentRange)
-                result.addAttribute(.foregroundColor, value: presetInlineCodeColor, range: span.contentRange)
-                result.addAttribute(.backgroundColor, value: presetInlineCodeBackground, range: span.contentRange)
+                result.addAttribute(.foregroundColor, value: foregroundColor, range: span.contentRange)
+                result.addAttribute(.backgroundColor, value: inlineCodeBackground, range: span.contentRange)
 
             case .codeBlock(let language):
                 guard span.fullRange.upperBound <= result.length else { continue }
@@ -267,11 +269,6 @@ extension EditorTextView {
                 // line keeps its natural (now code-line) height whether shown
                 // dimmed (active) or ink-cleared (rendered, blockquote-style).
                 result.addAttribute(.font, value: codeBlockFont, range: span.fullRange)
-                // ColaMD's dark code panel needs warm off-white text; Edmund
-                // keeps the body foreground. Applied to the content range only
-                // so the fence delimiters (cleared below) don't pick up a color
-                // they'd then paint in.
-                result.addAttribute(.foregroundColor, value: codeBlockTextColor, range: span.contentRange)
                 highlightCodeBlock(result, contentRange: span.contentRange, language: language)
                 if !cursorInToken {
                     styleCodeBlockBox(result, span: span, language: language)
@@ -283,7 +280,7 @@ extension EditorTextView {
 
             case .highlight:
                 guard span.contentRange.upperBound <= result.length else { continue }
-                result.addAttribute(.backgroundColor, value: presetHighlightBackground, range: span.contentRange)
+                result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: span.contentRange)
 
             case .heading(let level):
                 guard span.fullRange.upperBound <= result.length else { continue }
@@ -292,10 +289,6 @@ extension EditorTextView {
                                    size: bodyFont.pointSize * scale) ?? bodyFont
                 let heading = NSFontManager.shared.convert(sized, toHaveTrait: .boldFontMask)
                 result.addAttribute(.font, value: heading, range: span.fullRange)
-                // ColaMD preset paints headings in a deeper ink than the body
-                // (#1a1a1a light / #e0dcd7 dark). Edmund keeps the body
-                // foreground — the size + weight change carries the heading.
-                result.addAttribute(.foregroundColor, value: presetHeadingColor, range: span.fullRange)
 
             case .link(let destination):
                 guard span.contentRange.upperBound <= result.length else { continue }
@@ -429,20 +422,11 @@ extension EditorTextView {
                                             length: paraRange.upperBound - firstLineEnd)
                     for (range, hugs) in [(firstRange, true), (restRange, false)] {
                         guard range.length > 0 else { continue }
-                        let ownBar = BlockDecoration(.leftBar(color: presetQuoteBarColor, width: presetQuoteBarWidth),
+                        let ownBar = BlockDecoration(.leftBar(color: syntaxDimColor, width: 2),
                                                      inset: CGFloat(depth) * quoteMarkerWidth,
                                                      hugsTextTop: hugs)
                         if depth == 0 {
                             result.addAttribute(.blockDecoration, value: ownBar, range: range)
-                            // ColaMD fills the quote box with a soft paper tint
-                            // behind the bar; Edmund leaves it transparent.
-                            if let bg = presetQuoteBackground {
-                                let box = BlockDecoration(.box(background: bg, borderColor: nil,
-                                                                borderEdges: [], borderWidth: 0, bottomPad: 0))
-                                result.addAttribute(.blockDecoration,
-                                                    value: BlockDecorationList([ownBar, box]),
-                                                    range: range)
-                            }
                         } else {
                             let ancestor = result.attribute(.blockDecoration, at: range.location,
                                                             effectiveRange: nil)
@@ -469,7 +453,7 @@ extension EditorTextView {
                     // outermost span's fill already covers all nested text, so
                     // deeper spans don't need to (re-)apply it.
                     if depth == 0 {
-                        result.addAttribute(.foregroundColor, value: presetQuoteTextColor,
+                        result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor,
                                             range: span.contentRange)
                     }
                 }
@@ -804,13 +788,13 @@ extension EditorTextView {
         case "u":
             result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
         case "mark":
-            result.addAttribute(.backgroundColor, value: presetHighlightBackground, range: range)
+            result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: range)
         case "kbd":
             let scale = ctx.pointSize / bodyFont.pointSize
             let mono = scale == 1 ? inlineCodeFont
                 : theme.monospaceFont(ofSize: inlineCodeFont.pointSize * scale)
             result.addAttribute(.font, value: mono, range: range)
-            result.addAttribute(.backgroundColor, value: presetInlineCodeBackground, range: range)
+            result.addAttribute(.backgroundColor, value: inlineCodeBackground, range: range)
         case "sub", "sup":
             let small = NSFont(descriptor: ctx.fontDescriptor, size: ctx.pointSize * 0.75) ?? ctx
             result.addAttribute(.font, value: small, range: range)

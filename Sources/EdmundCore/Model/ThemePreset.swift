@@ -12,11 +12,10 @@ import AppKit
 //
 // - `.edmund` — the original Edmund look (Iowan Old Style serif body, blue
 //   accent, white/near-black page). The historical default, kept byte-for-byte.
-// - `.colaElegant` — "ColaMD Elegant Plus": warm-paper background (#f0edea),
+// - `.colaElegant` — "ColaMD Elegant": warm-paper background (#f0edea),
 //   terracotta accent (#c44b2b), serif body with generous 0.04em tracking and
 //   1.9 line-height, One-Dark code panel. Ported from
-//   https://github.com/marswaveai/ColaMD (`themes/elegant.css`); see
-//   `UI-设计文档.md` for the design tokens.
+//   https://github.com/marswaveai/ColaMD (`themes/elegant.css`).
 //
 // Routing: `HTMLTheme.css(theme:…)` reads `theme.preset` and dispatches to the
 // matching CSS builder. `EditorTextView.editorBackgroundColor` does the same so
@@ -35,15 +34,15 @@ public enum ThemePreset: String, CaseIterable, Sendable, Identifiable {
     public var displayName: String {
         switch self {
         case .edmund:        return "Edmund"
-        case .colaElegant:   return "ColaMD Elegant"
+        case .colaElegant:   return "ColaMD"
         }
     }
 
     /// Short subtitle for the picker row.
     public var subtitle: String {
         switch self {
-        case .edmund:        return "Original — blue accent on white"
-        case .colaElegant:   return "Warm paper, terracotta accent, serif body"
+        case .edmund:        return "经典 — 白底蓝字衬线体"
+        case .colaElegant:   return "暖纸底色、赤陶强调色、衬线正文"
         }
     }
 
