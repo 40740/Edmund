@@ -239,37 +239,48 @@ public struct EditorTheme: Equatable, Sendable {
         let d = defaults
         let def = EditorTheme.default
 
-        let fontName = d.string(forKey: Keys.fontName) ?? def.fontName
-        let fontSize: CGFloat = {
-            let v = CGFloat(d.float(forKey: Keys.fontSize))
-            return v > 0 ? v : def.fontSize
-        }()
-        // The accent color is not user-customizable; always use the default so a
-        // stale persisted value (e.g. left over from the removed in-app accent
-        // picker) can't leak in and recolor links.
-        let linkBlueHex = def.linkBlueHex
-        let monospaceFontName = d.string(forKey: Keys.monospaceFontName) ?? def.monospaceFontName
-        let monospaceFontSize: CGFloat = {
-            let v = CGFloat(d.float(forKey: Keys.monospaceFontSize))
-            return v > 0 ? v : def.monospaceFontSize
-        }()
-        let standardLigatures = d.object(forKey: Keys.standardLigatures) as? Bool ?? def.standardLigatures
-        let monospaceLigatures = d.object(forKey: Keys.monospaceLigatures) as? Bool ?? def.monospaceLigatures
-        let antialias = d.object(forKey: Keys.antialias) as? Bool ?? def.antialias
-        let codeHex = d.string(forKey: Keys.codeHex) ?? def.codeHex
-        let mathOperatorHex = d.string(forKey: Keys.mathOperatorHex) ?? def.mathOperatorHex
-        let mathNumberHex = d.string(forKey: Keys.mathNumberHex) ?? def.mathNumberHex
-        let lineSpacing: CGFloat = d.object(forKey: Keys.lineSpacing) != nil
-            ? CGFloat(d.float(forKey: Keys.lineSpacing))
-            : def.lineSpacing
-        let paragraphSpacingBefore: CGFloat = d.object(forKey: Keys.paragraphSpacingBefore) != nil
-            ? CGFloat(d.float(forKey: Keys.paragraphSpacingBefore))
-            : def.paragraphSpacingBefore
+        // Resolve the preset FIRST so the per-preset seed can supply the
+        // default accent/code/math colors. The Edmund preset's seed IS
+        // `EditorTheme.default`, so the historical fallback (and the original
+        // "stale accent can't leak in" guard) is preserved for upgrades; the
+        // ColaMD preset's seed carries its own terracotta palette so a saved
+        // ColaMD theme doesn't wake up blue on the next launch.
         let preset: ThemePreset = {
             guard let raw = d.string(forKey: Keys.preset),
                   let p = ThemePreset(rawValue: raw) else { return def.preset }
             return p
         }()
+        let presetSeed: EditorTheme = preset == .colaElegant ? .colaElegant : def
+
+        let fontName = d.string(forKey: Keys.fontName) ?? presetSeed.fontName
+        let fontSize: CGFloat = {
+            let v = CGFloat(d.float(forKey: Keys.fontSize))
+            return v > 0 ? v : presetSeed.fontSize
+        }()
+        // The accent color is not user-customizable within a preset; always
+        // use the preset's seed so a stale persisted value (e.g. left over
+        // from the removed in-app accent picker) can't leak in and recolor
+        // links. Between presets the accent DOES differ (Edmund = blue,
+        // ColaMD = terracotta), which is why we fall back to `presetSeed`
+        // rather than the historical `def`.
+        let linkBlueHex = presetSeed.linkBlueHex
+        let monospaceFontName = d.string(forKey: Keys.monospaceFontName) ?? presetSeed.monospaceFontName
+        let monospaceFontSize: CGFloat = {
+            let v = CGFloat(d.float(forKey: Keys.monospaceFontSize))
+            return v > 0 ? v : presetSeed.monospaceFontSize
+        }()
+        let standardLigatures = d.object(forKey: Keys.standardLigatures) as? Bool ?? presetSeed.standardLigatures
+        let monospaceLigatures = d.object(forKey: Keys.monospaceLigatures) as? Bool ?? presetSeed.monospaceLigatures
+        let antialias = d.object(forKey: Keys.antialias) as? Bool ?? presetSeed.antialias
+        let codeHex = d.string(forKey: Keys.codeHex) ?? presetSeed.codeHex
+        let mathOperatorHex = d.string(forKey: Keys.mathOperatorHex) ?? presetSeed.mathOperatorHex
+        let mathNumberHex = d.string(forKey: Keys.mathNumberHex) ?? presetSeed.mathNumberHex
+        let lineSpacing: CGFloat = d.object(forKey: Keys.lineSpacing) != nil
+            ? CGFloat(d.float(forKey: Keys.lineSpacing))
+            : presetSeed.lineSpacing
+        let paragraphSpacingBefore: CGFloat = d.object(forKey: Keys.paragraphSpacingBefore) != nil
+            ? CGFloat(d.float(forKey: Keys.paragraphSpacingBefore))
+            : presetSeed.paragraphSpacingBefore
 
         return EditorTheme(
             fontName: fontName,
