@@ -187,7 +187,12 @@ private final class LogStore: @unchecked Sendable {
     }
 
     func write(level: Log.Level, category: Log.Category, message: String, date: Date) {
-        let dir = lock.withLock { directory }
+        // Read the enabled flag and the directory atomically: a caller whose
+        // `shouldLog` already passed may still be racing a concurrent
+        // `configure(enabled: false, …)`. Dropping the write here (instead of
+        // writing to whatever directory `configure` just swapped in) keeps a
+        // stale line from a parallel test out of a freshly-configured log dir.
+        guard let dir = lock.withLock({ _enabled ? directory : nil }) else { return }
         queue.async { [weak self] in
             guard let self else { return }
             let line = "\(self.timeFormatter.string(from: date)) [\(level.tag)] [\(category.rawValue)] \(message)"
