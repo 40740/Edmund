@@ -24,6 +24,15 @@ public struct EditorTheme: Equatable, Sendable {
     /// Whether editor text is antialiased (a single editor-wide setting).
     public var antialias: Bool
 
+    /// Which named preset the theme was seeded from. Drives CSS routing in
+    /// `HTMLTheme` and the editor background in `EditorTextView`. The user is
+    /// still free to customize any field on top of the preset — this only
+    /// records the seed so the renderer knows which look to reproduce.
+    ///
+    /// `.edmund` is the historical default; `.colaElegant` ports the ColaMD
+    /// "Elegant Plus" theme (warm paper, terracotta accent, serif body).
+    public var preset: ThemePreset
+
     // MARK: - Colors (hex strings, e.g. "#3366E6")
 
     public var linkBlueHex: String
@@ -43,7 +52,7 @@ public struct EditorTheme: Equatable, Sendable {
                 mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800",
                 monospaceFontName: String = "", monospaceFontSize: CGFloat = 14,
                 standardLigatures: Bool = true, monospaceLigatures: Bool = false,
-                antialias: Bool = true) {
+                antialias: Bool = true, preset: ThemePreset = .edmund) {
         self.fontName = fontName
         self.fontSize = fontSize
         self.linkBlueHex = linkBlueHex
@@ -57,6 +66,7 @@ public struct EditorTheme: Equatable, Sendable {
         self.standardLigatures = standardLigatures
         self.monospaceLigatures = monospaceLigatures
         self.antialias = antialias
+        self.preset = preset
     }
 
     // MARK: - Defaults
@@ -67,8 +77,40 @@ public struct EditorTheme: Equatable, Sendable {
         linkBlueHex: "#3366E6",
         codeHex: "#8A2425",
         lineSpacing: 4,
-        paragraphSpacingBefore: 2
+        paragraphSpacingBefore: 2,
+        preset: .edmund
     )
+
+    /// The ColaMD "Elegant Plus" preset — warm-paper background, terracotta
+    /// accent, serif body. See `ThemePreset.colaElegant` and `UI-设计文档.md`.
+    /// Line spacing is sized so light-mode line-height lands at ~1.9 (16pt ×
+    /// natural ~1.375 + 8.4pt lineSpacing ÷ 16 ≈ 1.9), the spec's "breathing"
+    /// cadence. Math colors reuse the warm palette so equations don't read as
+    /// a foreign accent.
+    public static let colaElegant: EditorTheme = {
+        // macOS ships Songti SC as the system serif; on systems without it,
+        // NSFont falls back to a generic serif, which is fine. We expose the
+        // family name so the user can swap in LXGW WenKai (or anything else)
+        // via the font picker after applying the preset.
+        let serifFamily = "Songti SC"
+        let monoFamily = "Menlo" // JetBrains Mono isn't bundled with macOS; Menlo is the closest system mono and ships everywhere.
+        return EditorTheme(
+            fontName: serifFamily,
+            fontSize: 16,
+            linkBlueHex: "#C44B2B",
+            codeHex: "#C44B2B",
+            lineSpacing: 8.4,
+            paragraphSpacingBefore: 2,
+            mathOperatorHex: "#C44B2B",
+            mathNumberHex: "#D19A66",
+            monospaceFontName: monoFamily,
+            monospaceFontSize: 14,
+            standardLigatures: true,
+            monospaceLigatures: false,
+            antialias: true,
+            preset: .colaElegant
+        )
+    }()
 
     /// Theme for the Quick Look preview: `.default` but in the system UI font
     /// (`system-ui`, resolved by `HTMLTheme.cssFontStack`) rather than the
@@ -187,6 +229,10 @@ public struct EditorTheme: Equatable, Sendable {
         static let mathNumberHex = "EditorMathNumberHex"
         static let lineSpacing = "EditorLineSpacing"
         static let paragraphSpacingBefore = "EditorParagraphSpacingBefore"
+        // The named preset the theme was seeded from. Older installs that predate
+        // presets read back as `.edmund`, which is exactly the historical look —
+        // no migration needed.
+        static let preset = "EditorThemePreset"
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> EditorTheme {
@@ -219,6 +265,11 @@ public struct EditorTheme: Equatable, Sendable {
         let paragraphSpacingBefore: CGFloat = d.object(forKey: Keys.paragraphSpacingBefore) != nil
             ? CGFloat(d.float(forKey: Keys.paragraphSpacingBefore))
             : def.paragraphSpacingBefore
+        let preset: ThemePreset = {
+            guard let raw = d.string(forKey: Keys.preset),
+                  let p = ThemePreset(rawValue: raw) else { return def.preset }
+            return p
+        }()
 
         return EditorTheme(
             fontName: fontName,
@@ -233,7 +284,8 @@ public struct EditorTheme: Equatable, Sendable {
             monospaceFontSize: monospaceFontSize,
             standardLigatures: standardLigatures,
             monospaceLigatures: monospaceLigatures,
-            antialias: antialias
+            antialias: antialias,
+            preset: preset
         )
     }
 
@@ -252,6 +304,7 @@ public struct EditorTheme: Equatable, Sendable {
         d.set(mathNumberHex, forKey: Keys.mathNumberHex)
         d.set(Float(lineSpacing), forKey: Keys.lineSpacing)
         d.set(Float(paragraphSpacingBefore), forKey: Keys.paragraphSpacingBefore)
+        d.set(preset.rawValue, forKey: Keys.preset)
     }
 }
 

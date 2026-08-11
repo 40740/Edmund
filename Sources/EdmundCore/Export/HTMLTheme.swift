@@ -16,14 +16,26 @@ enum HTMLTheme {
     /// The page background hex for the given appearance — shared by the CSS
     /// `--bg` variable and `ReadModeWebView.underPageBackgroundColor` so the
     /// webview's own background can't drift from the page it's about to show.
-    private static func backgroundHex(dark: Bool) -> String {
-        dark ? "#292929" : "#ffffff"
+    ///
+    /// Routes by preset: ColaMD's Elegant theme paints a warm-paper page
+    /// (`#f0edea` light / `#1c1a18` dark) instead of the default white /
+    /// `#292929`. The same hex reaches `underPageBackgroundColor`, killing the
+    /// white flash before first paint in either look.
+    private static func backgroundHex(dark: Bool, preset: ThemePreset = .edmund) -> String {
+        switch preset {
+        case .edmund:
+            return dark ? "#292929" : "#ffffff"
+        case .colaElegant:
+            return dark ? "#1c1a18" : "#f0edea"
+        }
     }
 
     /// `NSColor` form of `backgroundHex`, for `WKWebView.underPageBackgroundColor`.
+    /// Resolves the preset from the live theme so a preset switch updates the
+    /// flash color along with the page.
     @MainActor
-    static func backgroundColor(dark: Bool) -> NSColor {
-        NSColor(hex: backgroundHex(dark: dark)) ?? .textBackgroundColor
+    static func backgroundColor(dark: Bool, preset: ThemePreset = .edmund) -> NSColor {
+        NSColor(hex: backgroundHex(dark: dark, preset: preset)) ?? .textBackgroundColor
     }
 
     @MainActor
@@ -31,7 +43,30 @@ enum HTMLTheme {
                     callouts: [String: CalloutStyle],
                     dark: Bool,
                     maxContentWidthPoints: Double = .greatestFiniteMagnitude) -> String {
-        let bg = backgroundHex(dark: dark)
+        // Route by preset: ColaMD Elegant has its own complete stylesheet
+        // (warm paper, terracotta accent, serif body, One-Dark code panel) that
+        // can't be expressed as a recolor of the Edmund CSS — spacing, blockquote
+        // treatment, table chrome and code-block padding all differ. Dispatching
+        // here keeps the existing call sites (`DocumentHTML.full`, `MarkdownPrinter`,
+        // `ReadModeWebView.underPageBackgroundColor`) preset-agnostic.
+        switch theme.preset {
+        case .edmund:
+            return edmundCSS(theme, callouts: callouts, dark: dark,
+                             maxContentWidthPoints: maxContentWidthPoints)
+        case .colaElegant:
+            return colaElegantCSS(theme, callouts: callouts, dark: dark,
+                                  maxContentWidthPoints: maxContentWidthPoints)
+        }
+    }
+
+    // MARK: - Edmund (default) CSS
+
+    @MainActor
+    private static func edmundCSS(_ theme: EditorTheme,
+                                  callouts: [String: CalloutStyle],
+                                  dark: Bool,
+                                  maxContentWidthPoints: Double) -> String {
+        let bg = backgroundHex(dark: dark, preset: .edmund)
         // Body ink comes from the editor's own definition, not a second hex, so
         // Edit and Read mode can never drift apart again (EditorTheme
         // .bodyTextColor). This was `#1a1a1a` in light mode, 10% lighter than
@@ -123,6 +158,435 @@ enum HTMLTheme {
             rule("pre code .tok-string", .string),
             rule("pre code .tok-comment", .comment),
         ].joined(separator: "\n")
+    }
+
+    // MARK: - ColaMD "Elegant Plus" CSS
+    //
+    // A complete stylesheet for the ColaMD Elegant preset, ported from
+    // https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css and the
+    // design spec in `UI-设计文档.md`. Independent from `edmundCSS` because the
+    // look differs in kind, not just in color: paper-warm background, generous
+    // 0.04em tracking, 1.9 line-height, 4px terracotta blockquote bar, dark
+    // code panel with 20/24px breathing room, terracotta-tinted table headers,
+    // and One-Dark syntax colors. Same `EditorTheme` fields feed both paths so
+    // user font/size/spacing tweaks still apply.
+    @MainActor
+    private static func colaElegantCSS(_ theme: EditorTheme,
+                                       callouts: [String: CalloutStyle],
+                                       dark: Bool,
+                                       maxContentWidthPoints: Double) -> String {
+        // Palette tokens — see UI-设计文档.md §2. Each appearance has its own
+        // accent ramp: the terracotta is lifted in dark mode so it reads
+        // against the warm-black page (#1c1a18, not pure black).
+        let bg           = dark ? "#1c1a18" : "#f0edea"
+        let bgSoft       = dark ? "#26231f" : "#eae6e1"
+        let text         = dark ? "#d8d3ce" : "#2c2c2c"
+        let textSoft     = dark ? "#a89f96" : "#555555"
+        let heading      = dark ? "#e0dcd7" : "#1a1a1a"
+        let accent       = dark ? "#e0653f" : "#c44b2b"
+        let accentSoft   = dark ? "rgba(224, 101, 63, 0.18)" : "rgba(196, 75, 43, 0.15)"
+        let selection    = dark ? "rgba(224, 101, 63, 0.25)" : "rgba(196, 75, 43, 0.20)"
+        let border       = dark ? "#3a342e" : "#d8d3ce"
+        let codeBg       = dark ? "#14110f" : "#2c2c2c"
+        let codeFg       = "#e0dcd7"
+        let inlineCodeBg = dark ? "#2a2622" : "#e8e4df"
+        let hrGlow       = accent
+
+        // Body font: prefer the user's picked family (Songti SC by default),
+        // then macOS CJK serifs (Source Han Serif, Songti SC, SimSun), then a
+        // Latin serif fallback chain. LXGW WenKai goes first if the user has
+        // installed it — it's the design doc's preferred face.
+        let bodyStack = cssFontStack(theme.fontName, generic: "serif")
+        // Mono stack: JetBrains Mono → Fira Code → SF Mono → Menlo → system mono.
+        // The user's monospaceFontName is honored if non-empty.
+        let monoName = theme.monospaceFontName.isEmpty ? "Menlo" : theme.monospaceFontName
+        let monoStack = "\"\(monoName)\", \"JetBrains Mono\", \"Fira Code\", \"SF Mono\", ui-monospace, Menlo, Consolas, monospace"
+
+        // line-height: the editor measures the natural line height of the body
+        // font, then adds `theme.lineSpacing` between lines. The ColaMD preset
+        // sets `lineSpacing = 8.4` which (for Songti SC at 16pt) lands at the
+        // spec's 1.9 cadence; we compute it the same way `edmundCSS` does so
+        // the size stepper keeps Edit and Read in lockstep.
+        let naturalLineHeight = NSLayoutManager().defaultLineHeight(for: theme.bodyFont)
+        let lineHeight = (naturalLineHeight + theme.lineSpacing) / theme.fontSize
+
+        let pageMaxWidth = maxContentWidthPoints < 100_000
+            ? "\(trim(CGFloat(maxContentWidthPoints)))px" : "none"
+
+        return """
+        :root {
+          --cola-bg: \(bg);
+          --cola-bg-soft: \(bgSoft);
+          --cola-text: \(text);
+          --cola-text-soft: \(textSoft);
+          --cola-accent: \(accent);
+          --cola-accent-soft: \(accentSoft);
+          --cola-border: \(border);
+          --cola-code-bg: \(codeBg);
+          --cola-code-text: \(codeFg);
+          --cola-inline-code-bg: \(inlineCodeBg);
+          --cola-selection: \(selection);
+          --cola-heading: \(heading);
+          --body-font: \(bodyStack);
+          --body-size: \(trim(theme.fontSize))px;
+          --mono-font: \(monoStack);
+          --mono-size: \(trim(theme.monospaceFontSize))px;
+          --line-height: \(trim(lineHeight));
+          --page-max-width: \(pageMaxWidth);
+        }
+        \(calloutVars(callouts, dark: dark))
+        \(colaStaticRules(hrGlow: hrGlow))
+        \(colaCodeTokenRules(dark: dark))
+        """
+    }
+
+    /// Static element rules for the ColaMD Elegant theme. Kept as a separate
+    /// string constant (not interpolated inline) so the look is diffable on its
+    /// own — the spacing/padding values are the spec's, not the Edmund defaults.
+    private static func colaStaticRules(hrGlow: String) -> String {
+        return """
+        * { box-sizing: border-box; }
+        html { -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased; }
+        body {
+          font-family: var(--body-font);
+          font-size: var(--body-size);
+          line-height: var(--line-height);
+          letter-spacing: 0.04em;
+          color: var(--cola-text);
+          background: var(--cola-bg);
+          margin: 0;
+          padding: 48px 24px;
+          -webkit-font-smoothing: antialiased;
+        }
+        ::selection { background: var(--cola-selection); }
+        .page { max-width: var(--page-max-width); margin: 0 auto; }
+
+        /* Paragraphs: justified for that paper-book cadence; the spec calls for
+           0.85em top/bottom (we keep the editor's 1em to match Edit mode). */
+        p {
+          margin: 0 0 1em;
+          text-align: justify;
+          letter-spacing: 0.04em;
+        }
+
+        /* Headings: deeper ink than the body, tighter letter-spacing, generous
+           top gap. h1/h2 carry a faint underline (padding-bottom + border) per
+           the spec — a subtle anchor for sections. */
+        h1, h2, h3, h4, h5, h6 {
+          color: var(--cola-heading);
+          font-weight: 700;
+          line-height: 1.4;
+          letter-spacing: 0.02em;
+          margin: 1.8em 0 0.65em;
+        }
+        h1 { font-size: 1.8em; padding-bottom: 0.3em; border-bottom: 1px solid var(--cola-border); }
+        h2 { font-size: 1.5em; padding-bottom: 0.2em; border-bottom: 1px solid var(--cola-border); }
+        h3 { font-size: 1.25em; }
+        h4 { font-size: 1.1em; }
+        h5 { font-size: 1em; }
+        h6 { font-size: 0.95em; color: var(--cola-text-soft); }
+        :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
+
+        /* Strong carries the terracotta accent — the spec's signature: a single
+           accent color spans bold, links, quotes, code, marks. */
+        strong, b { color: var(--cola-accent); font-weight: 700; }
+        em { font-style: italic; color: var(--cola-text-soft); }
+        em strong, strong em { color: var(--cola-accent); }
+
+        /* Links: terracotta with an underline that grows on hover. */
+        a {
+          color: var(--cola-accent);
+          text-decoration: none;
+          background-image: linear-gradient(currentColor, currentColor);
+          background-size: 0% 1px;
+          background-position: 0 100%;
+          background-repeat: no-repeat;
+          transition: background-size .25s ease;
+        }
+        a:hover { background-size: 100% 1px; }
+
+        /* Underline tag (whitelisted inline HTML): a 2px terracotta bar. */
+        u { text-decoration: none; border-bottom: 2px solid var(--cola-accent); padding-bottom: 1px; }
+
+        /* Strikethrough: dim gray text struck through with the accent. */
+        del, s { color: var(--cola-text-soft); text-decoration: line-through var(--cola-accent); opacity: 0.75; }
+
+        /* Blockquote: 4px terracotta bar, soft paper fill, 16px symmetric pads.
+           The bar is border-left so it spans the blockquote's full height for
+           free — no height calc, no resize listener (see UI-设计文档.md §4.5). */
+        blockquote {
+          margin: 1.6em 0;
+          padding: 16px 22px 16px 26px;
+          border-left: 4px solid var(--cola-accent);
+          background: var(--cola-bg-soft);
+          color: var(--cola-text-soft);
+          border-radius: 0 6px 6px 0;
+        }
+        blockquote > p:first-child { margin-top: 0; }
+        blockquote > p:last-child  { margin-bottom: 0; }
+        blockquote > p { margin: 0.5em 0; }
+        blockquote > blockquote:last-child,
+        .callout-body > blockquote:last-child { margin-bottom: 0; }
+
+        /* Horizontal rule: a gradient hairline with a centered terracotta dot —
+           the spec's "literary" divider, not a flat line. */
+        hr {
+          position: relative;
+          border: none;
+          height: 1px;
+          margin: 2.5em 0;
+          background: linear-gradient(to right,
+            transparent 0%,
+            var(--cola-border) 20%,
+            var(--cola-border) 80%,
+            transparent 100%);
+        }
+        hr::after {
+          content: "";
+          position: absolute;
+          top: 50%; left: 50%;
+          width: 6px; height: 6px;
+          transform: translate(-50%, -50%);
+          background: \(hrGlow);
+          opacity: 0.5;
+          border-radius: 50%;
+        }
+
+        /* Lists: 1.8em indent, 0.35em inter-item gap. Markers use the body color
+           (tertiaryLabelColor in dark mode is too faint on the warm page). */
+        ul, ol { margin: 0.8em 0; padding-left: 1.8em; }
+        li { margin: 0.35em 0; line-height: 1.85; letter-spacing: 0.02em; }
+        li > p { margin: 0; }
+        li > ul, li > ol { margin: 0.35em 0; }
+        ul { list-style-type: disc; }
+        li::marker { color: var(--cola-text-soft); font-size: 0.85em; }
+        ol > li::marker { font-size: 1em; color: var(--cola-text); }
+
+        /* Task items: reuse Edmund's float-and-clear trick; the checkbox itself
+           is the same Lucide SVG (HTMLRenderer emits it), tinted via currentColor. */
+        li.task { list-style: none; }
+        li.task > .task-check {
+          float: left; width: 1.2em; height: 1.2em; line-height: 0;
+          margin-top: 0.1em; margin-right: 0.3em; margin-left: -1.45em;
+        }
+        li.task > .task-check svg { display: block; width: 1.2em; height: 1.2em; }
+        .task-check--unchecked { color: var(--cola-text-soft); }
+        .task-check--checked   { color: var(--cola-accent); }
+        li.task--checked > p { opacity: 0.45; text-decoration: line-through; }
+        li.task > p { display: inline; margin: 0; }
+        li.task > ul, li.task > ol { clear: left; }
+        li.task::after { content: ""; display: block; clear: both; }
+        .blank-line { height: calc(var(--body-size) * var(--line-height)); }
+
+        /* Inline code: terracotta text on a paper chip. Generous 3/8 padding so
+           the chip reads as a token, not a smudge (spec §4.3). */
+        code, tt {
+          font-family: var(--mono-font);
+          font-size: 0.88em;
+          padding: 3px 8px;
+          margin: 0 2px;
+          background: var(--cola-inline-code-bg);
+          color: var(--cola-accent);
+          border-radius: 4px;
+          letter-spacing: 0;
+        }
+
+        /* Code block: dark panel regardless of appearance — the spec's signature
+           "技术" counterpoint to the literary serif body. 20/24 padding,
+           8px radius, horizontal scroll. `pre code` resets the inline chip. */
+        pre {
+          font-family: var(--mono-font);
+          font-size: 0.88em;
+          line-height: 1.65;
+          background: var(--cola-code-bg);
+          color: var(--cola-code-text);
+          padding: 20px 24px;
+          border-radius: 8px;
+          margin: 1.6em 0;
+          overflow-x: auto;
+          tab-size: 4; -moz-tab-size: 4;
+          letter-spacing: 0;
+        }
+        pre code {
+          background: transparent;
+          color: inherit;
+          padding: 0;
+          margin: 0;
+          border-radius: 0;
+          font-size: var(--mono-size);
+        }
+        /* Copy button: bare hover-revealed chip in the top-right corner, matching
+           the Edmund read-mode treatment but tinted to read on the dark panel. */
+        .code-block-wrap { position: relative; margin: 1.6em 0; }
+        .code-block-wrap pre { margin: 0; }
+        .code-copy-btn {
+          position: absolute; top: 8px; right: 10px;
+          display: flex; align-items: center; gap: 4px;
+          font-family: var(--mono-font); font-size: 11px; font-weight: 500;
+          color: rgba(224, 220, 215, 0.7);
+          background: rgba(255, 255, 255, 0.06);
+          padding: 3px 6px; border-radius: 5px;
+          text-decoration: none; cursor: pointer;
+        }
+        .code-copy-btn:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+        .code-copy-btn.copied { color: var(--cola-accent); }
+        .code-copy-btn svg { width: 13px; height: 13px; stroke: currentColor; }
+        .code-copy-icon { opacity: 0; transition: opacity .15s; }
+        .code-block-wrap:hover .code-copy-icon { opacity: 1; }
+
+        /* Mark / highlight: terracotta tint, not the default yellow. Spec §4.4. */
+        mark {
+          background: var(--cola-accent-soft);
+          color: inherit;
+          padding: 3px 8px;
+          border-radius: 4px;
+          margin: 0 1px;
+          -webkit-box-decoration-break: clone;
+          box-decoration-break: clone;
+        }
+
+        /* Tag pill (#tag): same idiom as Edmund, but with the terracotta accent. */
+        .tag {
+          color: var(--cola-accent);
+          background: color-mix(in srgb, var(--cola-accent) 14%, transparent);
+          padding: 0.05em 0.5em; border-radius: 0.8em;
+          font-size: 0.88em; white-space: nowrap;
+        }
+
+        /* kbd: a tactile key cap. */
+        kbd {
+          font-family: var(--mono-font);
+          font-size: 0.92em;
+          background: var(--cola-bg-soft);
+          color: var(--cola-text);
+          border: 1px solid var(--cola-border);
+          border-bottom-width: 2px;
+          border-radius: 5px;
+          padding: 3px 7px;
+          box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+        }
+        sub, sup { font-size: 0.75em; line-height: 0; position: relative; vertical-align: baseline; }
+        sup { top: -0.5em; }
+        sub { bottom: -0.25em; }
+
+        /* Footnotes: small, dim, under a hairline. */
+        sup.footnote-ref a { text-decoration: none; color: var(--cola-accent); }
+        hr.footnotes-sep { margin-bottom: 0.8em; }
+        hr.footnotes-sep::after { display: none; }
+        ol.footnotes { font-size: 0.85em; color: var(--cola-text-soft); }
+        ol.footnotes li { margin: 0.4em 0; }
+        a.footnote-backref { text-decoration: none; margin-left: 0.2em; font-size: 0.9em; line-height: 1; color: var(--cola-accent); }
+
+        /* Images: rounded, centered when alone in a paragraph. */
+        img { max-width: 100%; border-radius: 8px; }
+        p > img:only-child { display: block; margin: 1.6em auto; }
+        img.math { vertical-align: middle; border-radius: 0; }
+        .math-display { text-align: center; margin: 1.6em 0; }
+        .math-display-block { display: block; text-align: center; margin: 1.6em 0; }
+        .md-image-blocked {
+          display: inline-flex; align-items: center; gap: 0.4em;
+          color: var(--cola-text-soft); background: var(--cola-bg-soft);
+          border: 1px dashed var(--cola-border); border-radius: 6px;
+          padding: 0.3em 0.6em; font-size: 0.9em;
+        }
+        .md-image-blocked svg { width: 1.1em; height: 1.1em; flex: 0 0 auto; }
+
+        /* Tables: rounded container, terracotta header underline, zebra rows.
+           Wide tables scroll horizontally inside .table-wrap. Spec §4.6. */
+        .table-wrap { overflow-x: auto; margin: 1.6em 0; border: 1px solid var(--cola-border); border-radius: 8px; }
+        table { border-collapse: collapse; width: 100%; font-size: 0.95em; letter-spacing: 0.02em; }
+        thead th {
+          background: var(--cola-bg-soft);
+          color: var(--cola-heading);
+          font-weight: 700;
+          padding: 12px 16px;
+          border-bottom: 2px solid var(--cola-accent);
+          text-align: left;
+        }
+        td { padding: 11px 16px; border-bottom: 1px solid var(--cola-border); color: var(--cola-text); }
+        tr:last-child td { border-bottom: none; }
+        tbody tr:nth-child(even) { background: color-mix(in srgb, var(--cola-bg-soft) 50%, transparent); }
+        tbody tr:hover { background: color-mix(in srgb, var(--cola-accent) 4%, transparent); }
+
+        /* Callouts: keep the Edmund structure (tinted box + colored title +
+           Lucide icon) but recolor via the per-type --c-* vars, which
+           `calloutVars` already emits. Square corners match the editor. */
+        .callout {
+          background: var(--c-bg);
+          border-radius: 0;
+          margin: 1.6em 0;
+          padding: calc(1.22em - (var(--line-height) - 0.78) * 0.5em) 1.24em 1.14em;
+        }
+        .callout-title { display: flex; align-items: flex-start; gap: 0.3em; font-weight: 600; color: var(--c-accent); }
+        .callout-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; height: calc(var(--body-size) * var(--line-height)); }
+        .callout-icon svg { width: 1em; height: 1em; transform: translateY(-0.06em); }
+        .callout-info .callout-icon, .callout-todo .callout-icon,
+        .callout-question .callout-icon, .callout-help .callout-icon, .callout-faq .callout-icon,
+        .callout-quote .callout-icon, .callout-cite .callout-icon { padding-top: 0.05em; }
+        .callout-warning .callout-icon, .callout-attention .callout-icon,
+        .callout-bug .callout-icon { padding-top: 0.06em; }
+        .callout-example .callout-icon { padding-top: 0.1em; }
+        .callout-success .callout-icon, .callout-check .callout-icon, .callout-done .callout-icon,
+        .callout-failure .callout-icon, .callout-fail .callout-icon,
+        .callout-missing .callout-icon { padding-top: 0.15em; }
+        .callout-title-text { flex: 1 1 auto; }
+        .callout-collapsible > summary { cursor: pointer; list-style: none; }
+        .callout-collapsible > summary::-webkit-details-marker { display: none; }
+        .callout-collapsible > summary::after { content: "›"; flex: 0 0 auto; margin-left: 0.3em; transition: transform 0.15s ease; }
+        .callout-collapsible[open] > summary::after { transform: rotate(90deg); }
+        .callout-body { margin-top: 0.4em; }
+        .callout-body:empty { margin-top: 0; }
+        .callout-body > p { margin-bottom: 0.5em; }
+        .callout-body > :first-child { margin-top: 0; }
+        .callout-body > :last-child { margin-bottom: 0; }
+        .callout-body > .callout:last-child { margin-top: 0; }
+
+        /* Scrollbar: thin, paper-toned — matches the spec's unobtrusive bars. */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: var(--cola-border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--cola-text-soft); }
+        ::-webkit-scrollbar-track { background: transparent; }
+
+        @media print {
+          body { padding: 0; background: #fff; color: #000; }
+          * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .callout, pre, blockquote, .table-wrap, .math-display,
+          .math-display-block { break-inside: avoid; }
+          h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+          thead { display: table-header-group; }
+          pre { background: #f5f5f5; color: #333; border: 1px solid #ddd; }
+          thead th { background: #f5f5f5; }
+        }
+        """
+    }
+
+    /// One-Dark syntax palette for the ColaMD Elegant code panel, matching the
+    /// spec §5 colors. The Edmund palette (Tomorrow/One-Dark hybrid from
+    /// `CodeSyntaxPalette`) is reused where it agrees with the spec; the
+    /// handful of token colors that differ (comment gray, function-name blue)
+    /// are overridden here so Read mode's code blocks match the design doc
+    /// rather than the editor's Edit-mode palette. Plain `pre code` (untokenized)
+    /// inherits the panel's foreground.
+    private static func colaCodeTokenRules(dark: Bool) -> String {
+        // One-Dark palette — same hexes in both appearances because the code
+        // panel is always dark (#2c2c2c light / #14110f dark). The `dark`
+        // parameter is accepted for symmetry with `codeTokenRules` and in case
+        // a future variant wants to differentiate.
+        _ = dark
+        let palette: [(String, String)] = [
+            ("pre code",                          "#e0dcd7"),
+            ("pre code .tok-keyword",             "#c678dd"),
+            ("pre code .tok-command",             "#c678dd"),
+            ("pre code .tok-type",                "#e5c07b"),
+            ("pre code .tok-attribute",           "#e06c75"),
+            ("pre code .tok-variable",            "#e06c75"),
+            ("pre code .tok-value",               "#98c379"),
+            ("pre code .tok-number",              "#d19a66"),
+            ("pre code .tok-string",              "#98c379"),
+            ("pre code .tok-comment",             "#7c7873"),
+        ]
+        return palette.map { "\($0.0) { color: \($0.1); }" }
+            .joined(separator: "\n")
     }
 
     // MARK: Callout custom properties

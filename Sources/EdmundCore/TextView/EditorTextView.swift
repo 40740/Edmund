@@ -415,10 +415,25 @@ public class EditorTextView: NSTextView {
     /// Internal rather than private: the line-number gutter fills itself with
     /// this so the two surfaces read as one (the scroll view draws no
     /// background of its own).
+    ///
+    /// ColaMD Elegant preset overrides both appearances: warm paper (#f0edea)
+    /// in light, warm-black (#1c1a18) in dark — see `UI-设计文档.md` §2. The
+    /// sRGB hex is the same one `HTMLTheme.backgroundHex` emits so the editor
+    /// surface and the Read-mode page stay pixel-identical.
     var editorBackgroundColor: NSColor {
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        guard dark else { return .textBackgroundColor }
-        return NSColor(srgbRed: 0x29 / 255.0, green: 0x29 / 255.0, blue: 0x29 / 255.0, alpha: 1.0)
+        switch theme.preset {
+        case .edmund:
+            guard dark else { return .textBackgroundColor }
+            return NSColor(srgbRed: 0x29 / 255.0, green: 0x29 / 255.0, blue: 0x29 / 255.0, alpha: 1.0)
+        case .colaElegant:
+            // Light: #f0edea  /  Dark: #1c1a18 — warm paper, warm-black.
+            if dark {
+                return NSColor(srgbRed: 0x1c / 255.0, green: 0x1a / 255.0, blue: 0x18 / 255.0, alpha: 1.0)
+            } else {
+                return NSColor(srgbRed: 0xf0 / 255.0, green: 0xed / 255.0, blue: 0xea / 255.0, alpha: 1.0)
+            }
+        }
     }
 
     // MARK: - Font & Paragraph Style (derived from theme)
@@ -446,8 +461,22 @@ public class EditorTextView: NSTextView {
     /// preference) applies the theme live without writing it to defaults.
     public func applyTheme(_ newTheme: EditorTheme, persist: Bool = true) {
         let antialiasChanged = theme.antialias != newTheme.antialias
+        // A preset switch (Edmund ↔ ColaMD) changes `editorBackgroundColor`,
+        // so reapply it — otherwise the editor keeps the old page color until
+        // the next appearance flip forces `viewDidChangeEffectiveAppearance`.
+        let presetChanged = theme.preset != newTheme.preset
         theme = newTheme
         if persist { theme.save(to: themeDefaults) }
+        if presetChanged {
+            backgroundColor = editorBackgroundColor
+            // Re-tint the insertion point + selection too: the accent-derived
+            // chrome can't drift from the new theme.
+            insertionPointColor = accentColor
+            selectedTextAttributes = [
+                .backgroundColor: selectionHighlightColor,
+                .foregroundColor: foregroundColor,
+            ]
+        }
         typingAttributes = baseAttributes
         recomposeAllDirty()
         // Antialiasing isn't a text attribute, so a recompose alone won't re-vend

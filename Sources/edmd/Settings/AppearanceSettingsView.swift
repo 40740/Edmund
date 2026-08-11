@@ -12,6 +12,12 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppSettings.Key.maxContentWidthCm) private var maxContentWidthCm = AppSettings.defaultMaxContentWidthCm
     /// "" follows the locale; "cm"/"in" override it (toggled via the unit button).
     @AppStorage(AppSettings.Key.contentWidthUnit) private var unitOverride = ""
+    /// The theme preset — bound to `@AppStorage` so it persists, with a custom
+    /// `onChange` that hands the actual application off to `FontSettings`
+    /// (which knows how to reseed `EditorTheme` and refresh open documents).
+    /// `fonts.themePreset` is the source of truth on the @Published side; this
+    /// @AppStorage mirrors it so SwiftUI re-renders when it changes externally.
+    @AppStorage(AppSettings.Key.themePreset) private var presetRaw = ThemePreset.edmund.rawValue
 
     // MARK: - Unit helpers
 
@@ -51,6 +57,34 @@ struct AppearanceSettingsView: View {
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
+            GridRow {
+                Text("Theme:")
+                    .gridColumnAlignment(.trailing)
+                // A picker rather than a radio group: future presets slot in
+                // without rebuilding the layout. The selection is mirrored
+                // between `presetRaw` (persisted by @AppStorage) and
+                // `fonts.themePreset` (which drives the live document refresh).
+                Picker("", selection: Binding(
+                    get: { ThemePreset(rawValue: presetRaw) ?? .edmund },
+                    set: { newValue in
+                        presetRaw = newValue.rawValue
+                        // Drive the full reseed + document refresh through
+                        // `applyPreset`; the @AppStorage write above persists
+                        // the choice and `applyPreset` mirrors it into
+                        // `fonts.themePreset` so SwiftUI re-renders the font rows.
+                        fonts.applyPreset(newValue)
+                    }
+                )) {
+                    ForEach(ThemePreset.displayOrder) { Text($0.displayName).tag($0) }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(maxWidth: 240, alignment: .leading)
+                Text((ThemePreset(rawValue: presetRaw) ?? .edmund).subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             GridRow {
                 Text("Appearance:")
                     .gridColumnAlignment(.trailing)

@@ -85,6 +85,7 @@ enum AppSettings {
         static let autoSaveWithVersions = "settings.general.autoSaveWithVersions"
         static let quitWhenAllWindowsClosed = "settings.general.quitWhenAllWindowsClosed"
         static let appearanceMode = "settings.appearance.mode"
+        static let themePreset = "settings.appearance.themePreset"
         static let maxContentWidthCm = "settings.appearance.maxContentWidthCm"
         // "cm" / "in" override the locale default for the content-width control.
         static let contentWidthUnit = "settings.appearance.contentWidthUnit"
@@ -304,6 +305,22 @@ enum AppSettings {
             return mode
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.appearanceMode) }
+    }
+
+    /// The named theme preset the editor + Read mode render with. Stored here
+    /// (not on `EditorTheme`) so the Appearance pane can bind to it via
+    /// `@AppStorage` and the preset switch can drive `FontSettings.applyPreset`
+    /// before the per-font fields are re-read. Defaults to `.edmund` for
+    /// upgrades from any prior version — the historical look is unchanged.
+    static var themePreset: ThemePreset {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: Key.themePreset),
+                  let preset = ThemePreset(rawValue: raw) else {
+                return .edmund
+            }
+            return preset
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.themePreset) }
     }
 
     /// IDs of extensions (`EdmundExtension.id`) the user has turned on.

@@ -3,6 +3,22 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-08-11
+
+The first release with **selectable theme presets**. Edmund ships two looks now: the original Edmund theme (unchanged) and a brand-new **ColaMD Elegant** port. Pick one in Settings ▸ Appearance ▸ Theme; the editor, Read mode, PDF export, and print output all flip together.
+
+### Added
+- **Theme presets** — a new "Theme:" picker in Settings ▸ Appearance. Two presets ship:
+  - **Edmund** (default): the original blue-accent-on-white look, byte-for-byte unchanged.
+  - **ColaMD Elegant** (new): a port of [ColaMD's `elegant.css`](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css) — warm-paper background (`#f0edea` light / `#1c1a18` dark), terracotta accent (`#c44b2b` / `#e0653f`), serif body (Songti SC by default, with a JetBrains Mono / Menlo code stack), 0.04em letter-spacing, 1.9 line-height, 4px terracotta blockquote bar, dark code panel with 20/24px breathing room, terracotta-tinted tables, and One-Dark syntax highlighting.
+- New `ThemePreset` enum in `EdmundCore/Model/ThemePreset.swift`; `EditorTheme` carries a `preset` field that `HTMLTheme.css`, `HTMLTheme.backgroundColor`, and `EditorTextView.editorBackgroundColor` all route on.
+- A complete ColaMD stylesheet in `HTMLTheme.colaElegantCSS`, ported from the design spec — independent of the Edmund CSS path so neither look can drift into the other.
+- `AppSettings.themePreset` (UserDefaults key `settings.appearance.themePreset`) and an `EditorThemePreset` key on the theme itself; both are kept in sync on launch.
+- `ThemePresetTests` covering palette tokens, typography, blockquote/code/table/mark/hr rules, dark-mode variants, One-Dark syntax palette, and a regression guard that the Edmund path is untouched.
+
+### Changed
+- Bumped `CFBundleShortVersionString` to `3.0.0` and `CFBundleVersion` to `11`. The major-version bump reflects the new theme system as a user-visible feature set, not a breaking API change.
+
 ## [Unreleased]
 
 ### Added
