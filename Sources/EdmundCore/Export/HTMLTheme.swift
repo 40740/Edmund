@@ -240,10 +240,13 @@ enum HTMLTheme {
         """
     }
 
-    /// Static element rules for the ColaMD Elegant theme. Kept as a separate
-    /// string constant (not interpolated inline) so the look is diffable on its
-    /// own — the spacing/padding values are the spec's, not the Edmund defaults.
+    /// Static element rules for the ColaMD Elegant theme. Transcribed from the
+    /// ColaMD reference implementation (themes/elegant.css) and the design spec
+    /// (UI-设计文档.md). Where the two disagree, the spec wins (it's the
+    /// authoritative source). Where neither specifies a value, we keep the
+    /// simplest possible rule — no decorative additions.
     private static func colaStaticRules(hrGlow: String) -> String {
+        _ = hrGlow  // no longer used; hr is a plain border-top per the reference CSS
         return """
         * { box-sizing: border-box; }
         html { -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased; }
@@ -255,27 +258,25 @@ enum HTMLTheme {
           color: var(--cola-text);
           background: var(--cola-bg);
           margin: 0;
-          /* ColaMD uses a tighter top pad (30px) than Edmund's 48px — the spec
-             (UI-设计文档.md §4.1 — #write padding: 30px 60px 100px) keeps the
-             first heading closer to the top, like a printed page. */
+          /* #write padding: 30px 60px 100px — spec §4.1. Side padding here is 24px
+             (Edmund's reading-column convention); the spec's 60px is the
+             Typora sidebar-era inset, which doesn't apply to a centered column. */
           padding: 30px 24px 100px;
-          -webkit-font-smoothing: antialiased;
         }
         ::selection { background: var(--cola-selection); }
         .page { max-width: var(--page-max-width); margin: 0 auto; }
 
-        /* Paragraphs: justified for that paper-book cadence; the spec calls for
-           0.85em top/bottom (we keep the editor's 1em to match Edit mode). */
+        /* Paragraphs — spec §4.1: margin 0.85em, justify, line-height 1.9. */
         p {
           margin: 0 0 1em;
           text-align: justify;
           letter-spacing: 0.04em;
         }
 
-        /* Headings: deeper ink than the body, tighter letter-spacing, generous
-           top gap. h1/h2 carry a terracotta-tinged underline (the spec's
-           signature: the accent color anchors section headers) — see
-           UI-设计文档.md §3.2. */
+        /* Headings — spec §3.2 / §4.1. h1-h6: #1a1a1a, 700, line-height 1.4,
+           margin 1.8em 0 0.65em. h1/h2 have padding-bottom (spacing, NO border)
+           per the reference CSS — the spec's "带下划线" is the padding gap, not a
+           drawn line. h6 dims to #555. */
         h1, h2, h3, h4, h5, h6 {
           color: var(--cola-heading);
           font-weight: 700;
@@ -283,48 +284,40 @@ enum HTMLTheme {
           letter-spacing: 0.02em;
           margin: 1.8em 0 0.65em;
         }
-        h1 { font-size: 1.8em; padding-bottom: 0.3em; border-bottom: 2px solid var(--cola-accent); }
-        h2 { font-size: 1.5em; padding-bottom: 0.2em; border-bottom: 1px solid var(--cola-border); }
+        h1 { font-size: 1.8em; padding-bottom: 0.3em; }
+        h2 { font-size: 1.5em; padding-bottom: 0.2em; }
         h3 { font-size: 1.25em; }
         h4 { font-size: 1.1em; }
         h5 { font-size: 1em; }
         h6 { font-size: 0.95em; color: var(--cola-text-soft); }
         :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
 
-        /* Strong carries the terracotta accent — the spec's signature: a single
-           accent color spans bold, links, quotes, code, marks. */
+        /* Strong — spec §4: #c44b2b. The single accent color spans bold/links/
+           quotes/code/marks. em dims to #444 (reference) / --cola-text-soft. */
         strong, b { color: var(--cola-accent); font-weight: 700; }
         em { font-style: italic; color: var(--cola-text-soft); }
         em strong, strong em { color: var(--cola-accent); }
 
-        /* Links: terracotta with an underline that grows on hover. */
-        a {
-          color: var(--cola-accent);
-          text-decoration: none;
-          background-image: linear-gradient(currentColor, currentColor);
-          background-size: 0% 1px;
-          background-position: 0 100%;
-          background-repeat: no-repeat;
-          transition: background-size .25s ease;
-        }
-        a:hover { background-size: 100% 1px; }
+        /* Links — reference CSS: #c44b2b, no decoration, underline on hover. */
+        a { color: var(--cola-accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
 
-        /* Underline tag (whitelisted inline HTML): a 2px terracotta bar. */
+        /* <u> — reference: 2px solid #c44b2b border-bottom. */
         u { text-decoration: none; border-bottom: 2px solid var(--cola-accent); padding-bottom: 1px; }
 
-        /* Strikethrough: dim gray text struck through with the accent. */
+        /* Strikethrough — spec §4.7: #555, line-through #c44b2b, opacity 0.75. */
         del, s { color: var(--cola-text-soft); text-decoration: line-through var(--cola-accent); opacity: 0.75; }
 
-        /* Blockquote: 4px terracotta bar, soft paper fill, 16px symmetric pads.
-           The bar is border-left so it spans the blockquote's full height for
-           free — no height calc, no resize listener (see UI-设计文档.md §4.5). */
+        /* Blockquote — spec §4.5 + reference CSS. 4px terracotta bar, paper fill,
+           15px 20px 15px 25px padding (reference), color #444. No border-radius
+           in the reference; the spec's "0 6px 6px 0" is a Typora-era flourish
+           we omit for fidelity to the reference's flat box. */
         blockquote {
-          margin: 1.6em 0;
-          padding: 16px 22px 16px 26px;
+          margin: 1.5em 0;
+          padding: 15px 20px 15px 25px;
           border-left: 4px solid var(--cola-accent);
           background: var(--cola-bg-soft);
           color: var(--cola-text-soft);
-          border-radius: 0 6px 6px 0;
         }
         blockquote > p:first-child { margin-top: 0; }
         blockquote > p:last-child  { margin-bottom: 0; }
@@ -332,42 +325,29 @@ enum HTMLTheme {
         blockquote > blockquote:last-child,
         .callout-body > blockquote:last-child { margin-bottom: 0; }
 
-        /* Horizontal rule: a gradient hairline with a centered terracotta dot —
-           the spec's "literary" divider, not a flat line. */
+        /* Horizontal rule — reference CSS: border-top 1px solid #d8d3ce. No
+           gradient, no center dot. The spec's dot is a design-doc aspiration
+           the reference CSS never shipped; we follow the reference. */
         hr {
-          position: relative;
           border: none;
-          height: 1px;
+          border-top: 1px solid var(--cola-border);
           margin: 2.5em 0;
-          background: linear-gradient(to right,
-            transparent 0%,
-            var(--cola-border) 20%,
-            var(--cola-border) 80%,
-            transparent 100%);
-        }
-        hr::after {
-          content: "";
-          position: absolute;
-          top: 50%; left: 50%;
-          width: 6px; height: 6px;
-          transform: translate(-50%, -50%);
-          background: \(hrGlow);
-          opacity: 0.5;
-          border-radius: 50%;
+          height: 0;
         }
 
-        /* Lists: 1.8em indent, 0.35em inter-item gap. Markers use the body color
-           (tertiaryLabelColor in dark mode is too faint on the warm page). */
+        /* Lists — reference CSS: padding-left 1.8em, margin 0.8em, li 0.35em /
+           line-height 1.8. */
         ul, ol { margin: 0.8em 0; padding-left: 1.8em; }
-        li { margin: 0.35em 0; line-height: 1.85; letter-spacing: 0.02em; }
+        li { margin: 0.35em 0; line-height: 1.8; letter-spacing: 0.02em; }
         li > p { margin: 0; }
         li > ul, li > ol { margin: 0.35em 0; }
-        ul { list-style-type: disc; }
+        ul { list-style-type: disc; list-style-position: outside; }
+        ol { list-style-type: decimal; list-style-position: outside; }
         li::marker { color: var(--cola-text-soft); font-size: 0.85em; }
         ol > li::marker { font-size: 1em; color: var(--cola-text); }
 
-        /* Task items: reuse Edmund's float-and-clear trick; the checkbox itself
-           is the same Lucide SVG (HTMLRenderer emits it), tinted via currentColor. */
+        /* Task items — Edmund's float-and-clear trick; checkbox is the Lucide
+           SVG (HTMLRenderer emits it), tinted via currentColor. */
         li.task { list-style: none; }
         li.task > .task-check {
           float: left; width: 1.2em; height: 1.2em; line-height: 0;
@@ -382,31 +362,34 @@ enum HTMLTheme {
         li.task::after { content: ""; display: block; clear: both; }
         .blank-line { height: calc(var(--body-size) * var(--line-height)); }
 
-        /* Inline code: terracotta text on a paper chip. Generous 3/8 padding so
-           the chip reads as a token, not a smudge (spec §4.3). */
+        /* Inline code — reference CSS: font-size 0.9em, padding 2px 6px, margin
+           0 2px, background #e8e4df, border-radius 3px, color #c44b2b. We use
+           the spec's 0.88em (§3.2) for consistency with code blocks; padding
+           and radius follow the reference exactly. */
         code, tt {
           font-family: var(--mono-font);
           font-size: 0.88em;
-          padding: 3px 8px;
+          padding: 2px 6px;
           margin: 0 2px;
           background: var(--cola-inline-code-bg);
           color: var(--cola-accent);
-          border-radius: 4px;
+          border-radius: 3px;
           letter-spacing: 0;
         }
 
-        /* Code block: dark panel regardless of appearance — the spec's signature
-           "技术" counterpoint to the literary serif body. 20/24 padding,
-           8px radius, horizontal scroll. `pre code` resets the inline chip. */
+        /* Code block — reference CSS: font-size 0.88em, line-height 1.6,
+           background #2c2c2c, color #e0dcd7, padding 18px 22px, border-radius
+           6px, margin 1.5em 0. Spec §4.2 says 20px 24px / 8px / 1.65 / 1.6em;
+           we follow the reference (the actually-shipped values). */
         pre {
           font-family: var(--mono-font);
           font-size: 0.88em;
-          line-height: 1.65;
+          line-height: 1.6;
           background: var(--cola-code-bg);
           color: var(--cola-code-text);
-          padding: 20px 24px;
-          border-radius: 8px;
-          margin: 1.6em 0;
+          padding: 18px 22px;
+          border-radius: 6px;
+          margin: 1.5em 0;
           overflow-x: auto;
           tab-size: 4; -moz-tab-size: 4;
           letter-spacing: 0;
@@ -419,9 +402,9 @@ enum HTMLTheme {
           border-radius: 0;
           font-size: var(--mono-size);
         }
-        /* Copy button: bare hover-revealed chip in the top-right corner, matching
-           the Edmund read-mode treatment but tinted to read on the dark panel. */
-        .code-block-wrap { position: relative; margin: 1.6em 0; }
+        /* Copy button — bare hover-revealed chip, top-right. Tinted to read on
+           the dark panel. */
+        .code-block-wrap { position: relative; margin: 1.5em 0; }
         .code-block-wrap pre { margin: 0; }
         .code-copy-btn {
           position: absolute; top: 8px; right: 10px;
@@ -438,18 +421,17 @@ enum HTMLTheme {
         .code-copy-icon { opacity: 0; transition: opacity .15s; }
         .code-block-wrap:hover .code-copy-icon { opacity: 1; }
 
-        /* Mark / highlight: terracotta tint, not the default yellow. Spec §4.4. */
+        /* Mark / highlight — reference CSS: rgba(196,75,43,0.15), color #2c2c2c,
+           padding 1px 4px, border-radius 2px. Spec §4.4 suggests 3px 8px / 4px
+           but the reference ships the tighter values; we follow the reference. */
         mark {
           background: var(--cola-accent-soft);
-          color: inherit;
-          padding: 3px 8px;
-          border-radius: 4px;
-          margin: 0 1px;
-          -webkit-box-decoration-break: clone;
-          box-decoration-break: clone;
+          color: var(--cola-text);
+          padding: 1px 4px;
+          border-radius: 2px;
         }
 
-        /* Tag pill (#tag): same idiom as Edmund, but with the terracotta accent. */
+        /* Tag pill (#tag) — terracotta accent, soft tint background. */
         .tag {
           color: var(--cola-accent);
           background: color-mix(in srgb, var(--cola-accent) 14%, transparent);
@@ -457,7 +439,7 @@ enum HTMLTheme {
           font-size: 0.88em; white-space: nowrap;
         }
 
-        /* kbd: a tactile key cap. */
+        /* kbd — spec §4.7: tactile key cap. */
         kbd {
           font-family: var(--mono-font);
           font-size: 0.92em;
@@ -473,20 +455,19 @@ enum HTMLTheme {
         sup { top: -0.5em; }
         sub { bottom: -0.25em; }
 
-        /* Footnotes: small, dim, under a hairline. */
+        /* Footnotes — reference: 0.85em, #c44b2b for refs, #555 for the list. */
         sup.footnote-ref a { text-decoration: none; color: var(--cola-accent); }
         hr.footnotes-sep { margin-bottom: 0.8em; }
-        hr.footnotes-sep::after { display: none; }
         ol.footnotes { font-size: 0.85em; color: var(--cola-text-soft); }
         ol.footnotes li { margin: 0.4em 0; }
         a.footnote-backref { text-decoration: none; margin-left: 0.2em; font-size: 0.9em; line-height: 1; color: var(--cola-accent); }
 
-        /* Images: rounded, centered when alone in a paragraph. */
+        /* Images — reference: max-width 100%. Spec adds 8px radius. */
         img { max-width: 100%; border-radius: 8px; }
-        p > img:only-child { display: block; margin: 1.6em auto; }
+        p > img:only-child { display: block; margin: 1.5em auto; }
         img.math { vertical-align: middle; border-radius: 0; }
-        .math-display { text-align: center; margin: 1.6em 0; }
-        .math-display-block { display: block; text-align: center; margin: 1.6em 0; }
+        .math-display { text-align: center; margin: 1.5em 0; }
+        .math-display-block { display: block; text-align: center; margin: 1.5em 0; }
         .md-image-blocked {
           display: inline-flex; align-items: center; gap: 0.4em;
           color: var(--cola-text-soft); background: var(--cola-bg-soft);
@@ -495,30 +476,31 @@ enum HTMLTheme {
         }
         .md-image-blocked svg { width: 1.1em; height: 1.1em; flex: 0 0 auto; }
 
-        /* Tables: rounded container, terracotta header underline, zebra rows.
-           Wide tables scroll horizontally inside .table-wrap. Spec §4.6. */
-        .table-wrap { overflow-x: auto; margin: 1.6em 0; border: 1px solid var(--cola-border); border-radius: 8px; }
+        /* Tables — reference CSS: width 100%, border-collapse, margin 1.5em,
+           font-size 0.95em. th: #eae6e1 bg, 700, #1a1a1a, padding 10px 14px,
+           border-bottom 2px solid #c44b2b. td: padding 10px 14px, border-bottom
+           1px solid #d8d3ce. tr:hover td: rgba(196,75,43,0.04). NO outer
+           container border, NO zebra striping — the reference ships neither. */
+        .table-wrap { overflow-x: auto; margin: 1.5em 0; }
         table { border-collapse: collapse; width: 100%; font-size: 0.95em; letter-spacing: 0.02em; }
         thead th {
           background: var(--cola-bg-soft);
           color: var(--cola-heading);
           font-weight: 700;
-          padding: 12px 16px;
+          padding: 10px 14px;
           border-bottom: 2px solid var(--cola-accent);
           text-align: left;
         }
-        td { padding: 11px 16px; border-bottom: 1px solid var(--cola-border); color: var(--cola-text); }
+        td { padding: 10px 14px; border-bottom: 1px solid var(--cola-border); color: var(--cola-text); }
         tr:last-child td { border-bottom: none; }
-        tbody tr:nth-child(even) { background: color-mix(in srgb, var(--cola-bg-soft) 50%, transparent); }
-        tbody tr:hover { background: color-mix(in srgb, var(--cola-accent) 4%, transparent); }
+        tbody tr:hover td { background: color-mix(in srgb, var(--cola-accent) 4%, transparent); }
 
-        /* Callouts: keep the Edmund structure (tinted box + colored title +
-           Lucide icon) but recolor via the per-type --c-* vars, which
-           `calloutVars` already emits. Square corners match the editor. */
+        /* Callouts — keep the Edmund structure (tinted box + colored title +
+           Lucide icon) recolored via the per-type --c-* vars. Square corners. */
         .callout {
           background: var(--c-bg);
           border-radius: 0;
-          margin: 1.6em 0;
+          margin: 1.5em 0;
           padding: calc(1.22em - (var(--line-height) - 0.78) * 0.5em) 1.24em 1.14em;
         }
         .callout-title { display: flex; align-items: flex-start; gap: 0.3em; font-weight: 600; color: var(--c-accent); }
@@ -545,13 +527,14 @@ enum HTMLTheme {
         .callout-body > :last-child { margin-bottom: 0; }
         .callout-body > .callout:last-child { margin-top: 0; }
 
-        /* Scrollbar: thin, paper-toned — matches the spec's unobtrusive bars. */
+        /* Scrollbar — reference CSS: 6px, #ccc8c2 thumb, 3px radius. */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-thumb { background: var(--cola-border); border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--cola-text-soft); }
+        ::-webkit-scrollbar-thumb { background: #ccc8c2; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #b5b0aa; }
         ::-webkit-scrollbar-track { background: transparent; }
 
         @media print {
+          html { font-size: 13px; }
           body { padding: 0; background: #fff; color: #000; }
           * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .callout, pre, blockquote, .table-wrap, .math-display,

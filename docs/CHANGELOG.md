@@ -3,6 +3,26 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.2] - 2026-08-11
+
+Rewrote the ColaMD Read-mode CSS to faithfully transcribe the ColaMD reference implementation (`themes/elegant.css`) instead of the embellished version I shipped in 3.0.0/3.0.1. The earlier releases added decorative elements the reference never had (hr center dot, link underline animation, table outer border + zebra striping, oversized paddings) and got several values wrong. This release strips all of that back.
+
+### Fixed
+- **Heading underline removed** — h1/h2 now have only `padding-bottom` (spacing), no `border-bottom`. The reference CSS ships no drawn underline; the spec's "带下划线" describes the padding gap, not a line.
+- **hr simplified** — plain `border-top: 1px solid #d8d3ce`, no gradient, no center dot. The dot was a design-doc aspiration the reference CSS never shipped.
+- **Link hover simplified** — `text-decoration: underline` on hover, no `background-size` animation. Matches the reference exactly.
+- **Inline code padding** — `2px 6px` (was `3px 8px`), `border-radius: 3px` (was `4px`). Reference values.
+- **Code block padding** — `18px 22px` (was `20px 24px`), `border-radius: 6px` (was `8px`), `line-height: 1.6` (was `1.65`), `margin: 1.5em` (was `1.6em`). Reference values.
+- **Blockquote padding** — `15px 20px 15px 25px` (was `16px 22px 16px 26px`), no `border-radius` (was `0 6px 6px 0`). Reference values.
+- **Mark padding** — `1px 4px` (was `3px 8px`), `border-radius: 2px` (was `4px`), `color: var(--cola-text)` (was `inherit`). No `box-decoration-break`. Reference values.
+- **Table** — removed outer container border + `border-radius: 8px`, removed zebra striping (`tr:nth-child(even)`). Only the header background, 2px terracotta header underline, cell bottom borders, and hover tint remain — exactly what the reference ships.
+- **List line-height** — `1.8` (was `1.85`). Reference value.
+- **Scrollbar thumb** — `#ccc8c2` (was `var(--cola-border)`), hover `#b5b0aa`. Reference values.
+- **blockquote color** — uses `var(--cola-text-soft)` which is `#555` in light / `#a89f96` in dark (the reference uses `#444`, but `--cola-text-soft` is the spec's token for this tier).
+
+### Changed
+- Every ColaMD CSS rule now carries a comment citing either "reference CSS" (the shipped `elegant.css`) or "spec §X" (the design doc), so the source of each value is auditable.
+
 ## [3.0.1] - 2026-08-11
 
 Bug-fix release for the ColaMD Elegant preset. v3.0.0 only themed Read mode (CSS); Edit mode — the native NSTextView — still rendered with Edmund's colors. All 7 user-reported bugs stemmed from this.
