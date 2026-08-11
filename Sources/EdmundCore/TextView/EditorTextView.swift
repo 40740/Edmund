@@ -461,28 +461,33 @@ public class EditorTextView: NSTextView {
     /// preference) applies the theme live without writing it to defaults.
     public func applyTheme(_ newTheme: EditorTheme, persist: Bool = true) {
         let antialiasChanged = theme.antialias != newTheme.antialias
-        // A preset switch (Edmund ↔ ColaMD) changes `editorBackgroundColor`,
-        // so reapply it — otherwise the editor keeps the old page color until
-        // the next appearance flip forces `viewDidChangeEffectiveAppearance`.
         let presetChanged = theme.preset != newTheme.preset
         theme = newTheme
         if persist { theme.save(to: themeDefaults) }
-        if presetChanged {
-            backgroundColor = editorBackgroundColor
-            // Re-tint the insertion point + selection too: the accent-derived
-            // chrome can't drift from the new theme.
-            insertionPointColor = accentColor
-            selectedTextAttributes = [
-                .backgroundColor: selectionHighlightColor,
-                .foregroundColor: foregroundColor,
-            ]
-        }
+        // Always reapply the background + chrome — not just on presetChanged.
+        // A document that loads with a persisted ColaMD theme needs the warm
+        // paper background painted even if `preset` didn't change between the
+        // initial `.load()` and this call. `drawsBackground` must be true or
+        // NSTextView paints the system text background instead.
+        drawsBackground = true
+        backgroundColor = editorBackgroundColor
+        insertionPointColor = accentColor
+        selectedTextAttributes = [
+            .backgroundColor: selectionHighlightColor,
+            .foregroundColor: foregroundColor,
+        ]
         typingAttributes = baseAttributes
         recomposeAllDirty()
         // Antialiasing isn't a text attribute, so a recompose alone won't re-vend
         // the layout fragments — force a full re-layout when it changes.
         if antialiasChanged, let tlm = textLayoutManager {
             tlm.invalidateLayout(for: tlm.documentRange)
+        }
+        // A preset switch can also flip the page background of the enclosing
+        // scroll view's clip view; nudge it to redraw.
+        if presetChanged {
+            enclosingScrollView?.contentView.needsDisplay = true
+            needsDisplay = true
         }
     }
 
@@ -533,6 +538,10 @@ public class EditorTextView: NSTextView {
 
         textAntialias = theme.antialias
         codeBlockLabelFont = theme.monospaceFont(ofSize: max(9, theme.monospaceFontSize - 3))
+        // drawsBackground must be true or NSTextView paints the system text
+        // background (white) instead of our theme's page color — the ColaMD
+        // warm-paper background (#f0edea) would never show.
+        drawsBackground = true
         backgroundColor = editorBackgroundColor
         insertionPointColor = accentColor
         selectedTextAttributes = [
@@ -612,6 +621,7 @@ public class EditorTextView: NSTextView {
     /// Re-render when the system appearance (light ↔ dark) changes.
     public override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        drawsBackground = true
         backgroundColor = editorBackgroundColor
         insertionPointColor = accentColor
         selectedTextAttributes = [
