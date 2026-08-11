@@ -287,7 +287,8 @@ enum HTMLTheme {
        sanitizeInlineHTML). <u>/<mark> use the UA underline / the rule above;
        <kbd> matches the editor's inline-key chrome, <sub>/<sup> get the standard
        line-height-safe reset. */
-    kbd { font-family: var(--mono-font); font-size: 0.92em; background: var(--code-bg);
+    kbd { font-family: var(--mono-font); font-size: 0.92em; color: var(--inline-code-ink);
+          background: var(--inline-code-bg);
           border: 1px solid var(--rule); border-radius: 4px; padding: 0.05em 0.4em; }
     sub, sup { font-size: 0.75em; line-height: 0; position: relative; vertical-align: baseline; }
     sup { top: -0.5em; }
