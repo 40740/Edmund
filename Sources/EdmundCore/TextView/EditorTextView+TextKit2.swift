@@ -662,6 +662,26 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         return frame
     }
 
+    /// Whether this paragraph carries inline-code or highlight chip attributes
+    /// (the pills `drawInlineCodeChips` paints). Used to extend the rendering
+    /// surface so the pills' padding is never clipped, and by the vendor to
+    /// choose the decorated fragment.
+    private var hasChipAttributes: Bool {
+        guard let paragraph = textElement as? NSTextParagraph else { return false }
+        let str = paragraph.attributedString
+        let keys: [NSAttributedString.Key] = [.inlineCodeChip, .highlightChip]
+        for key in keys {
+            var found = false
+            str.enumerateAttribute(key,
+                                   in: NSRange(location: 0, length: str.length),
+                                   options: []) { value, _, _ in
+                if value != nil { found = true }
+            }
+            if found { return true }
+        }
+        return false
+    }
+
     override var renderingSurfaceBounds: CGRect {
         var bounds = super.renderingSurfaceBounds
         let frame = layoutFragmentFrame
@@ -693,6 +713,13 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             bounds = bounds.union(CGRect(x: containerLeft - 4, y: minY,
                                          width: containerWidth + 8,
                                          height: maxY - minY))
+        }
+        // A chip pill extends padX/padY beyond the glyphs; a bare paragraph
+        // (no decorations) would otherwise get only the tight text bounds and
+        // clip the pills' padding.
+        if hasChipAttributes {
+            let slack: CGFloat = 8
+            bounds = bounds.insetBy(dx: -slack, dy: -slack)
         }
         // Guides sit left of the item's text, outside the text-hugging frame.
         if !listGuides.isEmpty {
@@ -1192,11 +1219,20 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// tight against the glyphs with no padding hook, so the styling code
     /// stores the colour in `.inlineCodeChip` / `.highlightChip` and this pass
     /// draws the padded pill itself before `super.draw` paints the text. Rects
-    /// come from the layout manager in container coordinates (this context's
-    /// space) and are merged per line so each span is one pill rather than
-    /// per-character capsules.
+    /// are merged per line so each span is one pill rather than per-character
+    /// capsules.
     ///
-    /// Padding is generous (0.32em/0.1em horizontal/vertical) and corners are
+    /// `enumerateTextSegments` returns rects in the text layout manager's
+    /// (container) coordinate space, but the fragment's draw context is
+    /// fragment-local (origin at the fragment's frame origin) — the same
+    /// convention decorations and overlays use (see `columnRect`/`overlayRect`
+    /// in `draw`). Without converting, the pills landed one fragment height
+    /// below the text (and outside the rendering surface, so they were
+    /// clipped): the classic "inline code / highlight chip invisible in edit
+    /// mode" bug. Offset by the frame origin (plus `point`, for callers that
+    /// draw the fragment into an arbitrary context).
+    ///
+    /// Padding is generous (6pt/3pt horizontal/vertical) and corners are
     /// heavily rounded so chips read as soft, non-jagged pills.
     private func drawInlineCodeChips(at point: CGPoint, in context: CGContext) {
         guard let tlm = chipLayoutManager,
@@ -1204,6 +1240,9 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         guard let paraLoc = paragraph.elementRange?.location else { return }
         let str = paragraph.attributedString
         let padX: CGFloat = 6, padY: CGFloat = 3, radius: CGFloat = 6
+        let origin = layoutFragmentFrame.origin
+        let dx = point.x - origin.x
+        let dy = point.y - origin.y
         func drawChips(_ key: NSAttributedString.Key) {
             str.enumerateAttribute(key,
                                    in: NSRange(location: 0, length: str.length),
@@ -1231,7 +1270,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 context.saveGState()
                 context.setFillColor(color.cgColor)
                 for rect in merged {
-                    let pill = rect.insetBy(dx: -padX, dy: -padY)
+                    let local = rect.offsetBy(dx: dx, dy: dy)
+                    let pill = local.insetBy(dx: -padX, dy: -padY)
                     NSBezierPath(roundedRect: pill, xRadius: radius, yRadius: radius).fill()
                 }
                 context.restoreGState()

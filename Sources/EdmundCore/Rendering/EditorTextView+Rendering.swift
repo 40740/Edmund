@@ -53,6 +53,27 @@ extension EditorTextView {
     /// Monospaced font for tables.
     var tableFont: NSFont { renderingMonospaceFont }
 
+    /// Italicizes `font`, synthesizing obliqueness when the family has no real
+    /// italic face. `NSFontManager.convert(_:toHaveTrait:)` silently returns the
+    /// same font for CJK families (PingFang, STSongti, …) which expose no italic
+    /// variant, so `*italic*` and `<i>` would otherwise render upright while Read
+    /// mode (WebKit) synthesizes oblique — the two views drift apart. A CoreText
+    /// font created with a skew matrix (toll-free bridged back to NSFont)
+    /// renders genuinely slanted glyphs in TextKit 2; ~12° matches browser
+    /// oblique synthesis.
+    func italicizedFont(_ font: NSFont) -> NSFont {
+        let candidate = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+        if candidate.fontDescriptor.symbolicTraits.contains(.italic) {
+            return candidate
+        }
+        // +12° skew (y-up font space): the top of each glyph leans right,
+        // matching CSS oblique synthesis for scripts without an italic face.
+        let angle = CGFloat(12.0 * CGFloat.pi / 180.0)
+        var matrix = CGAffineTransform(a: 1, b: 0, c: tan(angle), d: 1, tx: 0, ty: 0)
+        let ct = CTFontCreateWithName(font.fontName as CFString, font.pointSize, &matrix)
+        return ct as NSFont
+    }
+
     /// Monospaced font for code blocks.
     var codeBlockFont: NSFont { renderingMonospaceFont }
 
@@ -258,13 +279,13 @@ extension EditorTextView {
             case .italic:
                 guard span.contentRange.upperBound <= result.length else { continue }
                 let ctx = contextFont(at: span.contentRange.location)
-                let italic = NSFontManager.shared.convert(ctx, toHaveTrait: .italicFontMask)
-                result.addAttribute(.font, value: italic, range: span.contentRange)
+                result.addAttribute(.font, value: italicizedFont(ctx), range: span.contentRange)
 
             case .boldItalic:
                 guard span.contentRange.upperBound <= result.length else { continue }
                 let ctx = contextFont(at: span.contentRange.location)
-                let bi = NSFontManager.shared.convert(ctx, toHaveTrait: [.boldFontMask, .italicFontMask])
+                let bold = NSFontManager.shared.convert(ctx, toHaveTrait: .boldFontMask)
+                let bi = italicizedFont(bold)
                 result.addAttribute(.font, value: bi, range: span.contentRange)
                 if let strong = theme.strongColor {
                     result.addAttribute(.foregroundColor, value: strong, range: span.contentRange)
@@ -370,8 +391,7 @@ extension EditorTextView {
                     // Active, or the image couldn't be loaded: show the alt text
                     // link-colored (same as a plain link); delimiters are dimmed/hidden below.
                     result.addAttribute(.foregroundColor, value: linkColor, range: span.contentRange)
-                    let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
-                    result.addAttribute(.font, value: italic, range: span.contentRange)
+                    result.addAttribute(.font, value: italicizedFont(bodyFont), range: span.contentRange)
                 }
 
             case .embed(let destination):
@@ -480,12 +500,37 @@ extension EditorTextView {
                             // Preset panel fill: the box joins the bar in a
                             // list so both draw. Plain themes (no background)
                             // keep the single bar, unchanged from before.
+                            //
+                            // Top breathing room is the first row's own raised
+                            // line height — NOT an upward extension of the
+                            // fragment frame. An upward extension (origin.y
+                            // -= topPad) shifts every following row down by
+                            // the same amount at draw time (TextKit tiles
+                            // after the extended frame), opening a visible
+                            // 15pt gap between quote lines. Bottom padding
+                            // stays on the last row's box: a downward
+                            // extension tiles cleanly.
                             let panel = BlockDecoration(
                                 .box(background: bg, borderColor: nil,
                                      borderEdges: [], borderWidth: 0,
-                                     topPad: i == 0 ? quoteVPad : 0,
+                                     topPad: 0,
                                      bottomPad: i == rows.count - 1 ? quoteVPad : 0,
                                      cornerRadius: 0))
+                            if i == 0 {
+                                // First row: raise the line's minimum height by
+                                // the padding. TextKit 2 folds the extra ascent
+                                // into this fragment's frame (unlike
+                                // `paragraphSpacingBefore`, which it leaves out
+                                // of the fragment entirely — the box can't
+                                // cover that space), so the panel fill above
+                                // the text and the click target come for free,
+                                // and following rows tile cleanly.
+                                let firstPS = blockquoteParagraphStyle().mutableCopy() as! NSMutableParagraphStyle
+                                firstPS.headIndent += CGFloat(depth) * quoteMarkerWidth
+                                let lineHeight = bodyFont.pointSize + theme.lineSpacing
+                                firstPS.minimumLineHeight = lineHeight + quoteVPad
+                                result.addAttribute(.paragraphStyle, value: firstPS, range: row)
+                            }
                             let ancestor = result.attribute(.blockDecoration, at: row.location,
                                                             effectiveRange: nil)
                             var kept: [BlockDecoration] = []
@@ -859,9 +904,9 @@ extension EditorTextView {
         case "u":
             result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
         case "i", "em":
-            // Match markdown `*italic*`: italicize with the context font.
-            let italic = NSFontManager.shared.convert(ctx, toHaveTrait: .italicFontMask)
-            result.addAttribute(.font, value: italic, range: range)
+            // Match markdown `*italic*`: italicize with the context font,
+            // synthesizing obliqueness for CJK families without an italic face.
+            result.addAttribute(.font, value: italicizedFont(ctx), range: range)
         case "b", "strong":
             // Match markdown `**bold**`, including a ColaMD preset's red ink.
             let bold = NSFontManager.shared.convert(ctx, toHaveTrait: .boldFontMask)
