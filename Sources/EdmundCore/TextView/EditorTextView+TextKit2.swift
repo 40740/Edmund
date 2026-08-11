@@ -652,7 +652,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             // The box's top padding extends the fill above the fragment's
             // origin, and a heading's underline sits below its bottom edge —
             // include both or TextKit clips them away.
-            var minY = -boxTopPad
+            let minY = -boxTopPad
             var maxY = frame.height
             for deco in decorations {
                 if case .bottomRule(_, _, let offset) = deco.kind {

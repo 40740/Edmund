@@ -584,8 +584,9 @@ enum HTMLTheme {
     /// `maxContentWidthCm` / `contentWidthUnit`.
     static let themeDefaultsKeys: [String] = [
         kHeadingRuleOffset, kQuoteVPad, kInlineCodePadX, kInlineCodePadY,
-        kCodeCornerRadius, kCodeBlockHPad, kCodeBlockVPad, kQuoteMargin,
-        kListLineHeight, kHighlightPad,
+        kCodeCornerRadius, kCodeBlockHPad, kCodeBlockVPad,
+        kQuoteMarginTop, kQuoteMarginBottom,
+        kListLineHeight, kHighlightPadX, kHighlightPadY,
         "settings.appearance.themePreset",
         "settings.appearance.mode",
         "settings.appearance.maxContentWidthCm",
