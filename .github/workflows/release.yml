@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual trigger so a failed release can be re-run without re-tagging.
+  workflow_dispatch:
 
 jobs:
   release:
@@ -12,14 +14,17 @@ jobs:
     permissions:
       contents: write  # create releases and commit appcast
     steps:
+      # `secrets.GITHUB_TOKEN` is auto-provided by Actions and has
+      # `contents: write` from the `permissions:` block above — enough to
+      # check out the repo, create a release, and push the appcast commit
+      # back to `main` (the fork's `main` isn't branch-protected). On the
+      # upstream I7T5/Edmund repo, `main` IS protected and a real admin
+      # PAT (`secrets.RELEASE_TOKEN`) is required there — set that secret
+      # in the upstream repo's Settings ▸ Secrets to override.
       - uses: actions/checkout@v5
         with:
-          # Fetch full history so we can push the appcast commit back.
           fetch-depth: 0
-          # Admin PAT so the appcast commit can be pushed to the protected
-          # `main` branch. The default GITHUB_TOKEN/bot is not an admin and is
-          # blocked by the required `test` status check.
-          token: ${{ secrets.RELEASE_TOKEN }}
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -63,10 +68,34 @@ jobs:
           fi
           mv "$DMG_SRC" "build/Edmund-${VERSION}.dmg"
 
+      # Upload the DMG as a workflow artifact BEFORE the signing/release steps.
+      # That way, if anything downstream fails (missing Sparkle key, appcast
+      # push rejected by branch protection, `gh release create` race), the DMG
+      # is still retrievable from the run's artifact list — no rebuild needed.
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Edmund-${{ env.VERSION }}-dmg
+          path: build/Edmund-${{ env.VERSION }}.dmg
+          if-no-files-found: error
+          retention-days: 90
+
+      # Sparkle EdDSA signing is optional: the upstream repo sets
+      # SPARKLE_ED_PRIVATE_KEY as a secret, but a fresh fork won't. Skip
+      # signing when the key is absent (the DMG is still installable; only
+      # the auto-update feed signature is missing). Downstream steps use
+      # the ED_SIG/LENGTH env vars as empty strings in that case.
       - name: Sign archive (EdDSA)
+        id: sign
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
+          if [ -z "$SPARKLE_ED_PRIVATE_KEY" ]; then
+            echo "No SPARKLE_ED_PRIVATE_KEY secret — skipping Sparkle signing."
+            echo "ED_SIG=" >> "$GITHUB_ENV"
+            echo "LENGTH=" >> "$GITHUB_ENV"
+            exit 0
+          fi
           SIGN_UPDATE="$(find .build -name sign_update -type f | head -1)"
           # Pass the key on stdin via --ed-key-file -. The deprecated `-s <key>`
           # is fatal for newly generated keys ("no longer supported").
@@ -84,12 +113,27 @@ jobs:
           if [ ! -s release-notes.txt ]; then
             echo "See CHANGELOG for details." > release-notes.txt
           fi
-          gh release create "v${VERSION}" "build/Edmund-${VERSION}.dmg" \
-            --title "Edmund ${VERSION}" \
-            --notes-file release-notes.txt \
-            --latest
+          # `gh release create` fails if a release for this tag already exists
+          # (e.g. the workflow was re-triggered). In that case, upload the DMG
+          # to the existing release instead of erroring out.
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "Release v${VERSION} already exists — uploading DMG to it."
+            gh release upload "v${VERSION}" "build/Edmund-${VERSION}.dmg" --clobber
+          else
+            gh release create "v${VERSION}" "build/Edmund-${VERSION}.dmg" \
+              --title "Edmund ${VERSION}" \
+              --notes-file release-notes.txt \
+              --latest
+          fi
 
+      # Appcast update: push the new <item> to appcast.xml on main. Optional —
+      # on the upstream I7T5/Edmund, `main` is branch-protected and this push
+      # requires the admin PAT (RELEASE_TOKEN). On a fork with no protection,
+      # the default GITHUB_TOKEN works. If the push is rejected for any reason
+      # (protection, missing token), the DMG is already published — don't fail
+      # the whole release over the auto-update feed.
       - name: Update appcast.xml
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -111,10 +155,20 @@ jobs:
             DESC_BLOCK="$(printf '            <description><![CDATA[\n%s\n]]></description>' "$DESC_HTML")"
           fi
 
+          # If signing was skipped, leave the signature/length attributes empty
+          # rather than emitting `sparkle:edSignature="" length=""` — Sparkle
+          # treats an empty signature as "no signature" and falls back to
+          # prompting the user, which is the correct behavior for an unsigned
+          # build.
+          SIG_ATTR=""
+          LEN_ATTR=""
+          if [ -n "$ED_SIG" ]; then SIG_ATTR="$ED_SIG"; fi
+          if [ -n "$LENGTH" ]; then LEN_ATTR="$LENGTH"; fi
+
           # Built with printf (one logical YAML line) rather than a literal
           # multi-line string: an unindented line inside this value would
           # break this run block's YAML indentation (as DESC_BLOCK did above).
-          NEW_ITEM="$(printf '        <item>\n            <title>Edmund %s</title>\n            <pubDate>%s</pubDate>\n%s\n            <enclosure url="%s"\n                       sparkle:version="%s"\n                       sparkle:shortVersionString="%s"\n                       %s\n                       %s\n                       type="application/x-apple-diskimage"/>\n        </item>' "$VERSION" "$PUB_DATE" "$DESC_BLOCK" "$ASSET_URL" "$BUILD" "$VERSION" "$ED_SIG" "$LENGTH")"
+          NEW_ITEM="$(printf '        <item>\n            <title>Edmund %s</title>\n            <pubDate>%s</pubDate>\n%s\n            <enclosure url="%s"\n                       sparkle:version="%s"\n                       sparkle:shortVersionString="%s"\n                       %s\n                       %s\n                       type="application/x-apple-diskimage"/>\n        </item>' "$VERSION" "$PUB_DATE" "$DESC_BLOCK" "$ASSET_URL" "$BUILD" "$VERSION" "$SIG_ATTR" "$LEN_ATTR")"
 
           python3 - "$NEW_ITEM" <<'PYEOF'
           import sys
