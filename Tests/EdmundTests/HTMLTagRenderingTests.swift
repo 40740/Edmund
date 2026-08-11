@@ -207,6 +207,40 @@ struct HTMLTagRenderingTests {
         #expect(f != nil && f!.pointSize < editor.bodyFont.pointSize)
     }
 
+    @Test("i/em/b/strong/del/s/strike/code map to their attributes")
+    func extendedInlineTags() {
+        let editor = makeEditor()
+
+        let italic = editor.styleBlock("<i>t</i>", cursorPosition: nil)
+        let it = attr(.font, at: 3, in: italic) as? NSFont
+        #expect(it != nil && NSFontManager.shared.traits(of: it!).contains(.italicFontMask))
+
+        let em = editor.styleBlock("<em>t</em>", cursorPosition: nil)
+        let et = attr(.font, at: 4, in: em) as? NSFont
+        #expect(et != nil && NSFontManager.shared.traits(of: et!).contains(.italicFontMask))
+
+        let bold = editor.styleBlock("<b>t</b>", cursorPosition: nil)
+        let bt = attr(.font, at: 3, in: bold) as? NSFont
+        #expect(bt != nil && NSFontManager.shared.traits(of: bt!).contains(.boldFontMask))
+
+        let strong = editor.styleBlock("<strong>t</strong>", cursorPosition: nil)
+        let st = attr(.font, at: 8, in: strong) as? NSFont
+        #expect(st != nil && NSFontManager.shared.traits(of: st!).contains(.boldFontMask))
+
+        let del = editor.styleBlock("<del>t</del>", cursorPosition: nil)
+        #expect(attr(.strikethroughStyle, at: 5, in: del) as? Int == NSUnderlineStyle.single.rawValue)
+
+        let s = editor.styleBlock("<s>t</s>", cursorPosition: nil)
+        #expect(attr(.strikethroughStyle, at: 3, in: s) as? Int == NSUnderlineStyle.single.rawValue)
+
+        let strike = editor.styleBlock("<strike>t</strike>", cursorPosition: nil)
+        #expect(attr(.strikethroughStyle, at: 8, in: strike) as? Int == NSUnderlineStyle.single.rawValue)
+
+        let code = editor.styleBlock("<code>c</code>", cursorPosition: nil)
+        #expect((attr(.font, at: 6, in: code) as? NSFont) == editor.inlineCodeFont)
+        #expect(attr(.inlineCodeChip, at: 6, in: code) as? NSColor == editor.inlineCodeBackground)
+    }
+
     @Test("HTML comment: dimmed in edit view, hidden in reading view")
     func htmlComment() {
         let editor = makeEditor()

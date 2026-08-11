@@ -666,8 +666,33 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         var bounds = super.renderingSurfaceBounds
         let frame = layoutFragmentFrame
         if !decorations.isEmpty {
-            bounds = bounds.union(CGRect(x: containerLeft - 4, y: 0,
-                                         width: containerWidth + 8, height: frame.height))
+            // The frame already grows for box top/bottom padding (and any table
+            // row extra height), and its origin sits ABOVE the text by the box
+            // top padding (see layoutFragmentFrame). A surface that starts at
+            // y:0 would clip the box's top-padding band away, so the fill reads
+            // as bottom-heavy — the quote's "not vertically centered" bug.
+            // Union the *actual* frame extent (minY..maxY, i.e. -boxTopPad ..
+            // super.height+boxBottomPad) so top and bottom padding both paint.
+            var minY = frame.minY
+            var maxY = frame.maxY
+            // Table-row zebra bands extend `verticalPad` above/below the frame
+            // (drawDecoration .tableRow) and headings' bottomRule hangs below
+            // the frame's bottom edge — pull those into the surface too, or
+            // TextKit clips them away.
+            for deco in decorations {
+                switch deco.kind {
+                case .tableRow(_, _, _, _, _, _, let verticalPad, _):
+                    minY = min(minY, frame.minY - verticalPad)
+                    maxY = max(maxY, frame.maxY + verticalPad)
+                case .bottomRule(_, let width, let offset):
+                    maxY = max(maxY, frame.maxY + offset + width)
+                default:
+                    break
+                }
+            }
+            bounds = bounds.union(CGRect(x: containerLeft - 4, y: minY,
+                                         width: containerWidth + 8,
+                                         height: maxY - minY))
         }
         // Guides sit left of the item's text, outside the text-hugging frame.
         if !listGuides.isEmpty {

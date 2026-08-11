@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [5.5] - 2026-08-11
+
+### Fixed
+- 编辑模式下引用块文字真正垂直居中：根因是 TextKit 渲染表面未覆盖引用块顶部内边距（仅覆盖文字行以上），导致顶部内边距被裁剪掉、视觉上只剩底部内边距、文字偏下。现按完整框体范围（含上下内边距）绘制，上下内边距恢复对称、文字居中。
+- 编辑模式下 `<i>/<em>/<b>/<strong>/<del>/<s>/<strike>/<code>` 行内 HTML 标签不再显示为源码，而是与对应 markdown 语法一致地渲染（斜体/加粗/删除线/行内代码胶囊），与 Read 模式的 GFM 原生渲染保持一致。
+
 ## [5.3] - 2026-08-11
 
 ### Fixed

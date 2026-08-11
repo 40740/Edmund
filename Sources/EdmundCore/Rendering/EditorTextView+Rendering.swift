@@ -858,6 +858,28 @@ extension EditorTextView {
         switch tag {
         case "u":
             result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+        case "i", "em":
+            // Match markdown `*italic*`: italicize with the context font.
+            let italic = NSFontManager.shared.convert(ctx, toHaveTrait: .italicFontMask)
+            result.addAttribute(.font, value: italic, range: range)
+        case "b", "strong":
+            // Match markdown `**bold**`, including a ColaMD preset's red ink.
+            let bold = NSFontManager.shared.convert(ctx, toHaveTrait: .boldFontMask)
+            result.addAttribute(.font, value: bold, range: range)
+            if let strong = theme.strongColor {
+                result.addAttribute(.foregroundColor, value: strong, range: range)
+            }
+        case "del", "s", "strike":
+            // Match markdown `~~strikethrough~~`.
+            result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+        case "code":
+            // Match markdown inline code: mono ink + the padded chip pill.
+            let scale = ctx.pointSize / bodyFont.pointSize
+            let mono = scale == 1 ? inlineCodeFont
+                : theme.monospaceFont(ofSize: inlineCodeFont.pointSize * scale)
+            result.addAttribute(.font, value: mono, range: range)
+            result.addAttribute(.foregroundColor, value: inlineCodeColor, range: range)
+            result.addAttribute(.inlineCodeChip, value: inlineCodeBackground, range: range)
         case "mark":
             result.addAttribute(.highlightChip, value: NSColor.systemYellow.withAlphaComponent(0.3), range: range)
         case "kbd":
