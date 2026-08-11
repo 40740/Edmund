@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [5.3.1] - 2026-08-11
+
+### Fixed
+- 编辑模式裸段落中 `==高亮==`、行内代码、`<kbd>` 的胶囊背景此前被 TextKit 渲染表面裁剪而不可见：现把胶囊内边距纳入 `renderingSurfaceBounds`，裸段落也能完整画出胶囊背景
+- 编辑模式引用块文字不再被顶部内边距裁剪：渲染表面覆盖 box 的顶部内边距区域，上下对称、文字真正垂直居中
+- 编辑模式支持渲染 `<i>/<em>/<b>/<strong>/<del>/<s>/<strike>/<code>` HTML 标签（与 Markdown 等价语法一致）：斜体、加粗、删除线、行内代码现在都会编译显示，不再以源码形式呈现
+
 ## [5.3] - 2026-08-11
 
 ### Fixed

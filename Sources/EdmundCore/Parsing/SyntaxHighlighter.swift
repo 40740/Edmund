@@ -19,7 +19,7 @@ public enum SyntaxHighlighter {
     /// as colored source. Single source of truth shared by the editor's
     /// `parseHTMLTags` (Edit mode) and `HTMLRenderer.sanitizeInlineHTML` (Read
     /// mode), so the two back-ends can't drift on which tags are allowed.
-    public static let htmlFormatTags: Set<String> = ["u", "kbd", "mark", "sub", "sup", "small"]
+    public static let htmlFormatTags: Set<String> = ["u", "kbd", "mark", "sub", "sup", "small", "i", "em", "b", "strong", "del", "s", "strike", "code"]
 
     // MARK: - Model
 

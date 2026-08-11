@@ -458,6 +458,11 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// when the item is top-level or the setting is off. Drawn under the text.
     let listGuides: [CGFloat]
 
+    /// Whether the paragraph carries any inline-code or ==highlight== chip
+    /// attribute. Drives `renderingSurfaceBounds` (see there) so the pills'
+    /// padding isn't clipped away by TextKit's rendering surface.
+    let paragraphHasChips: Bool
+
     /// The editor that vended this fragment, for the settings its draw reads
     /// *live* rather than capturing (`focusMode`). Weak — the layout manager
     /// outlives no editor, but a fragment must never keep one alive.
@@ -482,10 +487,12 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
          invisibles: InvisiblesConfig? = nil,
          listGuides: [CGFloat] = [],
          owner: EditorTextView? = nil,
-         chipLayoutManager: NSTextLayoutManager? = nil) {
+         chipLayoutManager: NSTextLayoutManager? = nil,
+         paragraphHasChips: Bool = false) {
         self.listGuides = listGuides
         self.owner = owner
         self.chipLayoutManager = chipLayoutManager
+        self.paragraphHasChips = paragraphHasChips
         self.decorations = decorations
         self.overlays = overlays
         self.antialias = antialias
@@ -665,9 +672,27 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     override var renderingSurfaceBounds: CGRect {
         var bounds = super.renderingSurfaceBounds
         let frame = layoutFragmentFrame
+        // Inline-code / ==highlight== chip pills are padded `padX`/`padY`
+        // points around their text runs (see `drawInlineCodeChips`). The base
+        // surface hugs the text, so the pills' overhang can be clipped by
+        // TextKit when a bare paragraph has no other decoration — expand the
+        // surface to cover the padding whenever either chip attribute is
+        // present.
+        if paragraphHasChips {
+            let padX: CGFloat = 6, padY: CGFloat = 3
+            bounds = bounds.insetBy(dx: -padX, dy: -padY)
+        }
         if !decorations.isEmpty {
-            bounds = bounds.union(CGRect(x: containerLeft - 4, y: 0,
-                                         width: containerWidth + 8, height: frame.height))
+            // The box's top padding extends the fill ABOVE the text origin
+            // (see `layoutFragmentFrame`: origin.y is pulled up by `boxTopPad`
+            // and the height grows by `boxTopPad + boxBottomPad`). The surface
+            // rect is expressed in fragment-local coordinates where y = 0 is
+            // the text top, so include the negative-y band or TextKit clips
+            // the padded band away and the quote reads top-aligned instead of
+            // vertically centered.
+            bounds = bounds.union(CGRect(x: containerLeft - 4, y: -boxTopPad,
+                                         width: containerWidth + 8,
+                                         height: frame.height))
         }
         // Guides sit left of the item's text, outside the text-hugging frame.
         if !listGuides.isEmpty {
@@ -1205,6 +1230,17 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 }
                 context.saveGState()
                 context.setFillColor(color.cgColor)
+                // `enumerateTextSegments` reports each run in the layout
+                // manager's *container* coordinate space, and this draw
+                // context is likewise container-space (every other path
+                // offsets fragment-local content by `point`; container-space
+                // content like these segments is already correctly placed). So
+                // draw the pills at the returned rects directly — adding
+                // `point` would push them a whole fragment off. The reason
+                // bare-paragraph chips previously vanished is that
+                // `renderingSurfaceBounds` did not cover the pills' padding
+                // (see `paragraphHasChips`), so TextKit clipped them; that is
+                // fixed separately.
                 for rect in merged {
                     let pill = rect.insetBy(dx: -padX, dy: -padY)
                     NSBezierPath(roundedRect: pill, xRadius: radius, yRadius: radius).fill()
@@ -1312,7 +1348,8 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                            invisibles: invisibles,
                                            listGuides: listGuides,
                                            owner: self,
-                                           chipLayoutManager: textLayoutManager)
+                                           chipLayoutManager: textLayoutManager,
+                                           paragraphHasChips: hasChips)
     }
 }
 
