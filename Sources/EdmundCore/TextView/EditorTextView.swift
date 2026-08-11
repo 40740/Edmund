@@ -842,7 +842,7 @@ public class EditorTextView: NSTextView {
                 // Found the copy button; record the fence line's char range.
                 if let elementRange = fragment.textElement?.elementRange {
                     let start = tlm.offset(from: tlm.documentRange.location, to: elementRange.location)
-                    let length = tlm.offset(from: elementRange.location, to: elementRange.end)
+                    let length = tlm.offset(from: elementRange.location, to: elementRange.endLocation)
                     hitFenceRange = NSRange(location: start, length: length)
                 }
                 return false
