@@ -88,12 +88,17 @@ extension EditorTextView {
         button.title = "复制"
         button.sizeToFit()
         let origin = textContainerOrigin
-        // View coords = container coords + container origin. Nudge the pill up
-        // and out of the block's top edge; the block's box already carries its
-        // own top padding, so +4 keeps it inside the box.
+        // Pin the pill to the block's TOP-RIGHT corner (ColaMD behavior).
+        // `rect` is in text-container coordinates, which are flipped (y grows
+        // downward) — so `minY` is the visual top and `maxX` the right edge.
+        // View coords = container coords + container origin. Keep a little
+        // inset from the edges so the pill sits neatly inside the panel.
         let x = rect.maxX + origin.x - button.frame.width - 10
-        let y = rect.minY + origin.y + 4
-        button.frame.origin = NSPoint(x: max(origin.x + 4, x), y: y)
+        let y = rect.minY + origin.y + 6
+        // If the code block is narrower than the pill, don't clamp it to the
+        // left edge (that's what made it read as top-LEFT); instead let it
+        // keep its right-anchored position so it stays visually top-right.
+        button.frame.origin = NSPoint(x: max(rect.minX + origin.x + 4, x), y: y)
         button.isHidden = false
         hoveredCodeBlockRange = block.range
     }
