@@ -13,6 +13,8 @@ class Document: NSDocument, HeadingNavigable {
     private var statusBar: StatusBarView!
     private var viewModeButton: NSButton?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
+    private var sidebarButton: NSButton?
+    private static let sidebarItemID = NSToolbarItem.Identifier("sidebar")
 
     /// Sidebar (left file browser) and hover-reveal outline panel (right edge).
     /// Both are lightweight, lazy, and off the editor's open path so they never
@@ -463,15 +465,12 @@ class Document: NSDocument, HeadingNavigable {
     /// lazily (the outline re-parses only when its panel is revealed). Called
     /// whenever the file or its directory can change (open, save-as, toggle).
     ///
-    /// Opening a real file auto-reveals the sidebar (until the user expresses a
-    /// preference) so the folder's files are immediately visible; an untitled
-    /// document leaves whatever visibility the user last chose.
+    /// The sidebar is *off by default* (opening a file no longer auto-reveals it
+    /// — a fresh launch stays full-window just like before). It only lists a
+    /// directory when the user has explicitly turned it on, so the open path and
+    /// default launch remain untouched and instant.
     private func refreshSidebar() {
         guard let fileSidebar else { return }
-        if documentDirectory != nil, !AppSettings.sidebarVisible, !AppSettings.sidebarUserChoice {
-            AppSettings.sidebarVisible = true
-            layoutEditorArea()
-        }
         guard !fileSidebar.isHidden else { return }
         fileSidebar.showDirectory(documentDirectory)
     }
@@ -490,14 +489,26 @@ class Document: NSDocument, HeadingNavigable {
         }
     }
 
-    /// Toggles the sidebar (View ▸ Sidebar). Hides it or reveals it and refreshes
-    /// the listing for the current file. Persisted; the scroll view is re-laid out
-    /// so the editor fills the reclaimed space either way.
+    /// Toggles the sidebar (View ▸ Sidebar, or the right-edge toolbar button).
+    /// Hides it or reveals it and refreshes the listing for the current file.
+    /// Persisted; the scroll view is re-laid out so the editor fills the
+    /// reclaimed space either way. Default is off, so toggling on is the only
+    /// way the sidebar appears.
     @objc func toggleSidebar(_ sender: Any?) {
-        AppSettings.sidebarUserChoice = true
         AppSettings.sidebarVisible.toggle()
         layoutEditorArea()
         refreshSidebar()
+        refreshSidebarButton()
+    }
+
+    /// Keeps the toolbar's sidebar toggle in sync with the persisted visibility.
+    private func refreshSidebarButton() {
+        guard let sidebarButton else { return }
+        sidebarButton.image = NSImage(systemSymbolName: "sidebar.left",
+                                      accessibilityDescription: "切换侧边栏")
+        sidebarButton.toolTip = AppSettings.sidebarVisible ? "收起侧边栏" : "展开侧边栏"
+        sidebarButton.contentTintColor = AppSettings.sidebarVisible
+            ? .controlAccentColor : .secondaryLabelColor
     }
 
     /// Re-positions the sidebar and editor scroll view for the current sidebar
@@ -958,16 +969,33 @@ class Document: NSDocument, HeadingNavigable {
 
 extension Document: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Self.viewModeItemID]
+        [.flexibleSpace, Self.sidebarItemID, Self.viewModeItemID]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, .space, Self.viewModeItemID]
+        [.flexibleSpace, .space, Self.sidebarItemID, Self.viewModeItemID]
     }
 
     func toolbar(_ toolbar: NSToolbar,
                  itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        if itemIdentifier == Self.sidebarItemID {
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "侧边栏"
+            item.paletteLabel = "侧边栏"
+            item.toolTip = "展开/收起侧边栏"
+            item.visibilityPriority = .high
+
+            let button = NSButton(image: NSImage(systemSymbolName: "sidebar.left",
+                                                accessibilityDescription: "侧边栏"),
+                                  target: self, action: #selector(toggleSidebar(_:)))
+            button.bezelStyle = .texturedRounded
+            button.imagePosition = .imageOnly
+            sidebarButton = button
+            item.view = button
+            refreshSidebarButton()
+            return item
+        }
         guard itemIdentifier == Self.viewModeItemID else { return nil }
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
         item.label = "视图模式"

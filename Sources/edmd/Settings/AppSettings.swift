@@ -97,7 +97,6 @@ enum AppSettings {
         static let renderBlankLinesAsBreaks = "settings.reading.renderBlankLinesAsBreaks"
         static let sourceMode = "settings.view.sourceMode"
         static let sidebarVisible = "settings.view.sidebarVisible"
-        static let sidebarUserChoice = "settings.view.sidebarUserChoice"
         static let enabledExtensionIDs = "settings.extensions.enabledIDs"
         static let sendCrashLogs = "settings.advanced.sendCrashLogs"
         static let sentCrashReports = "settings.advanced.sentCrashReports"
@@ -574,20 +573,14 @@ enum AppSettings {
         UserDefaults.standard.bool(forKey: Key.focusMode)
     }
 
-    /// Whether the left file sidebar is shown. Default off so a fresh launch is
-    /// unchanged and instant; opening a file then reveals it if the user has it
-    /// on. Lightweight: it only ever lists a directory on demand.
+    /// Whether the left file sidebar is shown. **Off by default** so a fresh
+    /// launch is unchanged (full-window, exactly like before the feature) and
+    /// instant; the user turns it on via the right-edge toolbar button or
+    /// View ▸ Sidebar. It only ever lists a directory on demand, so toggling it
+    /// on is the only time any directory work happens.
     static var sidebarVisible: Bool {
         get { UserDefaults.standard.bool(forKey: Key.sidebarVisible) }
         set { UserDefaults.standard.set(newValue, forKey: Key.sidebarVisible) }
-    }
-
-    /// Whether the user has explicitly chosen a sidebar state (via the View ▸
-    /// Sidebar toggle). Until they do, opening a file auto-reveals the sidebar;
-    /// once they've expressed a preference, it's respected and no longer forced.
-    static var sidebarUserChoice: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.sidebarUserChoice) }
-        set { UserDefaults.standard.set(newValue, forKey: Key.sidebarUserChoice) }
     }
 
     static var showLineNumbers: Bool {

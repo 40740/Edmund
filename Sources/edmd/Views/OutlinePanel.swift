@@ -34,6 +34,7 @@ final class OutlinePanel: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     private let table = NSTableView()
     private let scroll = NSScrollView()
+    private let backdrop = NSVisualEffectView()
     private var entries: [EditorTextView.OutlineHeading] = []
 
     private var trackingArea: NSTrackingArea?
@@ -48,11 +49,24 @@ final class OutlinePanel: NSView, NSTableViewDataSource, NSTableViewDelegate {
         wantsLayer = true
         alphaValue = 0
 
+        // Lightweight Liquid-Glass-style backdrop: a system vibrancy/material
+        // view behind the table. It's hardware-accelerated and nearly free, and
+        // gives the outline a readable surface so long text lines no longer bleed
+        // through and collide with the headings.
+        backdrop.material = .sidebar
+        backdrop.blendingMode = .behindWindow
+        backdrop.state = .active
+        backdrop.wantsLayer = true
+        backdrop.layer?.cornerRadius = 10
+        backdrop.layer?.masksToBounds = true
+        addSubview(backdrop)
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+
         let column = NSTableColumn(identifier: .init("heading"))
         column.resizingMask = .autoresizingMask
         table.addTableColumn(column)
         table.headerView = nil
-        table.rowHeight = 20
+        table.rowHeight = 24
         table.backgroundColor = .clear
         table.selectionHighlightStyle = .regular
         table.dataSource = self
@@ -71,6 +85,11 @@ final class OutlinePanel: NSView, NSTableViewDataSource, NSTableViewDelegate {
         addSubview(scroll)
         scroll.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
+            backdrop.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            backdrop.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            backdrop.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            backdrop.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+
             scroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             scroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             scroll.topAnchor.constraint(equalTo: topAnchor, constant: 6),
@@ -222,9 +241,9 @@ private final class OutlineCellView: NSTableCellView {
     }
 
     var isEmphasis: Bool {
-        get { field.font == NSFont.boldSystemFont(ofSize: 12) }
-        set { field.font = newValue ? NSFont.boldSystemFont(ofSize: 12)
-                                     : NSFont.systemFont(ofSize: 12) }
+        get { field.font == NSFont.boldSystemFont(ofSize: 14) }
+        set { field.font = newValue ? NSFont.boldSystemFont(ofSize: 14)
+                                     : NSFont.systemFont(ofSize: 14) }
     }
 
     /// Left inset in points; drives the per-level indentation. Updates the one
