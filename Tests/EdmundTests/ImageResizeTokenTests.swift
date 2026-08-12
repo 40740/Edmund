@@ -26,7 +26,7 @@ final class ImageResizeTokenTests: XCTestCase {
         let ns = src as NSString
         // The `!` of `![alt](img.png)` is at offset 5.
         let range = editor.imageTokenRange(containing: 5)
-        XCTAssertEqual(range, NSRange(location: 5, length: 16), "should find the ![alt](img.png) token")
+        XCTAssertEqual(range, NSRange(location: 5, length: 15), "should find the ![alt](img.png) token")
         // Inside the parentheses.
         XCTAssertEqual(editor.imageTokenRange(containing: 10), range)
     }
