@@ -19,7 +19,7 @@ import EdmundCore
 /// the frame to `panelWidth` (and revealing the table) on hover. Its own frame
 /// is managed here so the document only pins its right edge and provides a
 /// container width via `setContainerWidth(_:)`.
-final class OutlinePanel: NSView {
+final class OutlinePanel: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     /// Called with the source offset of a heading to scroll the editor to it.
     var onNavigate: ((Int) -> Void)?
