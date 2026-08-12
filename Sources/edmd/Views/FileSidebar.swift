@@ -62,7 +62,9 @@ final class FileSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelegate 
     /// as an array so a future multi-root vault is a drop-in).
     private var roots: [SidebarNode] = []
 
-    private static let editableExtensions: Set<String> = [
+    /// Formats Edmund can open, used by the (nonisolated) directory scan, so it
+    /// must be `nonisolated` too — a pure constant set with no actor state.
+    private static nonisolated let editableExtensions: Set<String> = [
         "md", "markdown", "mdown", "mkd",
         "txt", "text", "mdx", "mmd",
     ]
