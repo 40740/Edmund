@@ -594,6 +594,7 @@ public class EditorTextView: NSTextView {
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         installScrollPromotionObserver()
+        installDragDropRegistration()
     }
 
     // MARK: - Appearance

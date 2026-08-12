@@ -16,6 +16,16 @@ class Document: NSDocument, HeadingNavigable {
     private var sidebarButton: NSButton?
     private static let sidebarItemID = NSToolbarItem.Identifier("sidebar")
 
+    // Toolbar quick-format buttons (bold / italic / code / heading / link / list).
+    // Lightweight icon-only toggles that route through the responder chain to
+    // the focused editor — no resident cost on the open/秒开 path.
+    private static let fmtBoldItemID = NSToolbarItem.Identifier("fmtBold")
+    private static let fmtItalicItemID = NSToolbarItem.Identifier("fmtItalic")
+    private static let fmtCodeItemID = NSToolbarItem.Identifier("fmtCode")
+    private static let fmtHeadingItemID = NSToolbarItem.Identifier("fmtHeading")
+    private static let fmtLinkItemID = NSToolbarItem.Identifier("fmtLink")
+    private static let fmtListItemID = NSToolbarItem.Identifier("fmtList")
+
     /// Sidebar (left file browser) and hover-reveal outline panel (right edge).
     /// Both are lightweight, lazy, and off the editor's open path so they never
     /// cost a millisecond of the instant-open contract.
@@ -969,16 +979,66 @@ class Document: NSDocument, HeadingNavigable {
 
 extension Document: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Self.sidebarItemID, Self.viewModeItemID]
+        [Self.fmtBoldItemID, Self.fmtItalicItemID, Self.fmtCodeItemID,
+         Self.fmtHeadingItemID, Self.fmtLinkItemID, Self.fmtListItemID,
+         .flexibleSpace, Self.sidebarItemID, Self.viewModeItemID]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, .space, Self.sidebarItemID, Self.viewModeItemID]
+        [.flexibleSpace, .space, Self.sidebarItemID, Self.viewModeItemID,
+         Self.fmtBoldItemID, Self.fmtItalicItemID, Self.fmtCodeItemID,
+         Self.fmtHeadingItemID, Self.fmtLinkItemID, Self.fmtListItemID]
+    }
+
+    /// Builds an icon-only toolbar button that fires `action` through the
+    /// responder chain (nil target), so it always targets the focused editor.
+    private func makeFormatToolbarItem(id: NSToolbarItem.Identifier, symbol: String,
+                                       label: String, tooltip: String,
+                                       action: Selector) -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: id)
+        item.label = label
+        item.paletteLabel = label
+        item.toolTip = tooltip
+        item.visibilityPriority = .high
+        let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: label) ?? NSImage(),
+                              target: nil, action: action)
+        button.bezelStyle = .texturedRounded
+        button.imagePosition = .imageOnly
+        item.view = button
+        return item
     }
 
     func toolbar(_ toolbar: NSToolbar,
                  itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        switch itemIdentifier {
+        case Self.fmtBoldItemID:
+            return makeFormatToolbarItem(id: itemIdentifier, symbol: "bold",
+                label: "粗体", tooltip: "粗体 (⌘B)",
+                action: #selector(EditorTextView.formatBold(_:)))
+        case Self.fmtItalicItemID:
+            return makeFormatToolbarItem(id: itemIdentifier, symbol: "italic",
+                label: "斜体", tooltip: "斜体 (⌘I)",
+                action: #selector(EditorTextView.formatItalic(_:)))
+        case Self.fmtCodeItemID:
+            return makeFormatToolbarItem(id: itemIdentifier, symbol: "chevron.left.forwardslash.chevron.right",
+                label: "代码", tooltip: "代码 (⌘)",
+                action: #selector(EditorTextView.formatCode(_:)))
+        case Self.fmtHeadingItemID:
+            return makeFormatToolbarItem(id: itemIdentifier, symbol: "textformat.size",
+                label: "标题", tooltip: "标题",
+                action: #selector(EditorTextView.formatHeading(_:)))
+        case Self.fmtLinkItemID:
+            return makeFormatToolbarItem(id: itemIdentifier, symbol: "link",
+                label: "链接", tooltip: "链接 (⌘K)",
+                action: #selector(EditorTextView.formatLink(_:)))
+        case Self.fmtListItemID:
+            return makeFormatToolbarItem(id: itemIdentifier, symbol: "list.bullet",
+                label: "列表", tooltip: "项目符号列表 (⌥⌘B)",
+                action: #selector(EditorTextView.formatBulletedList(_:)))
+        default:
+            break
+        }
         if itemIdentifier == Self.sidebarItemID {
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = "侧边栏"
