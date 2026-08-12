@@ -35,7 +35,16 @@ extension EditorTextView {
         //    silently dropping the image. So always try the image path FIRST.
         if pasteImageIfPresent(pasteboard) { return }
 
-        // 2. Otherwise paste as plain text. Ignore an empty string (a clipboard
+        // 2. If the pasteboard genuinely carries an image but we couldn't turn
+        //    it into a markdown reference (e.g. the document isn't saved yet or
+        //    the write failed), do NOT fall through to `super.paste` — that
+        //    inserts the image as an NSTextAttachment, which this Markdown
+        //    editor renders as an invisible/blank placeholder. We already
+        //    alerted the user in `pasteImageIfPresent`; make sure we don't also
+        //    insert a phantom blank on top.
+        if pasteboardContainsImage(pasteboard) { return }
+
+        // 3. Otherwise paste as plain text. Ignore an empty string (a clipboard
         //    that only holds an image with a stray empty `.string`).
         if let text = pasteboard.string(forType: .string), !text.isEmpty {
             // Replace the current selection through the normal editing pipeline.
@@ -46,8 +55,34 @@ extension EditorTextView {
             return
         }
 
-        // 3. Fall back to NSTextView's default (rich text / other types).
+        // 4. Fall back to NSTextView's default (rich text / other types).
         super.paste(sender)
+    }
+
+    /// Whether the pasteboard holds image data of any of the common types,
+    /// including a plain file URL that points to an image file. Used both to
+    /// prefer the image path and to avoid falling through to a blank-text
+    /// default paste when the image branch couldn't complete.
+    private func pasteboardContainsImage(_ pasteboard: NSPasteboard) -> Bool {
+        // Direct image data (PNG/TIFF/JPEG/…).
+        let imageDataTypes: [NSPasteboard.PasteboardType] = [
+            .png, .tiff,
+            .init("public.jpeg"),
+            .init("public.image"),
+            .init("NSImage"),
+        ]
+        for type in imageDataTypes where pasteboard.data(forType: type) != nil {
+            return true
+        }
+        // A file URL that resolves to an image file.
+        if let fileURL = pasteboard.string(forType: .fileURL),
+           let url = URL(string: fileURL) {
+            let ext = url.pathExtension.lowercased()
+            let imageExts: Set<String> = ["png", "jpg", "jpeg", "gif", "svg",
+                                          "webp", "bmp", "tiff", "tif", "heic", "heif"]
+            if imageExts.contains(ext) { return true }
+        }
+        return false
     }
 
     /// If the pasteboard holds an image (e.g. a screenshot / copied graphic),
@@ -61,42 +96,80 @@ extension EditorTextView {
         // relying solely on `NSImage(pasteboard:)`, which can be flaky for
         // boards that carry only a `public.png` representation (common for
         // macOS ⌃⌘⇧4 screenshots and WeChat clips).
-        let rawData = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff)
-        guard let data = rawData else { return false }
+        let rawData = pasteboard.data(forType: .png)
+            ?? pasteboard.data(forType: .tiff)
+            ?? pasteboard.data(forType: .init("public.jpeg"))
+            ?? pasteboard.data(forType: .init("public.image"))
+        guard let data = rawData else {
+            // Might still be a file URL pointing at an image (e.g. a copied
+            // image file in Finder). Resolve it so we can load the picture.
+            if let fileURL = pasteboard.string(forType: .fileURL),
+               let url = URL(string: fileURL),
+               let fileData = try? Data(contentsOf: url),
+               let img = NSImage(data: fileData) {
+                return pasteImageData(fileData, image: img, nameHint: url.deletingPathExtension().lastPathComponent)
+            }
+            return false
+        }
         guard let image = NSImage(data: data) else { return false }
+        return pasteImageData(data, image: image, nameHint: "paste")
+    }
 
+    /// Shared tail of the image-paste path: locate the document folder, write
+    /// the image as a PNG, insert the `![](...)` reference, and (crucially)
+    /// never fall through to a default paste that would render a blank.
+    private func pasteImageData(_ data: Data, image: NSImage, nameHint: String) -> Bool {
         guard let dir = document?.fileURL?.deletingLastPathComponent() else {
             // The document hasn't been saved to disk yet, so there's no folder
             // beside it to write the image into. Tell the user to save first so
-            // the image isn't silently dropped.
+            // the image isn't silently dropped. Returning `true` (handled) also
+            // stops the caller from falling through to a blank default paste.
             NSSound.beep()
             if let window = window {
                 let alert = NSAlert()
                 alert.messageText = "请先保存文档"
-                alert.informativeText = "粘贴图片需要先把文档保存到磁盘（图片会存放在文档旁的 images/ 文件夹）。"
+                alert.informativeText = "粘贴图片需要先把文档保存到磁盘（图片会存放在文档旁的 images/ 文件夹）。请先 ⌘S 保存，再粘贴图片。"
                 alert.alertStyle = .informational
                 alert.beginSheetModal(for: window)
             }
-            return false
+            return true
         }
 
         // Encode as PNG regardless of the source representation so the saved
         // file is always a portable PNG.
-        guard let pngData = encodePNG(from: image, original: data) else { return false }
+        guard let pngData = encodePNG(from: image, original: data) else { return true }
 
         let imagesDir = dir.appendingPathComponent("images", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
-            let name = "paste-\(Int(Date().timeIntervalSince1970)).png"
+            let name = "\(sanitizedPrefix(nameHint))-\(Int(Date().timeIntervalSince1970)).png"
             let fileURL = imagesDir.appendingPathComponent(name)
             try pngData.write(to: fileURL)
-            let reference = "![paste](./images/\(name))"
+            let reference = "![\(nameHint)](./images/\(name))"
             super.insertText(reference, replacementRange: selectedRange())
             return true
         } catch {
             Log.error("Could not save pasted image: \(error)", category: .io)
-            return false
+            NSSound.beep()
+            if let window = window {
+                let alert = NSAlert()
+                alert.messageText = "无法保存图片"
+                alert.informativeText = "图片写入失败：\(error.localizedDescription)\n\n请检查文档所在目录的写入权限后重试。"
+                alert.alertStyle = .warning
+                alert.beginSheetModal(for: window)
+            }
+            return true
         }
+    }
+
+    /// Keeps a file-name hint filesystem-safe (lowercased alnum + hyphen) so a
+    /// copied file like “My Screenshot.png” doesn't produce an invalid path.
+    private func sanitizedPrefix(_ s: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let cleaned = s.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
+        var out = String(cleaned).lowercased()
+        if out.isEmpty { out = "image" }
+        return out
     }
 
     /// Encode an image to PNG data, decoding the source bytes (PNG or TIFF)

@@ -595,6 +595,7 @@ public class EditorTextView: NSTextView {
         super.viewDidMoveToWindow()
         installScrollPromotionObserver()
         installDragDropRegistration()
+        installImageResizeTracking()
     }
 
     // MARK: - Appearance
