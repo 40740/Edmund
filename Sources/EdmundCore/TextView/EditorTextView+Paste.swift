@@ -105,6 +105,10 @@ extension EditorTextView {
             ?? pasteboard.data(forType: .tiff)
             ?? pasteboard.data(forType: .init("public.jpeg"))
             ?? pasteboard.data(forType: .init("public.image"))
+            // WeChat / several clip tools register the picture under a private
+            // UTI, so the well-known types above return nothing. Sweep every
+            // type on the board for raw bytes that still decode to an image.
+            ?? firstImageDataFromAnyType(pasteboard)
         guard let data = rawData else {
             // Might still be a file URL pointing at an image (e.g. a copied
             // image file in Finder). Resolve it so we can load the picture.
@@ -119,10 +123,10 @@ extension EditorTextView {
             // Last resort: `NSImage(pasteboard:)` decodes images some tools put
             // on the board under a private UTI (WeChat screenshots etc.). Re-encode
             // whatever AppKit can read into a PNG so we can still save + insert it.
+            // Use a robust extractor that walks the image's own representations
+            // instead of assuming `tiffRepresentation` is available.
             if let image = NSImage(pasteboard: pasteboard),
-               let tiff = image.tiffRepresentation,
-               let rep = NSBitmapImageRep(data: tiff),
-               let png = rep.representation(using: .png, properties: [:]) {
+               let png = imagePNGData(image) {
                 return pasteImageData(png, image: image, nameHint: "paste")
             }
             return false
@@ -163,7 +167,7 @@ extension EditorTextView {
             pendingImagePaste = PendingImagePaste(data: data, image: image, nameHint: nameHint)
             NotificationCenter.default.addObserver(
                 self, selector: #selector(documentDidSave(_:)),
-                name: Notification.Name("NSDocumentDidSaveNotification"), object: doc)
+                name: NSDocument.didSaveNotification, object: doc)
             doc.save(self)
             return true
         }
@@ -243,6 +247,42 @@ extension EditorTextView {
             || data.starts(with: [0xFF, 0xD8, 0xFF] as [UInt8])   // JPEG
     }
 
+    /// Sweeps every pasteboard type for raw bytes that still decode to an
+    /// image. WeChat and several screenshot utilities place the picture under a
+    /// private UTI that `data(forType:)` for the well-known types won't return,
+    /// but the bytes themselves are usually a valid PNG/JPEG once we ask for
+    /// that private type's data directly. Returns the first decodable payload.
+    private func firstImageDataFromAnyType(_ pasteboard: NSPasteboard) -> Data? {
+        guard let types = pasteboard.types else { return nil }
+        for type in types {
+            guard let data = pasteboard.data(forType: type) else { continue }
+            if looksLikeSupportedImage(data) || NSImage(data: data) != nil {
+                return data
+            }
+        }
+        return nil
+    }
+
+    /// Robustly extracts a savable PNG from an `NSImage`, walking its own
+    /// representations instead of assuming `tiffRepresentation` exists (which
+    /// can be nil for some private-UTI boards even when `NSImage(pasteboard:)`
+    /// successfully decodes them).
+    private func imagePNGData(_ image: NSImage) -> Data? {
+        // Preferred path: TIFF → bitmap rep → PNG.
+        if let tiff = image.tiffRepresentation,
+           let rep = NSBitmapImageRep(data: tiff),
+           let png = rep.representation(using: .png, properties: [:]) {
+            return png
+        }
+        // Fallback: walk the image's own representations directly.
+        for rep in image.representations {
+            guard let bitmap = rep as? NSBitmapImageRep,
+                  let png = bitmap.representation(using: .png, properties: [:]) else { continue }
+            return png
+        }
+        return nil
+    }
+
     /// Encode an image to PNG data, decoding the source bytes (PNG or TIFF)
     /// and re-encoding to a portable PNG via AppKit. `image` may be nil when
     /// AppKit failed to decode but the raw bytes are still a valid image.
@@ -289,7 +329,7 @@ extension EditorTextView {
         }
         pendingImagePaste = nil
         NotificationCenter.default.removeObserver(
-            self, name: Notification.Name("NSDocumentDidSaveNotification"), object: doc)
+            self, name: NSDocument.didSaveNotification, object: doc)
         _ = pasteImageData(pending.data, image: pending.image, nameHint: pending.nameHint)
     }
 }
