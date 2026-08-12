@@ -3,6 +3,18 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.19.0] - 2026-08-12
+
+### Fixed
+- **未保存文档粘贴图片仍不插入（根治）**：v5.18.0 把自动保存后的重试监听改成了「同时监听带点与不带点的通知名」，但实测发现**新版 macOS 的完成回调式保存（`save(to:ofType:for:completionHandler:)`）根本不再发出 `NSDocumentDidSaveNotification`**（本机 macOS 26 实测：保存成功、`fileURL` 已设置，但 object=doc 的通知一个都不发）——所以 pending 的图片粘贴依然永远不会被重试。修复：改为**监听文档 `fileURL` 的 KVO**——保存落地时 `fileURL` 必然变为非空且 KVO 实测可靠触发，保存完成即自动补插图片；原通知监听保留作兜底（兼容仍会发通知的旧系统）；同时在编辑器销毁时清理观察者，取消保存也不会悬挂泄漏。
+- **微信截图粘贴仍无反应（补全剩余剪贴板格式）**：v5.18.0 已覆盖 PNG/TIFF/私有 UTI 等数据型剪贴板，仍「无反应」的两种场景现已补齐：
+  1. **文件承诺（file promise）**：微信 / 企业微信等工具把截图以 promise 形式放上剪贴板（无数据、无字符串、无 URL），旧代码 `data(forType:)` 全部取不到 → 落到默认粘贴渲染成空白 = 「无反应」。修复：严格识别真实文件承诺（需携带 promise 记账类型，避免误判），用 `NSFilePromiseReceiver` 物化后正常保存并插入 `![](...)`；5 秒未完成会弹窗提示，不再静默。
+  2. **纯文本即图片路径 / `file://` URL**：部分工具只把图片的绝对路径作为纯文本复制（无数据、无 fileURL 类型），旧代码会把路径当文字插入。修复：识别为图片文件后直接按图片保存插入。
+- 顺带支持 `com.apple.pasteboard.promised-file-url` 类型的图片 URL；每次粘贴判定失败都会写入日志（`~/.edmund/logs`），便于继续定位问题。
+
+### 秒开 / 轻量化保证
+- 所有改动仍只在「粘贴那一刻」触发一次，不引入定时器 / 常驻监听（promise 物化仅在遇到真实文件承诺时发生，且仅这一次）、不碰打开 / 保存路径。
+
 ## [5.18.0] - 2026-08-12
 
 ### Fixed
