@@ -4,6 +4,7 @@ import XCTest
 /// Tests for the lightweight image drag-to-resize feature's pure string
 /// helpers: image-token scanning, destination extraction, and the width
 /// parsing used by the resize handle.
+@MainActor
 final class ImageResizeTokenTests: XCTestCase {
 
     /// Build an editor whose rawSource is the given markdown. The helper
