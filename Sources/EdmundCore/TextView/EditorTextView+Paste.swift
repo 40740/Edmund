@@ -165,9 +165,20 @@ extension EditorTextView {
             // the paste once the save completes. Returning `true` (handled) also
             // stops the caller from falling through to a blank default paste.
             pendingImagePaste = PendingImagePaste(data: data, image: image, nameHint: nameHint)
-            NotificationCenter.default.addObserver(
-                self, selector: #selector(documentDidSave(_:)),
-                name: NSDocument.didSaveNotification, object: doc)
+            // Observe the save completion under BOTH spellings of the name:
+            // AppKit's `NSDocument` notifications are posted under the dotted
+            // raw string `"NSDocument.didSaveNotification"` (there is no Swift
+            // static member `NSDocument.didSaveNotification` on this SDK), but
+            // we listen for the legacy no-dot form too so the retry never
+            // silently misses the save regardless of AppKit version.
+            for name in [
+                Notification.Name("NSDocument.didSaveNotification"),
+                Notification.Name("NSDocumentDidSaveNotification"),
+            ] {
+                NotificationCenter.default.addObserver(
+                    self, selector: #selector(documentDidSave(_:)),
+                    name: name, object: doc)
+            }
             doc.save(self)
             return true
         }
@@ -328,8 +339,15 @@ extension EditorTextView {
             return
         }
         pendingImagePaste = nil
-        NotificationCenter.default.removeObserver(
-            self, name: NSDocument.didSaveNotification, object: doc)
+        // Remove both spellings we registered for; this is safe even if only one
+        // actually fired.
+        for name in [
+            Notification.Name("NSDocument.didSaveNotification"),
+            Notification.Name("NSDocumentDidSaveNotification"),
+        ] {
+            NotificationCenter.default.removeObserver(
+                self, name: name, object: doc)
+        }
         _ = pasteImageData(pending.data, image: pending.image, nameHint: pending.nameHint)
     }
 }

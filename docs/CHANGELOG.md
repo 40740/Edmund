@@ -8,7 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ### Fixed
 - **微信截图粘贴仍无反应 / 系统截图未保存文档图片仍不插入**（根治两处遗留问题）：
   1. **微信 / 部分截图工具私有 UTI 仍识别不出图**：上一版新增 `NSImage(pasteboard:)` 兜底，但很多工具的私有 UTI 连 `NSImage(pasteboard:)` 也无法稳定解码（或其 `tiffRepresentation` 为 nil），导致 `pasteImageIfPresent` 判否 → 最终什么都不插入。修复：新增 `firstImageDataFromAnyType`——**遍历剪贴板全部类型**，直接取每个类型的原始字节并尝试解码（命中 PNG/JPEG 签名或可被 `NSImage(data:)` 解码即采用），把任意私有 UTI 下的图片字节都捞出来；同时新增 `imagePNGData`——不再假设 `NSImage` 一定有 `tiffRepresentation`，而是**直接遍历其自身 representations** 逐一转 PNG，double 兜底，任何 AppKit 能读的剪贴板图都能落盘插入。
-  2. **未保存文档自动保存后图片仍不插入**：根因是自动保存重试监听用了**错误的通知名** `"NSDocumentDidSaveNotification"`（少一个点），而系统真实通知是 `NSDocument.didSaveNotification`（值为 `"NSDocument.didSaveNotification"`），导致保存完成后回调 `documentDidSave` 永不触发，pending 的图片粘贴从未重试。修复：改用正确的 `NSDocument.didSaveNotification`。现在新建文档 → 截图 → ⌘V → 自动弹保存面板 → 保存后图片自动插入并写入 `images/`。
+  2. **未保存文档自动保存后图片仍不插入**：根因是自动保存重试监听用了**错误的通知名** `"NSDocumentDidSaveNotification"`（少一个点）。AppKit 的 NSDocument 保存通知实际以带点的字符串 `"NSDocument.didSaveNotification"` 发出（Swift SDK 未暴露 `NSDocument.didSaveNotification` 静态成员），导致保存完成后回调 `documentDidSave` 永不触发，pending 的图片粘贴从未重试。修复：**同时监听带点与不带点两种拼写**，无论 AppKit 版本用哪种名字都能命中；且回调是幂等的（先置空 `pendingImagePaste` 再处理），重复触发也只会插入一次。现在新建文档 → 截图 → ⌘V → 自动弹保存面板 → 保存后图片自动插入并写入 `images/`。
 
 ### 秒开 / 轻量化保证
 - 所有改动仍只在“粘贴那一刻”触发一次（遍历剪贴板类型 / 转一次 PNG），不引入定时器 / 监听 / 索引 / 网络 / 常驻资源，完全不碰打开 / 保存路径。
