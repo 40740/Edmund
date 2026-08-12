@@ -4,7 +4,11 @@ import AppKit
 
 // MARK: - Outline heading extraction (TOC panel)
 
+// EditorTextView is a main-actor (AppKit) class, so its static parse helper
+// and instance outline scan are both actor-isolated; these suites run on the
+// main actor.
 @Suite("Outline — heading line parsing")
+@MainActor
 struct OutlineHeadingLineTests {
 
     @Test("ATX levels 1…6 are recognized")
@@ -34,6 +38,7 @@ struct OutlineHeadingLineTests {
 }
 
 @Suite("Outline — document heading scan")
+@MainActor
 struct OutlineHeadingsTests {
 
     private func makeEditor(_ text: String) -> EditorTextView {
@@ -43,7 +48,7 @@ struct OutlineHeadingsTests {
     }
 
     @Test("Collects headings in order with offsets")
-    @MainActor func ordered() {
+    func ordered() {
         let text = "Intro\n\n# First\n\n## Child\n\nBody\n\n# Second\n"
         let tv = makeEditor(text)
         let headings = tv.outlineHeadings()
@@ -60,7 +65,7 @@ struct OutlineHeadingsTests {
     }
 
     @Test("Ignores hashes without following space and empty headings")
-    @MainActor func skipsFalsePositives() {
+    func skipsFalsePositives() {
         let text = "#Real\n\n## \n\n# Good\n"
         let tv = makeEditor(text)
         let headings = tv.outlineHeadings()
@@ -69,7 +74,7 @@ struct OutlineHeadingsTests {
     }
 
     @Test("Empty document yields no headings")
-    @MainActor func empty() {
+    func empty() {
         let tv = makeEditor("")
         #expect(tv.outlineHeadings().isEmpty)
     }
