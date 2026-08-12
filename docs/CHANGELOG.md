@@ -3,6 +3,19 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.16.0] - 2026-08-12
+
+### Fixed
+- **工具栏「Customize Toolbar…」仍然不能拖拽 / 替换 / 增删按钮**：上版只给按钮设了 `minSize/maxSize`，但 macOS 的自定义视图（`view`）toolbar item 在 Customize Toolbar 面板里**还必须有 `image` 才能被拖拽**——只有 `view` 时面板里的条目是「不可拖动的占位」。修复：给每个 `NSToolbarItem`（24 个格式按钮 + 侧边栏 + 视图模式）都补设 `item.image`（与按钮一致的 SF Symbol），面板中即可正常拖拽 / 替换 / 增删。
+- **截图 / 微信截图粘贴仍空白**：加固图片粘贴路径，杜绝任何静默空白——
+  - 若剪贴板带图但 `NSImage` 解码失败，只要原始字节是合法 PNG/JPEG，仍会原样保存并插入 `![](...)`，不再因解码失败而丢弃；
+  - PNG 重编码失败时改为直接保存原始图片字节（用正确的 jpg/png 后缀），不再静默空白；
+  - 所有无法处理的图片粘贴都会弹出明确提示（请先保存 / 无法粘贴图片 / 无法保存图片），**绝不回退到会渲染成空白的默认粘贴**。
+
+### 秒开 / 轻量化保证
+- 工具栏只是给 item 多设一个 `image`（复用已创建的 SF Symbol），无常驻开销；粘贴加固仍只在粘贴那一刻触发，不碰打开 / 保存路径。
+- 不引入定时器 / 监听 / 索引 / 网络 / 常驻资源。
+
 ## [5.15.0] - 2026-08-12
 
 ### Fixed

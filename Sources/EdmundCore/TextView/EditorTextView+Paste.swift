@@ -105,20 +105,28 @@ extension EditorTextView {
             // image file in Finder). Resolve it so we can load the picture.
             if let fileURL = pasteboard.string(forType: .fileURL),
                let url = URL(string: fileURL),
-               let fileData = try? Data(contentsOf: url),
-               let img = NSImage(data: fileData) {
-                return pasteImageData(fileData, image: img, nameHint: url.deletingPathExtension().lastPathComponent)
+               let fileData = try? Data(contentsOf: url) {
+                let img = NSImage(data: fileData)
+                if img != nil || looksLikeSupportedImage(fileData) {
+                    return pasteImageData(fileData, image: img, nameHint: url.deletingPathExtension().lastPathComponent)
+                }
             }
             return false
         }
-        guard let image = NSImage(data: data) else { return false }
+        let image = NSImage(data: data)
+        // Even if AppKit can't decode the image into an NSImage, the bytes may
+        // still be a valid PNG/JPEG we can save verbatim — never drop the paste
+        // to a blank just because decoding failed.
+        if image == nil && !looksLikeSupportedImage(data) {
+            return false
+        }
         return pasteImageData(data, image: image, nameHint: "paste")
     }
 
     /// Shared tail of the image-paste path: locate the document folder, write
     /// the image as a PNG, insert the `![](...)` reference, and (crucially)
     /// never fall through to a default paste that would render a blank.
-    private func pasteImageData(_ data: Data, image: NSImage, nameHint: String) -> Bool {
+    private func pasteImageData(_ data: Data, image: NSImage?, nameHint: String) -> Bool {
         guard let dir = document?.fileURL?.deletingLastPathComponent() else {
             // The document hasn't been saved to disk yet, so there's no folder
             // beside it to write the image into. Tell the user to save first so
@@ -137,12 +145,27 @@ extension EditorTextView {
 
         // Encode as PNG regardless of the source representation so the saved
         // file is always a portable PNG.
-        guard let pngData = encodePNG(from: image, original: data) else { return true }
+        let pngData = encodePNG(from: image, original: data)
+            ?? (looksLikeSupportedImage(data) ? data : nil)
+        guard let pngData else {
+            // We have image bytes but could not produce anything savable.
+            // Never fall through to a blank default paste — tell the user.
+            NSSound.beep()
+            if let window = window {
+                let alert = NSAlert()
+                alert.messageText = "无法粘贴图片"
+                alert.informativeText = "剪贴板里的图片无法被识别/编码为可保存的文件。请重新截图后重试。"
+                alert.alertStyle = .warning
+                alert.beginSheetModal(for: window)
+            }
+            return true
+        }
 
         let imagesDir = dir.appendingPathComponent("images", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
-            let name = "\(sanitizedPrefix(nameHint))-\(Int(Date().timeIntervalSince1970)).png"
+            let ext = (pngData === data && !looksLikePNG(data)) ? "jpg" : "png"
+            let name = "\(sanitizedPrefix(nameHint))-\(Int(Date().timeIntervalSince1970)).\(ext)"
             let fileURL = imagesDir.appendingPathComponent(name)
             try pngData.write(to: fileURL)
             let reference = "![\(nameHint)](./images/\(name))"
@@ -172,9 +195,22 @@ extension EditorTextView {
         return out
     }
 
+    /// Whether `data` starts with the PNG signature.
+    private func looksLikePNG(_ data: Data) -> Bool {
+        data.starts(with: [0x89, 0x50, 0x4E, 0x47])
+    }
+
+    /// Whether `data` looks like a supported image we can save verbatim when
+    /// AppKit's PNG re-encode unexpectedly fails (PNG / JPEG).
+    private func looksLikeSupportedImage(_ data: Data) -> Bool {
+        looksLikePNG(data)
+            || data.starts(with: [0xFF, 0xD8, 0xFF])   // JPEG
+    }
+
     /// Encode an image to PNG data, decoding the source bytes (PNG or TIFF)
-    /// and re-encoding to a portable PNG via AppKit.
-    private func encodePNG(from image: NSImage, original data: Data) -> Data? {
+    /// and re-encoding to a portable PNG via AppKit. `image` may be nil when
+    /// AppKit failed to decode but the raw bytes are still a valid image.
+    private func encodePNG(from image: NSImage?, original data: Data) -> Data? {
         // Try the source bytes directly first — already a valid PNG most of the
         // time for screenshots, which avoids an extra decode/encode pass.
         if let rep = NSBitmapImageRep(data: data),
@@ -182,7 +218,7 @@ extension EditorTextView {
             return png
         }
         // Fall back to decoding through NSImage (handles TIFF and other forms).
-        guard let tiff = image.tiffRepresentation,
+        guard let tiff = image?.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff),
               let png = rep.representation(using: .png, properties: [:]) else {
             return nil

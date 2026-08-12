@@ -1102,7 +1102,14 @@ extension Document: NSToolbarDelegate {
         item.paletteLabel = label
         item.toolTip = tooltip
         item.visibilityPriority = .high
-        let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: label) ?? NSImage(),
+        // Set `image` in addition to `view`. A custom-view NSToolbarItem is
+        // draggable in the “Customize Toolbar…” palette only when it also
+        // carries an `image`; with `view` alone macOS renders the palette
+        // entry as a non-draggable placeholder, which is why items could be
+        // seen in the panel but never dragged onto / off the bar.
+        let symbolImage = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        item.image = symbolImage
+        let button = NSButton(image: symbolImage ?? NSImage(),
                               target: nil, action: action)
         button.bezelStyle = .texturedRounded
         button.imagePosition = .imageOnly
@@ -1141,9 +1148,11 @@ extension Document: NSToolbarDelegate {
             item.paletteLabel = "侧边栏"
             item.toolTip = "展开/收起侧边栏"
             item.visibilityPriority = .high
+            // Also set `image` so the item is draggable in the Customize panel.
+            let sidebarImage = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: "侧边栏")
+            item.image = sidebarImage
 
-            let button = NSButton(image: NSImage(systemSymbolName: "sidebar.left",
-                                                accessibilityDescription: "侧边栏") ?? NSImage(),
+            let button = NSButton(image: sidebarImage ?? NSImage(),
                                   target: self, action: #selector(toggleSidebar(_:)))
             button.bezelStyle = .texturedRounded
             button.imagePosition = .imageOnly
@@ -1159,6 +1168,8 @@ extension Document: NSToolbarDelegate {
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
         item.label = "视图模式"
         item.visibilityPriority = .high
+        // Also set `image` so the item is draggable in the Customize panel.
+        item.image = icon(for: editor.viewMode)
 
         // Left-click toggles the editing view ↔ Read. The right-click mode menu
         // is handled upstream in DocumentWindow.sendEvent — every view-level
