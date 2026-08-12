@@ -162,7 +162,10 @@ final class FileSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     /// Returns child nodes (folders first, then files), filtering to formats
     /// Edmund can open. Hidden files/directories are skipped.
-    private static func listOpenableEntries(in dirURL: URL) -> [SidebarNode] {
+    /// `nonisolated`: pure file-system work run on a background queue — it must
+    /// not be main-actor isolated (Swift 6 strict concurrency), even though it
+    /// lives on an `NSView` subclass.
+    private static nonisolated func listOpenableEntries(in dirURL: URL) -> [SidebarNode] {
         let fm = FileManager.default
         guard let urls = try? fm.contentsOfDirectory(
             at: dirURL,
