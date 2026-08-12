@@ -16,15 +16,111 @@ class Document: NSDocument, HeadingNavigable {
     private var sidebarButton: NSButton?
     private static let sidebarItemID = NSToolbarItem.Identifier("sidebar")
 
-    // Toolbar quick-format buttons (bold / italic / code / heading / link / list).
+    // Toolbar format buttons.
     // Lightweight icon-only toggles that route through the responder chain to
-    // the focused editor — no resident cost on the open/秒开 path.
-    private static let fmtBoldItemID = NSToolbarItem.Identifier("fmtBold")
-    private static let fmtItalicItemID = NSToolbarItem.Identifier("fmtItalic")
-    private static let fmtCodeItemID = NSToolbarItem.Identifier("fmtCode")
-    private static let fmtHeadingItemID = NSToolbarItem.Identifier("fmtHeading")
-    private static let fmtLinkItemID = NSToolbarItem.Identifier("fmtLink")
-    private static let fmtListItemID = NSToolbarItem.Identifier("fmtList")
+    // the focused editor — no resident cost on the open/秒开 path. The full set
+    // below is exposed in the toolbar's "Customize Toolbar…" palette, so the
+    // user can drag the format commands they use most onto the visible toolbar.
+    private struct FormatSpec {
+        let id: NSToolbarItem.Identifier
+        let symbol: String
+        let label: String
+        let tooltip: String
+        let action: Selector
+    }
+
+    // The complete, data-driven catalog of format commands exposed to the
+    // customizable toolbar. Only the ones the user actually drags onto the bar
+    // get an NSToolbarItem instance (created lazily in `itemForItemIdentifier`),
+    // so unused palette entries cost nothing at runtime / on the open path.
+    private static let formatToolbarCatalog: [FormatSpec] = [
+        FormatSpec(id: NSToolbarItem.Identifier("fmtBold"), symbol: "bold",
+            label: "粗体", tooltip: "粗体 (⌘B)",
+            action: #selector(EditorTextView.formatBold(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtItalic"), symbol: "italic",
+            label: "斜体", tooltip: "斜体 (⌘I)",
+            action: #selector(EditorTextView.formatItalic(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtUnderline"), symbol: "underline",
+            label: "下划线", tooltip: "下划线 (⌘U)",
+            action: #selector(EditorTextView.formatUnderline(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtStrikethrough"), symbol: "strikethrough",
+            label: "删除线", tooltip: "删除线",
+            action: #selector(EditorTextView.formatStrikethrough(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtHighlight"), symbol: "highlighter",
+            label: "高亮", tooltip: "高亮",
+            action: #selector(EditorTextView.formatHighlight(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtCode"), symbol: "chevron.left.forwardslash.chevron.right",
+            label: "行内代码", tooltip: "行内代码",
+            action: #selector(EditorTextView.formatCode(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtCodeBlock"), symbol: "curlybraces",
+            label: "代码块", tooltip: "代码块",
+            action: #selector(EditorTextView.formatCodeBlock(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtInlineMath"), symbol: "x.squareroot",
+            label: "行内公式", tooltip: "行内公式",
+            action: #selector(EditorTextView.formatInlineMath(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtMathBlock"), symbol: "function",
+            label: "公式块", tooltip: "公式块",
+            action: #selector(EditorTextView.formatMathBlock(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtKeyboard"), symbol: "keyboard",
+            label: "键盘键", tooltip: "键盘键",
+            action: #selector(EditorTextView.formatKeyboard(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtComment"), symbol: "text.bubble",
+            label: "注释", tooltip: "HTML 注释",
+            action: #selector(EditorTextView.formatComment(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtWikilink"), symbol: "link.badge.plus",
+            label: "Wiki 链接", tooltip: "Wiki 链接",
+            action: #selector(EditorTextView.formatWikilink(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtLink"), symbol: "link",
+            label: "链接", tooltip: "链接 (⌘K)",
+            action: #selector(EditorTextView.formatLink(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtImage"), symbol: "photo",
+            label: "图片", tooltip: "插入图片",
+            action: #selector(EditorTextView.formatImage(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtFootnote"), symbol: "number",
+            label: "脚注", tooltip: "脚注",
+            action: #selector(EditorTextView.formatFootnote(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtHeading"), symbol: "textformat.size",
+            label: "标题", tooltip: "标题",
+            action: #selector(EditorTextView.formatHeading(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtBulletedList"), symbol: "list.bullet",
+            label: "项目符号列表", tooltip: "项目符号列表",
+            action: #selector(EditorTextView.formatBulletedList(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtNumberedList"), symbol: "list.number",
+            label: "编号列表", tooltip: "编号列表",
+            action: #selector(EditorTextView.formatNumberedList(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtChecklist"), symbol: "checklist",
+            label: "待办列表", tooltip: "待办列表",
+            action: #selector(EditorTextView.formatChecklist(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtBlockQuote"), symbol: "text.quote",
+            label: "引用块", tooltip: "引用块",
+            action: #selector(EditorTextView.formatBlockQuote(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtThematicBreak"), symbol: "minus",
+            label: "分割线", tooltip: "水平分割线",
+            action: #selector(EditorTextView.formatThematicBreak(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtTable"), symbol: "tablecells",
+            label: "表格", tooltip: "插入表格",
+            action: #selector(EditorTextView.formatTable(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtCallout"), symbol: "lightbulb",
+            label: "Callout", tooltip: "Callout 提示块",
+            action: #selector(EditorTextView.formatCallout(_:))),
+        FormatSpec(id: NSToolbarItem.Identifier("fmtClearFormatting"), symbol: "clear",
+            label: "清除格式", tooltip: "清除选中内容的 Markdown 格式",
+            action: #selector(EditorTextView.clearFormatting(_:))),
+    ]
+
+    /// The format commands shown by default on the toolbar. Users can drag any
+    /// of the full `formatToolbarCatalog` in/out via “Customize Toolbar…” — the
+    /// rest stay in the palette with zero runtime cost.
+    private static var defaultFormatIDs: [NSToolbarItem.Identifier] {
+        [NSToolbarItem.Identifier("fmtBold"), NSToolbarItem.Identifier("fmtItalic"),
+         NSToolbarItem.Identifier("fmtCode"), NSToolbarItem.Identifier("fmtHeading"),
+         NSToolbarItem.Identifier("fmtLink"), NSToolbarItem.Identifier("fmtBulletedList")]
+    }
+
+    /// Look up a format spec by identifier for the toolbar delegate.
+    private static func formatSpec(for id: NSToolbarItem.Identifier) -> FormatSpec? {
+        formatToolbarCatalog.first { $0.id == id }
+    }
 
     /// Sidebar (left file browser) and hover-reveal outline panel (right edge).
     /// Both are lightweight, lazy, and off the editor's open path so they never
@@ -979,15 +1075,16 @@ class Document: NSDocument, HeadingNavigable {
 
 extension Document: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Self.fmtBoldItemID, Self.fmtItalicItemID, Self.fmtCodeItemID,
-         Self.fmtHeadingItemID, Self.fmtLinkItemID, Self.fmtListItemID,
-         .flexibleSpace, Self.sidebarItemID, Self.viewModeItemID]
+        Self.defaultFormatIDs + [.flexibleSpace, Self.sidebarItemID, Self.viewModeItemID]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, .space, Self.sidebarItemID, Self.viewModeItemID,
-         Self.fmtBoldItemID, Self.fmtItalicItemID, Self.fmtCodeItemID,
-         Self.fmtHeadingItemID, Self.fmtLinkItemID, Self.fmtListItemID]
+        // The customizable palette exposes every format command plus the layout
+        // spacers and the app's fixed buttons. Users drag what they use onto the
+        // visible bar; palette-only entries are never instantiated, so this costs
+        // nothing on the open/秒开 path.
+        [.flexibleSpace, .space, Self.sidebarItemID, Self.viewModeItemID]
+            + Self.formatToolbarCatalog.map { $0.id }
     }
 
     /// Builds an icon-only toolbar button that fires `action` through the
@@ -1011,33 +1108,11 @@ extension Document: NSToolbarDelegate {
     func toolbar(_ toolbar: NSToolbar,
                  itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        switch itemIdentifier {
-        case Self.fmtBoldItemID:
-            return makeFormatToolbarItem(id: itemIdentifier, symbol: "bold",
-                label: "粗体", tooltip: "粗体 (⌘B)",
-                action: #selector(EditorTextView.formatBold(_:)))
-        case Self.fmtItalicItemID:
-            return makeFormatToolbarItem(id: itemIdentifier, symbol: "italic",
-                label: "斜体", tooltip: "斜体 (⌘I)",
-                action: #selector(EditorTextView.formatItalic(_:)))
-        case Self.fmtCodeItemID:
-            return makeFormatToolbarItem(id: itemIdentifier, symbol: "chevron.left.forwardslash.chevron.right",
-                label: "代码", tooltip: "代码 (⌘)",
-                action: #selector(EditorTextView.formatCode(_:)))
-        case Self.fmtHeadingItemID:
-            return makeFormatToolbarItem(id: itemIdentifier, symbol: "textformat.size",
-                label: "标题", tooltip: "标题",
-                action: #selector(EditorTextView.formatHeading(_:)))
-        case Self.fmtLinkItemID:
-            return makeFormatToolbarItem(id: itemIdentifier, symbol: "link",
-                label: "链接", tooltip: "链接 (⌘K)",
-                action: #selector(EditorTextView.formatLink(_:)))
-        case Self.fmtListItemID:
-            return makeFormatToolbarItem(id: itemIdentifier, symbol: "list.bullet",
-                label: "列表", tooltip: "项目符号列表 (⌥⌘B)",
-                action: #selector(EditorTextView.formatBulletedList(_:)))
-        default:
-            break
+        // Format commands come from the data-driven catalog — one spec per
+        // palette entry, instantiated only when dragged onto the bar.
+        if let spec = Self.formatSpec(for: itemIdentifier) {
+            return makeFormatToolbarItem(id: spec.id, symbol: spec.symbol,
+                label: spec.label, tooltip: spec.tooltip, action: spec.action)
         }
         if itemIdentifier == Self.sidebarItemID {
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
