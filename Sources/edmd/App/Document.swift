@@ -14,6 +14,13 @@ class Document: NSDocument, HeadingNavigable {
     private var viewModeButton: NSButton?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
 
+    /// Sidebar (left file browser) and hover-reveal outline panel (right edge).
+    /// Both are lightweight, lazy, and off the editor's open path so they never
+    /// cost a millisecond of the instant-open contract.
+    private var fileSidebar: FileSidebar!
+    private var outlinePanel: OutlinePanel!
+    private static let sidebarWidth: CGFloat = 200
+
     /// Session-only zoom scale (View ▸ Actual Size/Zoom In/Zoom Out), applied on
     /// top of the persisted font size and content width. Not saved — each new
     /// window starts back at 100%.
@@ -177,9 +184,12 @@ class Document: NSDocument, HeadingNavigable {
         let statusBarHeight: CGFloat = 22
         let contentBounds = window.contentView!.bounds
 
-        // The text view fills the whole window; the status bar floats over its
-        // bottom edge, revealed on hover.
-        scrollView = NSScrollView(frame: contentBounds)
+        // The text view fills the window to the right of the sidebar (the
+        // sidebar is added below; `layoutEditorArea` keeps their widths in sync).
+        let sidebarInset = AppSettings.sidebarVisible ? Self.sidebarWidth : 0
+        scrollView = NSScrollView(frame: NSRect(x: sidebarInset, y: 0,
+                                                width: max(0, contentBounds.width - sidebarInset),
+                                                height: contentBounds.height))
         scrollView.autoresizingMask = [.width, .height]
         scrollView.hasVerticalScroller = true
         scrollView.scrollerStyle = .overlay
@@ -201,6 +211,33 @@ class Document: NSDocument, HeadingNavigable {
         containerView.autoresizesSubviews = true
         containerView.addSubview(scrollView)
         containerView.addSubview(statusBar)   // overlay, on top of the text
+
+        // Sidebar: left-aligned file browser, lazily lists the opened file's
+        // directory. Hover-reveal outline: pinned to the right edge, hidden.
+        fileSidebar = FileSidebar(frame: NSRect(x: 0, y: 0,
+                                                width: Self.sidebarWidth,
+                                                height: contentBounds.height))
+        fileSidebar.autoresizingMask = [.height]
+        fileSidebar.isHidden = !AppSettings.sidebarVisible
+        fileSidebar.onOpenFile = { [weak self] url in
+            self?.openSidebarFile(url)
+        }
+        containerView.addSubview(fileSidebar, positioned: .below, relativeTo: scrollView)
+
+        outlinePanel = OutlinePanel(frame: NSRect(x: contentBounds.width - OutlinePanel.hoverStripWidth,
+                                                  y: 0,
+                                                  width: OutlinePanel.hoverStripWidth,
+                                                  height: contentBounds.height))
+        outlinePanel.autoresizingMask = [.minXMargin, .height]  // pinned to right edge
+        outlinePanel.onNavigate = { [weak self] offset in
+            self?.editor?.scrollCharacterToTop(offset)
+        }
+        outlinePanel.onRequestOutline = { [weak self] in
+            guard let self else { return }
+            self.outlinePanel.update(outline: self.editor?.outlineHeadings() ?? [])
+        }
+        containerView.addSubview(outlinePanel, positioned: .above, relativeTo: scrollView)
+        outlinePanel.setContainerWidth(contentBounds.width)
 
         window.contentView = containerView
 
@@ -265,6 +302,11 @@ class Document: NSDocument, HeadingNavigable {
         // Save the full frame size; it's restored verbatim via setFrame on the
         // next window, so the size round-trips exactly (no title-bar/toolbar drift).
         AppSettings.lastWindowSize = window.frame.size
+        // Keep the hover-outline's collapsed/expanded frame targeting the current
+        // container width (its autoresizing already pins it to the right edge).
+        if let containerView {
+            outlinePanel?.setContainerWidth(containerView.bounds.width)
+        }
     }
 
     /// Reapply the content-width cap in points when the window moves to a
@@ -309,6 +351,10 @@ class Document: NSDocument, HeadingNavigable {
         updateStatusBar()
         // Keep an open Read view in sync with edits (it renders a snapshot).
         refreshReadView()
+        // Keep a *visible* outline current; hidden, it re-parses on next reveal.
+        if let outlinePanel, !outlinePanel.isHidden {
+            outlinePanel.update(outline: editor?.outlineHeadings() ?? [])
+        }
     }
 
     @objc private func editorSelectionDidChange(_ notification: Notification) {
@@ -379,6 +425,9 @@ class Document: NSDocument, HeadingNavigable {
             warnIfInconsistentLineEndings(in: content)
         }
         updateStatusBar()
+        // Now that `fileURL` and content are set, list this document's directory
+        // in the sidebar (async — never on the open path).
+        refreshSidebar()
     }
 
     /// Warn (once, suppressibly) when an opened file mixed line-ending styles.
@@ -406,6 +455,65 @@ class Document: NSDocument, HeadingNavigable {
     /// once it's on screen (the content has already loaded in showWindows).
     func navigateToHeading(_ heading: String) {
         editor?.scrollToHeading(heading)
+    }
+
+    // MARK: - Sidebar & Outline
+
+    /// Points the sidebar at this document's directory and refreshes the outline
+    /// lazily (the outline re-parses only when its panel is revealed). Called
+    /// whenever the file or its directory can change (open, save-as, toggle).
+    ///
+    /// Opening a real file auto-reveals the sidebar (until the user expresses a
+    /// preference) so the folder's files are immediately visible; an untitled
+    /// document leaves whatever visibility the user last chose.
+    private func refreshSidebar() {
+        guard let fileSidebar else { return }
+        if documentDirectory != nil, !AppSettings.sidebarVisible, !AppSettings.sidebarUserChoice {
+            AppSettings.sidebarVisible = true
+            layoutEditorArea()
+        }
+        guard !fileSidebar.isHidden else { return }
+        fileSidebar.showDirectory(documentDirectory)
+    }
+
+    /// Opens a file clicked in the sidebar through the same document-open path
+    /// the app already uses — no new open route, so instant-open holds.
+    private func openSidebarFile(_ url: URL) {
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) {
+            _, _, error in
+            if let error {
+                Task { @MainActor in
+                    NSAlert(error: error).runModal()
+                }
+            }
+            // The newly opened document refreshes its own sidebar in showWindows.
+        }
+    }
+
+    /// Toggles the sidebar (View ▸ Sidebar). Hides it or reveals it and refreshes
+    /// the listing for the current file. Persisted; the scroll view is re-laid out
+    /// so the editor fills the reclaimed space either way.
+    @objc func toggleSidebar(_ sender: Any?) {
+        AppSettings.sidebarUserChoice = true
+        AppSettings.sidebarVisible.toggle()
+        layoutEditorArea()
+        refreshSidebar()
+    }
+
+    /// Re-positions the sidebar and editor scroll view for the current sidebar
+    /// visibility. The outline panel keeps its own right-edge geometry (collapsed
+    /// strip / revealed panel), fed only the container width.
+    private func layoutEditorArea() {
+        guard let containerView, let scrollView, let fileSidebar, let outlinePanel else { return }
+        let bounds = containerView.bounds
+        let visible = AppSettings.sidebarVisible
+        fileSidebar.isHidden = !visible
+        fileSidebar.frame = NSRect(x: 0, y: 0,
+                                   width: Self.sidebarWidth, height: bounds.height)
+        scrollView.frame = NSRect(x: visible ? Self.sidebarWidth : 0, y: 0,
+                                  width: max(0, bounds.width - (visible ? Self.sidebarWidth : 0)),
+                                  height: bounds.height)
+        outlinePanel.setContainerWidth(bounds.width)
     }
 
     // MARK: - Rename & Move (manual — NSDocument's built-in versions
@@ -760,6 +868,9 @@ class Document: NSDocument, HeadingNavigable {
             item.state = AppSettings.autoHideToolbar ? .on : .off
             // Nothing to auto-hide with the toolbar switched off entirely.
             return AppSettings.showToolbar
+        }
+        if item.action == #selector(toggleSidebar(_:)) {
+            item.state = AppSettings.sidebarVisible ? .on : .off
         }
         return super.validateMenuItem(item)
     }

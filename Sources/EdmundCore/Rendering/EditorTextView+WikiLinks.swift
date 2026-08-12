@@ -189,4 +189,62 @@ extension EditorTextView {
         }
         return nil
     }
+
+    // MARK: Document outline
+
+    /// A heading entry for the on-demand document outline (TOC) panel: its ATX
+    /// level (1…6), display text, and the character offset its line starts at.
+    public struct OutlineHeading: Sendable {
+        public let level: Int
+        public let text: String
+        public let offset: Int
+
+        public init(level: Int, text: String, offset: Int) {
+            self.level = level
+            self.text = text
+            self.offset = offset
+        }
+    }
+
+    /// Lightweight scan of `rawSource` for ATX headings (`#`…`######`). This is
+    /// deliberately a line-by-line parse — no block engine, no regex — so it
+    /// stays O(lines) and trivially cheap. The outline panel calls it only when
+    /// it becomes visible, and re-calls it on edit while visible; both are
+    /// negligible against the editor's existing per-keystroke syntax work.
+    public func outlineHeadings() -> [OutlineHeading] {
+        var result: [OutlineHeading] = []
+        let source = rawSource as NSString
+        var lineStart = 0
+        while lineStart <= source.length {
+            let lineEnd = source.rangeOfCharacter(
+                from: CharacterSet.newlines,
+                options: [], range: NSRange(location: lineStart, length: source.length - lineStart))
+            let lineLength = (lineEnd.location == NSNotFound ? source.length : lineEnd.location) - lineStart
+            let line = source.substring(with: NSRange(location: lineStart, length: lineLength))
+            if let (level, text) = Self.parseHeadingLine(line) {
+                result.append(OutlineHeading(level: level, text: text, offset: lineStart))
+            }
+            if lineEnd.location == NSNotFound { break }
+            lineStart = lineEnd.location + 1
+        }
+        return result
+    }
+
+    /// Extracts `(level, text)` from an ATX heading line, or nil if the line
+    /// isn't one. Skips `#` that are part of a `####` block-ref / comment tail
+    /// only by requiring at least one whitespace (or end-of-line) after the
+    /// hashes — the same rule markdown uses for ATX headings.
+    static func parseHeadingLine(_ line: String) -> (level: Int, text: String)? {
+        let chars = Array(line.utf8)
+        var i = 0
+        while i < chars.count && chars[i] == UInt8(ascii: "#") { i += 1 }
+        guard i > 0 else { return nil }
+        // A heading must have the hashes followed by whitespace or the line end.
+        if i < chars.count, chars[i] != UInt8(ascii: " "), chars[i] != UInt8(ascii: "\t") {
+            return nil
+        }
+        let text = Self.headingText(line)
+        guard !text.isEmpty else { return nil }
+        return (level: i, text: text)
+    }
 }

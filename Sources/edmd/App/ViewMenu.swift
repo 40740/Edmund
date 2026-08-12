@@ -48,6 +48,13 @@ enum ViewMenu {
         focusItem.state = AppSettings.focusMode ? .on : .off
         viewMenu.addItem(focusItem)
 
+        // Left file sidebar. Target nil routes through the responder chain to the
+        // key window's Document, which flips the persisted setting and re-lays out.
+        let sidebarItem = MenuCommand(id: "view.sidebar", group: "视图", title: "侧边栏",
+                                      action: #selector(Document.toggleSidebar(_:))).makeItem()
+        sidebarItem.state = AppSettings.sidebarVisible ? .on : .off
+        viewMenu.addItem(sidebarItem)
+
         // View-mode toggle (Edit ↔ Read) + the Source-mode checkbox.
         viewMenu.addItem(.separator())
         viewMenu.addItem(FormatMenu.viewModeToggleItem())
