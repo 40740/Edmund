@@ -144,9 +144,20 @@ extension EditorTextView {
         }
 
         // Encode as PNG regardless of the source representation so the saved
-        // file is always a portable PNG.
-        let pngData = encodePNG(from: image, original: data)
-            ?? (looksLikeSupportedImage(data) ? data : nil)
+        // file is always a portable PNG. If PNG encoding fails but the bytes are
+        // already a valid image, save them verbatim with their own extension so
+        // the paste never silently drops to a blank.
+        var useJpegExtension = false
+        let pngData: Data?
+        if let encoded = encodePNG(from: image, original: data) {
+            pngData = encoded
+        } else if looksLikeSupportedImage(data) {
+            // Saving the raw bytes verbatim; keep the matching extension.
+            pngData = data
+            useJpegExtension = !looksLikePNG(data)
+        } else {
+            pngData = nil
+        }
         guard let pngData else {
             // We have image bytes but could not produce anything savable.
             // Never fall through to a blank default paste — tell the user.
@@ -164,7 +175,7 @@ extension EditorTextView {
         let imagesDir = dir.appendingPathComponent("images", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
-            let ext = (pngData === data && !looksLikePNG(data)) ? "jpg" : "png"
+            let ext = useJpegExtension ? "jpg" : "png"
             let name = "\(sanitizedPrefix(nameHint))-\(Int(Date().timeIntervalSince1970)).\(ext)"
             let fileURL = imagesDir.appendingPathComponent(name)
             try pngData.write(to: fileURL)
@@ -197,14 +208,14 @@ extension EditorTextView {
 
     /// Whether `data` starts with the PNG signature.
     private func looksLikePNG(_ data: Data) -> Bool {
-        data.starts(with: [0x89, 0x50, 0x4E, 0x47])
+        data.starts(with: [0x89, 0x50, 0x4E, 0x47] as [UInt8])
     }
 
     /// Whether `data` looks like a supported image we can save verbatim when
     /// AppKit's PNG re-encode unexpectedly fails (PNG / JPEG).
     private func looksLikeSupportedImage(_ data: Data) -> Bool {
         looksLikePNG(data)
-            || data.starts(with: [0xFF, 0xD8, 0xFF])   // JPEG
+            || data.starts(with: [0xFF, 0xD8, 0xFF] as [UInt8])   // JPEG
     }
 
     /// Encode an image to PNG data, decoding the source bytes (PNG or TIFF)

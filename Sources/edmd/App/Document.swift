@@ -1169,7 +1169,7 @@ extension Document: NSToolbarDelegate {
         item.label = "视图模式"
         item.visibilityPriority = .high
         // Also set `image` so the item is draggable in the Customize panel.
-        item.image = icon(for: editor.viewMode)
+        if let mode = editor?.viewMode { item.image = icon(for: mode) }
 
         // Left-click toggles the editing view ↔ Read. The right-click mode menu
         // is handled upstream in DocumentWindow.sendEvent — every view-level
