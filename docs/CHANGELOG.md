@@ -3,6 +3,16 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.17.0] - 2026-08-12
+
+### Fixed
+- **截图 / 微信截图粘贴仍空白**：上一版加固了 PNG 重编码失败的兜底，但用户实测微信截图 / 部分系统截图仍空白。根因是这些工具把图片注册在**私有 UTI** 上，`pasteboard.data(forType:)` 对常见的 `.png/.tiff/.public.jpeg/.public.image` 都取不到数据，导致 `pasteImageIfPresent` 判定“没有图”，最终回退到默认粘贴渲染成空白。修复：新增 `NSImage(pasteboard:)` 兜底检测与重编码（图片检测与取数都加这一最后手段），任何 AppKit 能解码的剪贴板图片都会被保存并插入 `![](...)`，不再静默空白。
+- **未保存文档粘贴图片被“请先保存”挡住**：此前在未保存的新文档里粘贴图片只会弹「请先保存文档」，用户保存后仍需再粘贴一次，体验割裂。修复：现在粘贴图片时会**自动保存文档**（新文档弹标准保存面板），保存完成后**自动重试粘贴**，一步到位、图片不丢。
+- **按错键的提示音**：按到未绑定任何命令的按键组合时，AppKit 会把它路由到 `noop:` 并由 `NSTextView` 播报警音（“按错键”的哔声）。修复：`doCommand(by:)` 直接吞掉 `noop:`，未绑定按键不再哔声，所有真实编辑命令不受影响。
+
+### 秒开 / 轻量化保证
+- 所有改动只在“粘贴那一刻”或“按键那一刻”触发，不引入定时器 / 监听 / 索引 / 网络 / 常驻资源，完全不碰打开 / 保存路径。
+
 ## [5.16.0] - 2026-08-12
 
 ### Fixed

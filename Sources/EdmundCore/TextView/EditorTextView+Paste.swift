@@ -82,6 +82,11 @@ extension EditorTextView {
                                           "webp", "bmp", "tiff", "tif", "heic", "heif"]
             if imageExts.contains(ext) { return true }
         }
+        // Last resort: let AppKit decide whether the board holds an image. Some
+        // clip tools (WeChat, several screenshot utilities) register the picture
+        // under a private UTI that `data(forType:)` for the well-known types
+        // above won't return, but `NSImage(pasteboard:)` still decodes.
+        if NSImage(pasteboard: pasteboard) != nil { return true }
         return false
     }
 
@@ -111,6 +116,15 @@ extension EditorTextView {
                     return pasteImageData(fileData, image: img, nameHint: url.deletingPathExtension().lastPathComponent)
                 }
             }
+            // Last resort: `NSImage(pasteboard:)` decodes images some tools put
+            // on the board under a private UTI (WeChat screenshots etc.). Re-encode
+            // whatever AppKit can read into a PNG so we can still save + insert it.
+            if let image = NSImage(pasteboard: pasteboard),
+               let tiff = image.tiffRepresentation,
+               let rep = NSBitmapImageRep(data: tiff),
+               let png = rep.representation(using: .png, properties: [:]) {
+                return pasteImageData(png, image: image, nameHint: "paste")
+            }
             return false
         }
         let image = NSImage(data: data)
@@ -127,19 +141,30 @@ extension EditorTextView {
     /// the image as a PNG, insert the `![](...)` reference, and (crucially)
     /// never fall through to a default paste that would render a blank.
     private func pasteImageData(_ data: Data, image: NSImage?, nameHint: String) -> Bool {
-        guard let dir = document?.fileURL?.deletingLastPathComponent() else {
-            // The document hasn't been saved to disk yet, so there's no folder
-            // beside it to write the image into. Tell the user to save first so
-            // the image isn't silently dropped. Returning `true` (handled) also
-            // stops the caller from falling through to a blank default paste.
+        guard let doc = document else {
+            // No owning document at all — there's nothing to write beside.
             NSSound.beep()
             if let window = window {
                 let alert = NSAlert()
-                alert.messageText = "请先保存文档"
-                alert.informativeText = "粘贴图片需要先把文档保存到磁盘（图片会存放在文档旁的 images/ 文件夹）。请先 ⌘S 保存，再粘贴图片。"
-                alert.alertStyle = .informational
+                alert.messageText = "无法粘贴图片"
+                alert.informativeText = "没有可写入的文档。请先新建或打开一个文档，再粘贴图片。"
+                alert.alertStyle = .warning
                 alert.beginSheetModal(for: window)
             }
+            return true
+        }
+        guard let dir = doc.fileURL?.deletingLastPathComponent() else {
+            // The document exists but isn't on disk yet, so there's no folder
+            // beside it to write the image into. Instead of making the user do
+            // a manual save-then-paste dance, auto-save the document now (this
+            // presents the standard Save panel for a brand-new file), then retry
+            // the paste once the save completes. Returning `true` (handled) also
+            // stops the caller from falling through to a blank default paste.
+            pendingImagePaste = PendingImagePaste(data: data, image: image, nameHint: nameHint)
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(documentDidSave(_:)),
+                name: Notification.Name("NSDocumentDidSaveNotification"), object: doc)
+            doc.save(self)
             return true
         }
 
@@ -235,5 +260,36 @@ extension EditorTextView {
             return nil
         }
         return png
+    }
+
+    // MARK: - Auto-save then retry paste
+    //
+    // When an image is pasted into a document that isn't on disk yet, we can't
+    // know where to write the `images/` folder. Rather than drop the image or
+    // make the user do a manual save-then-paste dance, we auto-save the document
+    // first (a brand-new file shows the standard Save panel), then re-run the
+    // paste once the save has completed.
+
+    /// The paste queued behind an in-flight auto-save.
+    struct PendingImagePaste {
+        let data: Data
+        let image: NSImage?
+        let nameHint: String
+    }
+
+    /// Called when the owning document finishes saving. If we had queued an
+    /// image paste behind an auto-save, retry it now that `fileURL` is set.
+    @objc private func documentDidSave(_ note: Notification) {
+        guard let doc = document,
+              (note.object as? NSDocument) === doc,
+              let pending = pendingImagePaste,
+              doc.fileURL != nil
+        else {
+            return
+        }
+        pendingImagePaste = nil
+        NotificationCenter.default.removeObserver(
+            self, name: Notification.Name("NSDocumentDidSaveNotification"), object: doc)
+        _ = pasteImageData(pending.data, image: pending.image, nameHint: pending.nameHint)
     }
 }

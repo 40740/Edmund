@@ -32,6 +32,11 @@ public class EditorTextView: NSTextView {
     /// Set by Document.makeWindowControllers(). Not available in unit tests.
     public weak var document: NSDocument?
 
+    /// An image paste queued behind an in-flight auto-save (the document wasn't
+    /// on disk yet, so we saved it first, then retry the paste). See
+    /// EditorTextView+Paste.swift. Not in unit tests.
+    var pendingImagePaste: PendingImagePaste?
+
     // MARK: - Find
 
     /// Character ranges of the current search's matches, in raw/display index
