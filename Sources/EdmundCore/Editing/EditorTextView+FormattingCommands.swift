@@ -71,22 +71,96 @@ extension EditorTextView {
 
     // MARK: - Clear formatting
 
-    /// Strip every inline Markdown formatting marker from the current selection,
-    /// leaving only the plain text. This is a one-shot, selection-scoped edit — it
-    /// never touches the document beyond the selection and uses the same single-undo
-    /// primitive as every other format command, so it has no measurable effect on the
+    /// Strip every Markdown formatting marker from the current selection,
+    /// leaving only the plain text. Handles BOTH inline markers (bold/italic/…)
+    /// and block-level markers — heading `#`, blockquote `>`, and list markers —
+    /// so selecting text inside a heading (or any formatted line) and choosing
+    /// 清除格式 turns the whole line into a plain paragraph.
+    ///
+    /// Operates on the full selected lines (not just the exact selection): the
+    /// block markers sit at the start of each line, outside a word-level
+    /// selection, so they can only be reached by expanding to the line bounds.
+    /// Same single-undo primitive as every other format command, so it keeps the
     /// instant-open / low-footprint contract.
     @objc public func clearFormatting(_ sender: Any?) {
         let ns = rawSource as NSString
         let sel = selectedRange()
         guard sel.length > 0, sel.location <= ns.length else { return }
-        let clamped = NSRange(location: min(sel.location, ns.length),
-                              length: min(sel.length, ns.length - min(sel.location, ns.length)))
-        guard clamped.length > 0 else { return }
-        let cleaned = Self.strippedInlineFormatting(ns.substring(with: clamped))
-        guard cleaned != ns.substring(with: clamped) else { return }
-        applyFormattingEdit(rawRange: clamped, replacement: cleaned,
-                            select: NSRange(location: clamped.location, length: (cleaned as NSString).length))
+        let ctx = selectedLineContext()
+        let newLines = ctx.lines.map(Self.strippedLineFormatting)
+        var replacement = newLines.joined(separator: "\n")
+        if ctx.trailingNewline { replacement += "\n" }
+        let oldText = ns.substring(with: ctx.range)
+        guard replacement != oldText else { return }
+        let selectLen = (replacement as NSString).length - (ctx.trailingNewline ? 1 : 0)
+        applyFormattingEdit(rawRange: ctx.range, replacement: replacement,
+                            select: NSRange(location: ctx.range.location, length: max(0, selectLen)))
+    }
+
+    /// Strip the leading block-level markers from a single line — heading `#…`,
+    /// blockquote `>`, and list markers (`- [ ]`, `- `, `* `, `+ `, `1. `) —
+    /// peeling any that stack (`> # quote-heading`), then hand the result to
+    /// `strippedInlineFormatting` to remove inline markers too. Pure so it is
+    /// unit-testable without an editor instance.
+    static func strippedLineFormatting(_ line: String) -> String {
+        var s = line
+        while let rest = Self.leadingBlockMarkerRest(s), rest != s {
+            s = rest
+        }
+        return strippedInlineFormatting(s)
+    }
+
+    /// Returns the line with one leading block-level marker removed, or the
+    /// original line if none is found. Pure and testable.
+    static func leadingBlockMarkerRest(_ line: String) -> String {
+        let ns = line as NSString
+        guard ns.length > 0 else { return line }
+        // Heading: 1–6 `#` then a space/tab.
+        if ns.character(at: 0) == 0x23 {  // '#'
+            var i = 0
+            while i < ns.length, i < 6, ns.character(at: i) == 0x23 { i += 1 }
+            if i < ns.length, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 {
+                return ns.substring(from: i + 1)
+            }
+            return line
+        }
+        // Blockquote: `>` then an optional single space.
+        if ns.character(at: 0) == 0x3E {  // '>'
+            var i = 1
+            if i < ns.length, ns.character(at: i) == 0x20 { i += 1 }
+            return ns.substring(from: i)
+        }
+        // Checklist: `- [ ] ` / `- [x] ` / `- [X] `.
+        if Self.isChecklistPrefix(line) { return String(line.dropFirst(6)) }
+        // Plain bullet: `- `, `* `, `+ `.
+        if ns.length >= 2 {
+            let two = String(line.prefix(2))
+            if two == "- " || two == "* " || two == "+ " { return String(line.dropFirst(2)) }
+        }
+        // Numbered: `N. ` / `N) ` (digits, delimiter, then a space).
+        if let rest = Self.numberedMarkerRest(ns) { return rest }
+        return line
+    }
+
+    private static func isChecklistPrefix(_ line: String) -> Bool {
+        let ns = line as NSString
+        return ns.length >= 6
+            && ns.substring(to: 3) == "- ["
+            && ns.substring(with: NSRange(location: 4, length: 2)) == "] "
+    }
+
+    private static func numberedMarkerRest(_ ns: NSString) -> String? {
+        var i = 0
+        while i < ns.length {
+            let c = ns.character(at: i)
+            if c >= 0x30, c <= 0x39 { i += 1; continue }
+            break
+        }
+        guard i > 0, i + 1 < ns.length else { return nil }
+        let c = ns.character(at: i)
+        guard c == 0x2E || c == 0x29 else { return nil }  // '.' or ')'
+        guard ns.character(at: i + 1) == 0x20 else { return nil }  // space
+        return ns.substring(from: i + 2)
     }
 
     /// Removes inline Markdown formatting markers from a string, returning the
@@ -192,6 +266,11 @@ extension EditorTextView {
         add("复制", #selector(NSText.copy(_:)))
         add("粘贴", #selector(NSText.paste(_:)))
         add("全选", #selector(NSText.selectAll(_:)))
+        menu.addItem(.separator())
+        // Top-level 清除格式: clears every marker (inline + block) on the
+        // selection in one step. Registered in `formattingActions`, so it is
+        // auto-disabled in Reading mode via validateMenuItem.
+        add("清除格式", #selector(clearFormatting(_:)))
         menu.addItem(.separator())
         if let provider = Self.contextFontMenuProvider {
             let fontItem = NSMenuItem(title: "字体", action: nil, keyEquivalent: "")

@@ -626,4 +626,44 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         e.clearFormatting(nil)
         #expect(e.rawSource == "**bold**")
     }
+
+    // MARK: Block-level markers (headings / blockquote / lists)
+
+    @Test func stripsHeading() {
+        // Selection sits on the heading text; the `# ` prefix is outside it.
+        let e = mk("# 大标题", NSRange(location: 2, length: 3))
+        e.clearFormatting(nil)
+        #expect(e.rawSource == "大标题")
+    }
+
+    @Test func stripsDeepHeading() {
+        let e = mk("### 三级标题", NSRange(location: 5, length: 4))
+        e.clearFormatting(nil)
+        #expect(e.rawSource == "三级标题")
+    }
+
+    @Test func stripsBlockquote() {
+        let e = mk("> 引用内容", NSRange(location: 2, length: 4))
+        e.clearFormatting(nil)
+        #expect(e.rawSource == "引用内容")
+    }
+
+    @Test func stripsListMarkers() {
+        let e = mk("- 列表项\n* 第二项\n1. 第三项\n- [ ] 待办", NSRange(location: 0, length: 30))
+        e.clearFormatting(nil)
+        #expect(e.rawSource == "列表项\n第二项\n第三项\n待办")
+    }
+
+    @Test func stripsStackedBlockMarkers() {
+        // Blockquote wrapping a heading: both markers peeled.
+        #expect(EditorTextView.strippedLineFormatting("> # 引言") == "引言")
+        #expect(EditorTextView.strippedLineFormatting("# **粗标题**") == "粗标题")
+    }
+
+    @Test func pureLineHelpersAreTestable() {
+        #expect(EditorTextView.leadingBlockMarkerRest("# 标题") == "标题")
+        #expect(EditorTextView.leadingBlockMarkerRest("标题") == "标题")
+        #expect(EditorTextView.leadingBlockMarkerRest("- 项") == "项")
+        #expect(EditorTextView.leadingBlockMarkerRest("1. 项") == "项")
+    }
 }
