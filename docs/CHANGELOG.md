@@ -3,6 +3,32 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.11.0] - 2026-08-12
+
+### Added
+- **编辑模式「清除格式」命令**：在格式菜单的醒目位置（分隔线之后）新增「清除格式」。选中一段文本后点击，一键剥离其中所有内联 Markdown 格式标记，只保留纯文本。支持混合 / 相邻 / 嵌套格式（如 `***nested***` → `nested`），未成对的孤立标记（如 `a * b`、`** unmatched`）保留不动。
+
+  | 标记 | 示例 | 结果 |
+  |---|---|---|
+  | 粗体 | `**bold**` / `__bold__` | `bold` |
+  | 斜体 | `*italic*` / `_italic_` | `italic` |
+  | 代码 | `` `code` `` | `code` |
+  | 高亮 | `==highlight==` | `highlight` |
+  | 删除线 | `~~strike~~` | `strike` |
+  | 下划线 | `<u>underline</u>` | `underline` |
+  | 键盘 | `<kbd>key</kbd>` | `key` |
+  | 公式 | `$math$` | `math` |
+  | Wiki 链接 | `[[page]]` | `page` |
+  | 链接 | `[text](url)` | `text` |
+  | 图片 | `![alt](img.png)` | `alt` |
+  | 注释 | `<!-- comment -->` | `comment` |
+
+### 秒开 / 轻量化保证
+- 只在**选中文本**上做一次性处理，不碰打开文件路径；固定几组非回溯正则、最多 4 轮，O(选中长度)，与现有格式命令同量级。
+- 不引入任何定时器 / 监听 / 常驻资源，菜单命令点一下即完成，零常驻开销。
+- 走现有 `applyFormattingEdit` 单步撤销，与其它格式命令一致。
+- 阅读模式下该命令自动置灰；打开文件秒开不受任何影响。
+
 ## [5.10.0] - 2026-08-12
 
 ### Changed

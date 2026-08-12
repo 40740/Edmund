@@ -63,6 +63,8 @@ enum FormatMenu {
         menu.addItem(headingSubmenuItem())
         menu.addItem(thematicBreakCommand.makeItem())
         menu.addItem(.separator())
+        menu.addItem(clearFormattingCommand.makeItem())
+        menu.addItem(.separator())
 
         for cmd in listCommands { menu.addItem(cmd.makeItem()) }
         menu.addItem(.separator())
@@ -111,6 +113,11 @@ enum FormatMenu {
 
     private static let thematicBreakCommand = MenuCommand(id: "format.thematicBreak", title: "分隔线",
                     action: #selector(EditorTextView.formatThematicBreak(_:)))
+
+    /// Clear all inline Markdown formatting on the selection, leaving plain text.
+    /// Selection-scoped and cheap, so it fits the秒开/轻量化 contract.
+    private static let clearFormattingCommand = MenuCommand(id: "format.clearFormatting", title: "清除格式",
+                    action: #selector(EditorTextView.clearFormatting(_:)))
 
     private static let footnoteCommand = MenuCommand(id: "format.footnote", title: "脚注",
                     action: #selector(EditorTextView.formatFootnote(_:)))

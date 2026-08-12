@@ -570,3 +570,60 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         #expect(e.rawSource.contains("Line"))
     }
 }
+
+// MARK: - Clear formatting
+
+@MainActor @Suite struct ClearFormattingTests {
+
+    @Test func stripsEveryInlineMarker() {
+        let cases: [(String, String)] = [
+            ("**bold**", "bold"),
+            ("__bold__", "bold"),
+            ("*italic*", "italic"),
+            ("_italic_", "italic"),
+            ("`code`", "code"),
+            ("==highlight==", "highlight"),
+            ("~~strike~~", "strike"),
+            ("<u>underline</u>", "underline"),
+            ("<kbd>key</kbd>", "key"),
+            ("$math$", "math"),
+            ("[[wikilink]]", "wikilink"),
+            ("[link](https://x)", "link"),
+            ("![alt](img.png)", "alt"),
+            ("<!-- comment -->", "comment"),
+        ]
+        for (input, expected) in cases {
+            #expect(EditorTextView.strippedInlineFormatting(input) == expected, "\(input)")
+        }
+    }
+
+    @Test func stripsMixedAndAdjacentFormats() {
+        let e = mk("**bold** and `code` and ==hi==", NSRange(location: 0, length: 30))
+        e.clearFormatting(nil)
+        #expect(e.rawSource == "bold and code and hi")
+    }
+
+    @Test func stripsNestedEmphasis() {
+        let e = mk("***nested***", NSRange(location: 0, length: 12))
+        e.clearFormatting(nil)
+        #expect(e.rawSource == "nested")
+    }
+
+    @Test func leavesPlainTextUntouched() {
+        let e = mk("plain text", NSRange(location: 0, length: 10))
+        e.clearFormatting(nil)
+        #expect(e.rawSource == "plain text")
+    }
+
+    @Test func leavesStrayMarkersAlone() {
+        // A lone `*` or unmatched `**` is not a marker and must survive.
+        #expect(EditorTextView.strippedInlineFormatting("a * b") == "a * b")
+        #expect(EditorTextView.strippedInlineFormatting("** unmatched") == "** unmatched")
+    }
+
+    @Test func noSelectionDoesNothing() {
+        let e = mk("**bold**", NSRange(location: 0, length: 0))
+        e.clearFormatting(nil)
+        #expect(e.rawSource == "**bold**")
+    }
+}

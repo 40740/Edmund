@@ -69,6 +69,72 @@ extension EditorTextView {
     @objc public func formatKeyboard(_ sender: Any?)      { toggleInlineWrap(open: "<kbd>", close: "</kbd>", expandToWord: true) }
     @objc public func formatComment(_ sender: Any?)       { toggleInlineWrap(open: "<!-- ", close: " -->", expandToWord: true) }
 
+    // MARK: - Clear formatting
+
+    /// Strip every inline Markdown formatting marker from the current selection,
+    /// leaving only the plain text. This is a one-shot, selection-scoped edit — it
+    /// never touches the document beyond the selection and uses the same single-undo
+    /// primitive as every other format command, so it has no measurable effect on the
+    /// instant-open / low-footprint contract.
+    @objc public func clearFormatting(_ sender: Any?) {
+        let ns = rawSource as NSString
+        let sel = selectedRange()
+        guard sel.length > 0, sel.location <= ns.length else { return }
+        let clamped = NSRange(location: min(sel.location, ns.length),
+                              length: min(sel.length, ns.length - min(sel.location, ns.length)))
+        guard clamped.length > 0 else { return }
+        let cleaned = Self.strippedInlineFormatting(ns.substring(with: clamped))
+        guard cleaned != ns.substring(with: clamped) else { return }
+        applyFormattingEdit(rawRange: clamped, replacement: cleaned,
+                            select: NSRange(location: clamped.location, length: (cleaned as NSString).length))
+    }
+
+    /// Removes inline Markdown formatting markers from a string, returning the
+    /// plain text. Handles the markers Edmund's inline style commands insert:
+    ///   bold `**…**` / `__…__`, italic `*…*` / `_…_`, code `` `…` ``,
+    ///   highlight `==…==`, strikethrough `~~…~~`, underline `<u>…</u>`,
+    ///   keyboard `<kbd>…</kbd>`, inline math `$…$`, wikilink `[[…]]`,
+    ///   link `[text](url)` and comment `<!-- … -->`.
+    ///
+    /// Runs a bounded number of passes (so nested/adjacent markers are peeled)
+    /// with a tiny fixed set of non-backtracking regexes — cost is proportional to
+    /// the selection length, negligible for interactive use. Purely functional so
+    /// it is unit-testable without an editor instance.
+    static func strippedInlineFormatting(_ s: String) -> String {
+        let patterns: [(String, String)] = [
+            // Links & wikilinks first (their brackets would otherwise be
+            // mistaken for emphasis delimiters).
+            (#"!?\[([^\]]*)\]\([^)]*\)"#, "$1"),   // [text](url) / ![alt](url) → text/alt
+            (#"\[\[([^\]]*)\]\]"#, "$1"),            // [[text]] → text
+            (#"<!--\s*([\s\S]*?)\s*-->"#, "$1"),      // <!-- text --> → text
+            (#"<u>([\s\S]*?)</u>"#, "$1"),             // <u>text</u> → text
+            (#"<kbd>([\s\S]*?)</kbd>"#, "$1"),         // <kbd>text</kbd> → text
+            (#"`([^`]+)`"#, "$1"),                       // `code` → code
+            (#"==([\s\S]*?)=="#, "$1"),                 // ==highlight== → highlight
+            (#"~~([\s\S]*?)~~"#, "$1"),                 // ~~strike~~ → strike
+            (#"\$([^\n$]+)\$"#, "$1"),                 // $math$ → math
+            (#"\*\*([\s\S]*?)\*\*"#, "$1"),          // **bold** → bold
+            (#"__([\s\S]*?)__"#, "$1"),                 // __bold__ → bold
+            (#"\*([^*\n]+)\*"#, "$1"),                 // *italic* → italic
+            (#"_([^_\n]+)_"#, "$1"),                     // _italic_ → italic
+        ]
+        var out = s
+        // Peel nested/adjacent markers by running the whole pattern set a few times;
+        // each pass only removes complete marker pairs, so it terminates quickly.
+        for _ in 0..<4 {
+            var changed = false
+            for (pattern, template) in patterns {
+                guard let re = try? NSRegularExpression(pattern: pattern) else { continue }
+                let ns = out as NSString
+                let range = NSRange(location: 0, length: ns.length)
+                let replaced = re.stringByReplacingMatches(in: out, range: range, withTemplate: template)
+                if replaced != out { changed = true; out = replaced }
+            }
+            if !changed { break }
+        }
+        return out
+    }
+
     // MARK: - Inline links
     // Link / Image: caret in `()` so URL can be typed next.
     // Wikilink:     expands to the current word at caret (expandToWord: true).
@@ -176,6 +242,7 @@ extension EditorTextView {
     }
 
     static let formattingActions: Set<Selector> = [
+        #selector(clearFormatting(_:)),
         #selector(formatBold(_:)), #selector(formatItalic(_:)), #selector(formatUnderline(_:)),
         #selector(formatStrikethrough(_:)), #selector(formatHighlight(_:)), #selector(formatCode(_:)),
         #selector(formatInlineMath(_:)), #selector(formatKeyboard(_:)), #selector(formatComment(_:)),
