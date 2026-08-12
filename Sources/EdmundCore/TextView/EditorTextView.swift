@@ -37,6 +37,17 @@ public class EditorTextView: NSTextView {
     /// EditorTextView+Paste.swift. Not in unit tests.
     var pendingImagePaste: PendingImagePaste?
 
+    /// The document the queued paste is waiting on (weak; only set while a
+    /// paste is queued behind a save).
+    weak var pendingSaveDocument: NSDocument?
+
+    /// KVO observation of `pendingSaveDocument.fileURL`: on current macOS the
+    /// save notification is never posted, but fileURL becomes non-nil exactly
+    /// when the save lands, which reliably triggers the retry.
+    /// `nonisolated(unsafe)` because deinit (nonisolated) reads it to
+    /// invalidate the observation; all real access is on the main actor.
+    nonisolated(unsafe) var pendingFileURLObservation: NSKeyValueObservation?
+
     // MARK: - Find
 
     /// Character ranges of the current search's matches, in raw/display index
@@ -578,6 +589,10 @@ public class EditorTextView: NSTextView {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+        // A queued image paste can outlive its save trigger if the user never
+        // saves (or cancels the panel). Invalidate the KVO observation so the
+        // token can't fire into a deallocated editor.
+        pendingFileURLObservation?.invalidate()
     }
 
     #if DEBUG

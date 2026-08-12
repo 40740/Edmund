@@ -47,6 +47,20 @@ extension EditorTextView {
         // 3. Otherwise paste as plain text. Ignore an empty string (a clipboard
         //    that only holds an image with a stray empty `.string`).
         if let text = pasteboard.string(forType: .string), !text.isEmpty {
+            // Some clip tools copy a screenshot as nothing but a plain-text
+            // reference — an absolute file path or a `file://` URL — with no
+            // image data and no fileURL type on the board. If the text is such
+            // a reference to an existing image file, insert the image instead
+            // of the raw path.
+            if let url = imageURL(fromPlainText: text),
+               let fileData = try? Data(contentsOf: url) {
+                let img = NSImage(data: fileData)
+                if img != nil || looksLikeSupportedImage(fileData),
+                   pasteImageData(fileData, image: img,
+                                  nameHint: url.deletingPathExtension().lastPathComponent) {
+                    return
+                }
+            }
             // Replace the current selection through the normal editing pipeline.
             // `super.insertText` (not the auto-pair override) so pasting never
             // auto-closes brackets, and the single bulk edit funnels through
@@ -55,7 +69,19 @@ extension EditorTextView {
             return
         }
 
-        // 4. Fall back to NSTextView's default (rich text / other types).
+        // 4. The image exists only as a promised file (WeChat / WeCom and some
+        //    clip tools put screenshots on the board that way — no data, no
+        //    string, no URL). Ask the owning app to write it out, then insert
+        //    the produced file. This must run AFTER the plain-text branch so a
+        //    board that merely *declares* a promised-file content type next to
+        //    a real path string still pastes the path's image as text would.
+        if pasteboardHasImageFilePromise(pasteboard) {
+            Log.info("paste: clipboard image is a promised file; materializing", category: .io)
+            materializePromiseAndPaste(pasteboard)
+            return
+        }
+
+        // 5. Fall back to NSTextView's default (rich text / other types).
         super.paste(sender)
     }
 
@@ -74,9 +100,9 @@ extension EditorTextView {
         for type in imageDataTypes where pasteboard.data(forType: type) != nil {
             return true
         }
-        // A file URL that resolves to an image file.
-        if let fileURL = pasteboard.string(forType: .fileURL),
-           let url = URL(string: fileURL) {
+        // A file URL that resolves to an image file (both the standard
+        // `public.file-url` type and the promised-file URL some tools write).
+        if let url = imageFileURL(from: pasteboard) {
             let ext = url.pathExtension.lowercased()
             let imageExts: Set<String> = ["png", "jpg", "jpeg", "gif", "svg",
                                           "webp", "bmp", "tiff", "tif", "heic", "heif"]
@@ -111,9 +137,9 @@ extension EditorTextView {
             ?? firstImageDataFromAnyType(pasteboard)
         guard let data = rawData else {
             // Might still be a file URL pointing at an image (e.g. a copied
-            // image file in Finder). Resolve it so we can load the picture.
-            if let fileURL = pasteboard.string(forType: .fileURL),
-               let url = URL(string: fileURL),
+            // image file in Finder, or a promised-file URL). Resolve it so we
+            // can load the picture.
+            if let url = imageFileURL(from: pasteboard),
                let fileData = try? Data(contentsOf: url) {
                 let img = NSImage(data: fileData)
                 if img != nil || looksLikeSupportedImage(fileData) {
@@ -129,6 +155,8 @@ extension EditorTextView {
                let png = imagePNGData(image) {
                 return pasteImageData(png, image: image, nameHint: "paste")
             }
+            Log.info("paste: clipboard image could not be read (types: \(pasteboard.types?.map(\.rawValue) ?? []))",
+                     category: .io)
             return false
         }
         let image = NSImage(data: data)
@@ -165,6 +193,24 @@ extension EditorTextView {
             // the paste once the save completes. Returning `true` (handled) also
             // stops the caller from falling through to a blank default paste.
             pendingImagePaste = PendingImagePaste(data: data, image: image, nameHint: nameHint)
+            pendingSaveDocument = doc
+            // Current AppKit (macOS 15+/26) no longer posts
+            // NSDocumentDidSaveNotification for completion-handler saves, so a
+            // notification-only retry never fires and the image is silently
+            // dropped. Watch the document's `fileURL` via KVO instead — it
+            // becomes non-nil exactly when a save (Save panel or autosave)
+            // lands, and the change observation reliably fires. The legacy
+            // notifications are still observed as a belt-and-braces fallback.
+            pendingFileURLObservation = doc.observe(\.fileURL, options: [.new]) { [weak self] observed, _ in
+                MainActor.assumeIsolated {
+                    guard let self,
+                          self.pendingImagePaste != nil,
+                          (self.pendingSaveDocument as? NSObject) === observed,
+                          observed.fileURL != nil
+                    else { return }
+                    self.retryPendingImagePaste()
+                }
+            }
             // Observe the save completion under BOTH spellings of the name:
             // AppKit's `NSDocument` notifications are posted under the dotted
             // raw string `"NSDocument.didSaveNotification"` (there is no Swift
@@ -330,15 +376,29 @@ extension EditorTextView {
 
     /// Called when the owning document finishes saving. If we had queued an
     /// image paste behind an auto-save, retry it now that `fileURL` is set.
+    /// (On current macOS the notification is never posted for completion-based
+    /// saves, so the fileURL KVO observation in `pasteImageData` is the primary
+    /// trigger; this is the fallback for OSes that still post it.)
     @objc private func documentDidSave(_ note: Notification) {
-        guard let doc = document,
-              (note.object as? NSDocument) === doc,
-              let pending = pendingImagePaste,
-              doc.fileURL != nil
-        else {
-            return
-        }
+        guard (note.object as? NSDocument) === document,
+              document?.fileURL != nil,
+              pendingImagePaste != nil
+        else { return }
+        retryPendingImagePaste()
+    }
+
+    /// Runs the queued image paste now that the document has a location.
+    /// Shared by the fileURL KVO trigger and the legacy save notification.
+    private func retryPendingImagePaste() {
+        guard let doc = document, doc.fileURL != nil,
+              let pending = pendingImagePaste else { return }
+        let data = pending.data
+        let image = pending.image
+        let nameHint = pending.nameHint
         pendingImagePaste = nil
+        pendingSaveDocument = nil
+        pendingFileURLObservation?.invalidate()
+        pendingFileURLObservation = nil
         // Remove both spellings we registered for; this is safe even if only one
         // actually fired.
         for name in [
@@ -348,6 +408,146 @@ extension EditorTextView {
             NotificationCenter.default.removeObserver(
                 self, name: name, object: doc)
         }
-        _ = pasteImageData(pending.data, image: pending.image, nameHint: pending.nameHint)
+        _ = pasteImageData(data, image: image, nameHint: nameHint)
+    }
+
+    // MARK: - Image references on the pasteboard
+
+    /// The image file URL a pasteboard points at, if any — either the standard
+    /// `public.file-url` type or the promised-file URL some tools write.
+    private func imageFileURL(from pasteboard: NSPasteboard) -> URL? {
+        for type in [
+            NSPasteboard.PasteboardType.fileURL,
+            NSPasteboard.PasteboardType("com.apple.pasteboard.promised-file-url"),
+        ] {
+            if let s = pasteboard.string(forType: type),
+               let url = URL(string: s) {
+                return url
+            }
+        }
+        return nil
+    }
+
+    /// Whether a plain-text value is actually a reference to an image file
+    /// (an absolute path or a `file://` URL).
+    private func imageURL(fromPlainText text: String) -> URL? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let url: URL?
+        if trimmed.hasPrefix("file://") {
+            url = URL(string: trimmed)
+        } else if trimmed.hasPrefix("/") {
+            url = URL(fileURLWithPath: trimmed)
+        } else {
+            url = nil
+        }
+        guard let url, isImageFileURL(url) else { return nil }
+        return url
+    }
+
+    /// Whether the pasteboard carries a REAL promised file whose content type
+    /// is an image UTI. Such boards hold no raw data at all — the picture only
+    /// exists once the owning app is asked to write it out.
+    ///
+    /// The check is deliberately strict: AppKit synthesizes an
+    /// NSFilePromiseReceiver for ANY board that merely declares
+    /// `com.apple.pasteboard.promised-file-content-type` (some tools write that
+    /// next to a real path string), so we also require the promise-machinery
+    /// bookkeeping types that a genuine promise actually carries.
+    private func pasteboardHasImageFilePromise(_ pasteboard: NSPasteboard) -> Bool {
+        let types = pasteboard.types?.map(\.rawValue) ?? []
+        let hasPromiseBookkeeping = types.contains("com.apple.NSFilePromiseItemMetaData")
+            || types.contains("com.apple.pasteboard.NSFilePromiseID")
+        guard hasPromiseBookkeeping,
+              let receivers = pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self])
+                as? [NSFilePromiseReceiver],
+              let receiver = receivers.first else { return false }
+        let uti = receiver.fileTypes.first ?? ""
+        return isImageUTI(uti)
+    }
+
+    private func isImageUTI(_ uti: String) -> Bool {
+        let u = uti.lowercased()
+        return u.contains("image")
+            || u.hasPrefix("public.png") || u.hasPrefix("public.tiff")
+            || u.hasPrefix("public.jpeg") || u.hasPrefix("public.jpg")
+            || u.hasPrefix("png") || u.hasPrefix("jpg") || u.hasPrefix("jpeg")
+            || u.hasPrefix("gif") || u.hasPrefix("webp") || u.hasPrefix("heic")
+            || u.hasPrefix("heif")
+    }
+
+    /// Asks the pasteboard's first image file promise to materialize into a
+    /// temp folder, then inserts the produced image through the normal path.
+    /// Async: the owning app writes the file on request.
+    private func materializePromiseAndPaste(_ pasteboard: NSPasteboard) {
+        guard let receivers = pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self])
+                as? [NSFilePromiseReceiver],
+              let receiver = receivers.first else { return }
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("edmund-promise-\(UUID().uuidString)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
+        } catch {
+            Log.error("paste: could not create promise destination: \(error)", category: .io)
+            NSSound.beep()
+            return
+        }
+        // The owning app writes the file on request; materialization can take a
+        // moment. If it never lands, surface a visible alert instead of the
+        // silent "nothing happened" the old code produced.
+        var materialized = false
+        let timeout = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, !materialized else { return }
+                Log.error("paste: promised file materialization timed out", category: .io)
+                NSSound.beep()
+                if let window = self.window {
+                    let alert = NSAlert()
+                    alert.messageText = "无法粘贴图片"
+                    alert.informativeText = "剪贴板里的图片来自一个文件承诺（file promise），系统迟迟未能提供数据。请重新截图后重试。"
+                    alert.alertStyle = .warning
+                    alert.beginSheetModal(for: window)
+                }
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: timeout)
+
+        receiver.receivePromisedFiles(atDestination: dest, options: [:],
+                                      operationQueue: .main) { [weak self] _, error in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                materialized = true
+                timeout.cancel()
+                if let error {
+                    Log.error("paste: promised file materialization failed: \(error)", category: .io)
+                    NSSound.beep()
+                    return
+                }
+                guard let produced = (try? FileManager.default.contentsOfDirectory(
+                    at: dest, includingPropertiesForKeys: nil))?
+                    .first(where: { self.isImageFileURL($0) }) else {
+                    Log.info("paste: promised file did not produce an image", category: .io)
+                    NSSound.beep()
+                    return
+                }
+                guard let data = try? Data(contentsOf: produced) else {
+                    NSSound.beep()
+                    return
+                }
+                let image = NSImage(data: data)
+                if image == nil && !self.looksLikeSupportedImage(data) {
+                    NSSound.beep()
+                    return
+                }
+                _ = self.pasteImageData(data, image: image,
+                                        nameHint: produced.deletingPathExtension().lastPathComponent)
+            }
+        }
+    }
+
+    private func isImageFileURL(_ url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        return ["png", "jpg", "jpeg", "gif", "svg",
+                "webp", "bmp", "tiff", "tif", "heic", "heif"].contains(ext)
     }
 }
