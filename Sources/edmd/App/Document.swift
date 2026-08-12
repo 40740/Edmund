@@ -987,7 +987,7 @@ extension Document: NSToolbarDelegate {
             item.visibilityPriority = .high
 
             let button = NSButton(image: NSImage(systemSymbolName: "sidebar.left",
-                                                accessibilityDescription: "侧边栏"),
+                                                accessibilityDescription: "侧边栏") ?? NSImage(),
                                   target: self, action: #selector(toggleSidebar(_:)))
             button.bezelStyle = .texturedRounded
             button.imagePosition = .imageOnly
