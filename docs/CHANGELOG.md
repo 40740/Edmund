@@ -3,6 +3,21 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.0] - 2026-08-12
+
+### Changed
+- **左侧文件侧边栏默认不开启**：移除“打开文件自动显示侧边栏”的逻辑。全新启动 / 打开文档默认就是全屏，和该功能出现前完全一致；仅当你通过工具栏按钮或视图菜单主动展开时才显示。
+- **右上角工具栏新增侧边栏开关**：在“视图模式”旁新增 `sidebar.left` 按钮，点击展开 / 收起左侧文件侧边栏。按钮高亮（accent 色）= 已展开，灰色 = 收起；点开侧边栏里的文件仍走原有秒开路径，换文件后自动指向新目录。视图 ▸ 侧边栏 菜单仍可用（同一开关）。
+
+### Added
+- **大纲加背景（Liquid Glass）+ 字体放大**：大纲展开面板背后新增系统 `NSVisualEffectView`（`.sidebar` material + 圆角），轻量半透明背景，长文档行不再从下方透出与大纲文字叠加；大纲条目字号 12pt → **14pt**、行高 20 → 24，更易读。
+
+### 轻量化保证
+- 打开文件不碰秒开路径（默认侧边栏关，打开即原全屏）。
+- 侧边栏列目录仅点开后异步后台做，关闭时零 IO。
+- 大纲背景 `NSVisualEffectView` 由系统 GPU 硬件加速，仅展开时活动、收起即停。
+- 大纲解析仍仅 hover 时扫一次 O(行数)。
+
 ## [5.9.0] - 2026-08-12
 
 ### Added
