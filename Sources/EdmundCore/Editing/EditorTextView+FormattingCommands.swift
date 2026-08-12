@@ -102,17 +102,19 @@ extension EditorTextView {
     /// peeling any that stack (`> # quote-heading`), then hand the result to
     /// `strippedInlineFormatting` to remove inline markers too. Pure so it is
     /// unit-testable without an editor instance.
-    static func strippedLineFormatting(_ line: String) -> String {
+    nonisolated static func strippedLineFormatting(_ line: String) -> String {
         var s = line
-        while let rest = Self.leadingBlockMarkerRest(s), rest != s {
+        var rest = Self.leadingBlockMarkerRest(s)
+        while rest != s {
             s = rest
+            rest = Self.leadingBlockMarkerRest(s)
         }
         return strippedInlineFormatting(s)
     }
 
     /// Returns the line with one leading block-level marker removed, or the
     /// original line if none is found. Pure and testable.
-    static func leadingBlockMarkerRest(_ line: String) -> String {
+    nonisolated static func leadingBlockMarkerRest(_ line: String) -> String {
         let ns = line as NSString
         guard ns.length > 0 else { return line }
         // Heading: 1–6 `#` then a space/tab.
@@ -142,14 +144,14 @@ extension EditorTextView {
         return line
     }
 
-    private static func isChecklistPrefix(_ line: String) -> Bool {
+    nonisolated private static func isChecklistPrefix(_ line: String) -> Bool {
         let ns = line as NSString
         return ns.length >= 6
             && ns.substring(to: 3) == "- ["
             && ns.substring(with: NSRange(location: 4, length: 2)) == "] "
     }
 
-    private static func numberedMarkerRest(_ ns: NSString) -> String? {
+    nonisolated private static func numberedMarkerRest(_ ns: NSString) -> String? {
         var i = 0
         while i < ns.length {
             let c = ns.character(at: i)
@@ -174,7 +176,7 @@ extension EditorTextView {
     /// with a tiny fixed set of non-backtracking regexes — cost is proportional to
     /// the selection length, negligible for interactive use. Purely functional so
     /// it is unit-testable without an editor instance.
-    static func strippedInlineFormatting(_ s: String) -> String {
+    nonisolated static func strippedInlineFormatting(_ s: String) -> String {
         let patterns: [(String, String)] = [
             // Links & wikilinks first (their brackets would otherwise be
             // mistaken for emphasis delimiters).
