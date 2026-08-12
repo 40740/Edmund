@@ -489,11 +489,14 @@ final class ImageResizeHandleView: NSView {
 
 // MARK: - Associated-object keys
 
-private var imageResizeHandleKey: UInt8 = 0
-private var resizingImageRangeKey: UInt8 = 0
-private var resizingImageDestKey: UInt8 = 0
-private var resizeDragStartKey: UInt8 = 0
-private var resizeNaturalSizeKey: UInt8 = 0
-private var resizeStartWidthKey: UInt8 = 0
-private var resizeStartRectKey: UInt8 = 0
-private let imageResizeTrackingKey = "imageResizeTracking"
+/// Associated-object keys. `nonisolated(unsafe)`: these are only touched from
+/// the main actor (they're backing stored properties of this main-actor view),
+/// so the marker is safe — matching the existing code-copy-button keys.
+private nonisolated(unsafe) var imageResizeHandleKey: UInt8 = 0
+private nonisolated(unsafe) var resizingImageRangeKey: UInt8 = 0
+private nonisolated(unsafe) var resizingImageDestKey: UInt8 = 0
+private nonisolated(unsafe) var resizeDragStartKey: UInt8 = 0
+private nonisolated(unsafe) var resizeNaturalSizeKey: UInt8 = 0
+private nonisolated(unsafe) var resizeStartWidthKey: UInt8 = 0
+private nonisolated(unsafe) var resizeStartRectKey: UInt8 = 0
+private nonisolated(unsafe) let imageResizeTrackingKey = "imageResizeTracking"

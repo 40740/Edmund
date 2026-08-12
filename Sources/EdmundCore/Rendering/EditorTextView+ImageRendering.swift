@@ -151,7 +151,7 @@ extension EditorTextView {
     /// Resolves a destination string to a local file URL. Returns nil for a
     /// remote URL (handled separately, before this is reached) or when a
     /// relative path can't be anchored.
-    private func resolveImageURL(_ destination: String) -> URL? {
+    func resolveImageURL(_ destination: String) -> URL? {
         let dest = destination.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !dest.isEmpty else { return nil }
 
