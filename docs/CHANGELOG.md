@@ -3,7 +3,16 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.20.0] - 2026-08-12
+
+### Changed / Removed
+- **移除「截图 / 剪贴板粘贴图片」功能**：经过 0007–0012 六次补丁反复根治，截图粘贴在微信 / 部分系统截图上依旧不可靠，且带来「粘贴无反应」的负面体验。现彻底移除粘贴图片逻辑（约 500 行），`paste(_:)` 恢复为**纯文本粘贴**（剪贴板有非空文本就按编辑管线插入，否则回退系统默认粘贴）。**拖放图片 / 文件插入功能完全保留**（从 Finder 拖图/文件进编辑器仍自动插入 `![](…)` / `[name](path)` 引用）。
+
+### 秒开 / 轻量化保证
+- 改动只减少粘贴路径代码，不引入任何新开销；拖放图片仍走原有路径，保持秒开 / 轻量化。
+
 ## [5.19.0] - 2026-08-12
+
 
 ### Fixed
 - **未保存文档粘贴图片仍不插入（根治）**：v5.18.0 把自动保存后的重试监听改成了「同时监听带点与不带点的通知名」，但实测发现**新版 macOS 的完成回调式保存（`save(to:ofType:for:completionHandler:)`）根本不再发出 `NSDocumentDidSaveNotification`**（本机 macOS 26 实测：保存成功、`fileURL` 已设置，但 object=doc 的通知一个都不发）——所以 pending 的图片粘贴依然永远不会被重试。修复：改为**监听文档 `fileURL` 的 KVO**——保存落地时 `fileURL` 必然变为非空且 KVO 实测可靠触发，保存完成即自动补插图片；原通知监听保留作兜底（兼容仍会发通知的旧系统）；同时在编辑器销毁时清理观察者，取消保存也不会悬挂泄漏。
