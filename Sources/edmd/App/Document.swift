@@ -1089,6 +1089,11 @@ extension Document: NSToolbarDelegate {
 
     /// Builds an icon-only toolbar button that fires `action` through the
     /// responder chain (nil target), so it always targets the focused editor.
+    /// Each button is sized (`sizeToFit` + explicit min size) and its item
+    /// given matching `minSize`/`maxSize` — without a real size macOS treats
+    /// a custom-view toolbar item as 0×0, which is why buttons couldn't be
+    /// dragged in the “Customize Toolbar…” palette nor removed/added on the
+    /// bar.
     private func makeFormatToolbarItem(id: NSToolbarItem.Identifier, symbol: String,
                                        label: String, tooltip: String,
                                        action: Selector) -> NSToolbarItem {
@@ -1101,8 +1106,24 @@ extension Document: NSToolbarDelegate {
                               target: nil, action: action)
         button.bezelStyle = .texturedRounded
         button.imagePosition = .imageOnly
+        configureToolbarButtonSize(button)
         item.view = button
+        item.minSize = button.frame.size
+        item.maxSize = button.frame.size
         return item
+    }
+
+    /// Gives a toolbar `NSButton` a concrete frame so the owning toolbar item
+    /// is draggable in the Customize Toolbar panel. Without this, macOS treats
+    /// the custom view as 0×0 and the item can't be moved/removed/added.
+    private func configureToolbarButtonSize(_ button: NSButton) {
+        button.sizeToFit()
+        var frame = button.frame
+        // Ensure a sensible minimum hit target so drag/rearrange works even
+        // for very slim icon-only buttons.
+        frame.size.width = max(frame.size.width, 26)
+        frame.size.height = max(frame.size.height, 22)
+        button.frame = frame
     }
 
     func toolbar(_ toolbar: NSToolbar,
@@ -1126,8 +1147,11 @@ extension Document: NSToolbarDelegate {
                                   target: self, action: #selector(toggleSidebar(_:)))
             button.bezelStyle = .texturedRounded
             button.imagePosition = .imageOnly
+            configureToolbarButtonSize(button)
             sidebarButton = button
             item.view = button
+            item.minSize = button.frame.size
+            item.maxSize = button.frame.size
             refreshSidebarButton()
             return item
         }
@@ -1144,8 +1168,11 @@ extension Document: NSToolbarDelegate {
                               action: #selector(toggleViewMode(_:)))
         button.bezelStyle = .texturedRounded
         button.imagePosition = .imageOnly
+        configureToolbarButtonSize(button)
         viewModeButton = button
         item.view = button
+        item.minSize = button.frame.size
+        item.maxSize = button.frame.size
         refreshViewModeButton()
         return item
     }

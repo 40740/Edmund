@@ -61,16 +61,20 @@ extension EditorTextView {
     public override func updateTrackingAreas() {
         super.updateTrackingAreas()
         installCodeCopyTracking()
+        installImageResizeTracking()
     }
 
     public override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
-        updateCodeCopyButton(for: convert(event.locationInWindow, from: nil))
+        let point = convert(event.locationInWindow, from: nil)
+        updateCodeCopyButton(for: point)
+        updateImageResizeHandle(for: point)
     }
 
     public override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         hideCodeCopyButton()
+        hideImageResizeHandle()
     }
 
     /// Repositions the hover button for the point (in text-view coordinates).

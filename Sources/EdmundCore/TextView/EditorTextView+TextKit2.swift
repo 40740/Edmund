@@ -927,7 +927,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
     /// Fragment-local rect for an overlay image, anchored to the character at
     /// the given paragraph-relative offset.
-    private func overlayRect(anchorOffset: Int, overlay: FragmentOverlay) -> CGRect? {
+    func overlayRect(anchorOffset: Int, overlay: FragmentOverlay) -> CGRect? {
         guard let line = textLineFragments.first(where: {
             NSLocationInRange(anchorOffset, $0.characterRange)
         }) ?? textLineFragments.last else { return nil }
@@ -940,6 +940,17 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                       y: baselineY - overlay.bounds.height - overlay.bounds.minY,
                       width: overlay.bounds.width,
                       height: overlay.bounds.height)
+    }
+
+    /// All rendered overlay rects (image/placeholder), in fragment-local
+    /// coordinates, plus the paragraph-relative anchor offset of each. Used by
+    /// the editor to hit-test the mouse against rendered images for the
+    /// drag-to-resize handle.
+    func overlayRects() -> [(offset: Int, rect: CGRect)] {
+        overlays.compactMap { entry in
+            overlayRect(anchorOffset: entry.offset, overlay: entry.overlay)
+                .map { (entry.offset, $0) }
+        }
     }
 
     /// Fragment-local y of the first line's glyph top (baseline minus the

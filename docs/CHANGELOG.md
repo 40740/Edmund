@@ -3,6 +3,21 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.15.0] - 2026-08-12
+
+### Fixed
+- **工具栏「Customize Toolbar…」无法拖拽 / 替换 / 增删按钮**：根因是自定义工具栏按钮（`NSButton`）没有明确尺寸，macOS 把尺寸为 0×0 的自定义视图 toolbar item 视为不可拖动，导致 Customize Toolbar 面板里能看到按钮却拖不到常驻工具栏上，常驻工具栏也无法删减/增加。修复：新增 `configureToolbarButtonSize`，给每个按钮 `sizeToFit()` + 最小尺寸（26×22），并给每个 `NSToolbarItem` 设置与按钮一致的 `minSize`/`maxSize`。现在面板和常驻工具栏的每一项都有真实尺寸，拖拽 / 替换 / 增删全部恢复可用。
+- **截图粘贴仍空白**：若剪贴板确实带图但落不了盘（文档未保存 / 写盘失败），旧逻辑会回退到 `super.paste`——NSTextView 把图片当 `NSTextAttachment` 插入，markdown 编辑器渲染成空白占位。现在：新增 `pasteboardContainsImage` 多类型兜底检测（PNG/TIFF/JPEG/public.image/图片文件 URL）；一旦确实是图但无法落盘，不再回退到会变空白的默认粘贴，而是弹明确提示（未保存 →「请先保存文档」；写盘失败 →「无法保存图片」），绝不静默粘贴空白。
+
+### Added
+- **轻量版图片拖拽缩放**：编辑模式鼠标悬停在已渲染的图片上，图片右下角出现一个 16×16 的缩放手柄；按住拖动即可按比例调整图片宽度（高度等比），松开把新尺寸写回 Markdown 源（转为 `<img src="…" width="N" height="N">` 标签，阅读模式 / 导出 PDF 已支持）。双击可恢复原始尺寸（重新手动输入或删除 width/height）。
+
+### 秒开 / 轻量化保证
+- 图片缩放是事件驱动（hover 才显示手柄、按住拖才计算），平时零定时器 / 零监听 / 零常驻资源。
+- 写回只在鼠标抬起那一刻发生一次，走现有 `applyFormattingEdit` 编辑管线（可撤销）。
+- 工具栏尺寸只是给已创建按钮设个 frame，无常驻开销。
+- 不引入任何定时器 / 监听 / 后台线程 / 网络。
+
 ## [5.14.0] - 2026-08-12
 
 ### Fixed
