@@ -90,19 +90,11 @@ extension EditorTextView {
     }
 
     /// The usable text width for one line — the text container minus its line
-    /// fragment padding on both sides, less the horizontal text-container inset.
-    /// Used to cap over-wide equations (and over-wide images) and to size table
-    /// columns. In a wide window the centered reading column is implemented by
-    /// growing `textContainerInset.width`, which TextKit applies when laying the
-    /// text out — so this must subtract it or a table/equation sized to the full
-    /// container width gets force-wrapped at the narrower reading column, and a
-    /// wrapped table row draws its trailing columns' glyphs on a second line on
-    /// top of each other (the "last columns overlap" bug).
+    /// fragment padding on both sides. Used to cap over-wide equations (and
+    /// over-wide images).
     var availableContentWidth: CGFloat {
         guard let container = textContainer else { return 0 }
-        return max(0, container.containerSize.width
-            - 2 * container.lineFragmentPadding
-            - 2 * textContainerInset.width)
+        return container.containerSize.width - 2 * container.lineFragmentPadding
     }
 
     // MARK: - Raw LaTeX Source (shown when the cursor is inside the math)
