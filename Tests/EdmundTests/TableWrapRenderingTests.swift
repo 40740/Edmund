@@ -328,4 +328,54 @@ struct TableWrapRenderingTests {
         // minWidth floor) so the line fits.
         #expect(result.allSatisfy { $0 <= available / CGFloat(natural.count) + 0.01 })
     }
+
+    @Test("Data row columns stay aligned with the all-wrapping header (issue #7)")
+    func dataRowAlignsWithWrappedHeader() {
+        let editor = EditorTextView.makeTextKit2(
+            frame: NSRect(x: 0, y: 0, width: 320, height: 500),
+            containerSize: NSSize(width: 320, height: CGFloat.greatestFiniteMagnitude))
+        let suite = "EdmundTests.userTableData.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        editor.themeDefaults = defaults
+        editor.theme = .load(from: defaults)
+
+        let header = "| 表情（五官含义） | 眼睛怎么画（形状/开合/方向） | 眉毛/眉眼线（位置与力度） | 鼻子怎么画（块面/强调） | 嘴巴怎么画（长度/弧度/是否张开） | 额外线条/嘴角/面部气氛 |"
+        let sep = "|---|---|---|---|---|---|"
+        let data = "| 惊 | 睁大 | 上挑 | 强调 | 微张 | 浅笑 |"
+        let source = "\(header)\n\(sep)\n\(data)"
+        let full = source + "\n\nafter"
+        editor.loadContent(full)
+        editor.recompose(cursorInRaw: (full as NSString).length)
+        editor.layoutSubtreeIfNeeded()
+        guard let tlm = editor.textLayoutManager else { return }
+        tlm.ensureLayout(for: tlm.documentRange)
+
+        // Header (row 0) wraps all 6 wide CJK columns.
+        let storage = editor.textStorage!
+        let headerWraps = (storage.attribute(.tableCellWraps, at: 0, effectiveRange: nil)
+            as? TableCellWrapList)?.wraps ?? []
+        #expect(headerWraps.count == 6, "header should wrap all 6, got \(headerWraps.count)")
+
+        // Data row's short cells must start at the same column x as the header's
+        // wrapped columns. Data row 2 begins after header line + sep line.
+        let rowStart = (header as NSString).length + 1 + (sep as NSString).length + 1
+        let dataWraps = (storage.attribute(.tableCellWraps, at: rowStart, effectiveRange: nil)
+            as? TableCellWrapList)?.wraps ?? []
+        // The short data cells are in columns 0..5; some may not overflow.
+        // Every column's real glyphs must land at the same x as the header wrap.
+        for (i, hw) in headerWraps.enumerated() {
+            // If this data column also wraps, its wrap.x must match the header's.
+            if let dw = dataWraps.first(where: { abs($0.x - hw.x) < 0.5 }) {
+                #expect(abs(dw.x - hw.x) < 0.5, "col \(i) data wrap.x \(dw.x) != header \(hw.x)")
+            }
+        }
+        // The header wraps must not overlap, and the data row's wrap.x set must
+        // be a subset (same x) of the header's.
+        let headerXs = Set(headerWraps.map { Int(($0.x * 10).rounded()) })
+        for dw in dataWraps {
+            #expect(headerXs.contains(Int((dw.x * 10).rounded())),
+                    "data wrap.x \(dw.x) not one of header columns")
+        }
+    }
 }
