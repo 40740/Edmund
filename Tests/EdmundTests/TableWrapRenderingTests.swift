@@ -452,6 +452,8 @@ struct TableWrapRenderingTests {
             tlm.ensureLayout(for: tlm.documentRange)
 
             let storage = editor.textStorage!
+            Issue.record("DIAGT2 w=\(windowWidth) container=\(editor.textContainer?.containerSize.width ?? -1) "
+                + "inset=\(editor.textContainerInset.width) avail=\(editor.availableContentWidth)")
             let hw = (storage.attribute(.tableCellWraps, at: 0, effectiveRange: nil)
                 as? TableCellWrapList)?.wraps ?? []
             // The last column must not run past the capped reading column.
