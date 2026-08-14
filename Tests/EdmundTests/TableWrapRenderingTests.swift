@@ -422,4 +422,48 @@ struct TableWrapRenderingTests {
             }
         }
     }
+
+    @Test("User table stays within the centered reading column when the window is wide (issue #7)")
+    func userTableStaysWithinCenteredColumn() {
+        let header = "| 表情（五官含义） | 眼睛怎么画（形状/开合/方向） | 眉毛/眉眼线（位置与力度） | 鼻子怎么画（块面/强调） | 嘴巴怎么画（长度/弧度/是否张开） | 额外线条/嘴角/面部气氛 |"
+        let sep = "|---|---|---|---|---|---|"
+        let data = "| 惊 | 睁大 | 上挑 | 强调 | 微张 | 浅笑 |"
+        let source = "\(header)\n\(sep)\n\(data)"
+
+        // A wide window whose centered reading column is capped well below the
+        // window width — the real #7 environment (2012px screenshot).
+        for windowWidth: CGFloat in [1200, 1600, 2000] {
+            let editor = EditorTextView.makeTextKit2(
+                frame: NSRect(x: 0, y: 0, width: windowWidth, height: 800),
+                containerSize: NSSize(width: windowWidth, height: CGFloat.greatestFiniteMagnitude))
+            let suite = "EdmundTests.centerCol.\(Int(windowWidth)).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suite)!
+            defaults.removePersistentDomain(forName: suite)
+            editor.themeDefaults = defaults
+            editor.theme = .load(from: defaults)
+            editor.maxContentWidthPoints = 900
+            editor.updateContentInset()
+            let full = source + "\n\nafter"
+            editor.loadContent(full)
+            editor.recompose(cursorInRaw: (full as NSString).length)
+            editor.layoutSubtreeIfNeeded()
+            guard let tlm = editor.textLayoutManager else { continue }
+            tlm.ensureLayout(for: tlm.documentRange)
+
+            let storage = editor.textStorage!
+            let hw = (storage.attribute(.tableCellWraps, at: 0, effectiveRange: nil)
+                as? TableCellWrapList)?.wraps ?? []
+            // The last column must not run past the capped reading column.
+            if let last = hw.last {
+                #expect(last.x + last.contentWidth <= editor.maxContentWidthPoints + 1,
+                        "w=\(windowWidth): last col ends \(last.x + last.contentWidth) past cap "
+                        + "\(editor.maxContentWidthPoints)")
+            }
+            // Columns must not overlap each other.
+            for i in 1..<hw.count {
+                #expect(hw[i].x >= hw[i-1].x + hw[i-1].contentWidth,
+                        "w=\(windowWidth): col \(i) overlaps col \(i-1)")
+            }
+        }
+    }
 }
