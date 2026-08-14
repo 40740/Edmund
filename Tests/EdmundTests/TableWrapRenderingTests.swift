@@ -480,7 +480,10 @@ struct TableWrapRenderingTests {
                 }
                 return true
             }
-            let hlmsg = "w=\(windowWidth): header row has \(headerLineCount) lines (should be 1, not force-wrapped)"
+            let hlmsg = "w=\(windowWidth): header row has \(headerLineCount) lines (should be 1). "
+                + "container=\(editor.textContainer?.containerSize.width ?? -1) "
+                + "inset=\(editor.textContainerInset.width) "
+                + "avail=\(editor.availableContentWidth)"
             #expect(headerLineCount == 1, Comment(rawValue: hlmsg))
         }
     }
