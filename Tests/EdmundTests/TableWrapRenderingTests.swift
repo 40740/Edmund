@@ -301,10 +301,6 @@ struct TableWrapRenderingTests {
         let list = storage.attribute(.tableCellWraps, at: rowStart, effectiveRange: nil) as? TableCellWrapList
         let wraps = list?.wraps ?? []
         #expect(wraps.count == 6, "expected 6 wrapping cells, got \(wraps.count)")
-        // Diagnostics: print each column's wrap.x and contentWidth to the log.
-        for (i, w) in wraps.enumerated() {
-            print("DIAG col[\(i)] wrap.x=\(w.x) contentWidth=\(w.contentWidth)")
-        }
         // wrap.x must be strictly ascending and columns must not overlap.
         for i in 1..<wraps.count {
             #expect(wraps[i].x > wraps[i-1].x, "column \(i) start x \(wraps[i].x) not > prev \(wraps[i-1].x)")
@@ -443,7 +439,6 @@ struct TableWrapRenderingTests {
             editor.theme = .load(from: defaults)
             editor.maxContentWidthPoints = 900
             editor.updateContentInset()
-            Issue.record("DIAGT containerSize=\(editor.textContainer?.containerSize.width ?? -1) inset=\(editor.textContainerInset.width) avail=\(editor.availableContentWidth)")
             let full = source + "\n\nafter"
             editor.loadContent(full)
             editor.recompose(cursorInRaw: (full as NSString).length)
@@ -469,20 +464,16 @@ struct TableWrapRenderingTests {
             // glyphs on a second line and overlaps the drawn wraps (the real #7
             // symptom). Find the header row fragment and count its lines.
             var headerLineCount = 0
-            var headerFrameWidth: CGFloat = 0
             tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location,
                                              options: [.ensuresLayout]) { frag in
                 let off = tlm.offset(from: tlm.documentRange.location,
                                      to: frag.rangeInElement.location)
                 if off == 0 {
                     headerLineCount = frag.textLineFragments.count
-                    headerFrameWidth = frag.layoutFragmentFrame.width
                 }
                 return true
             }
-            let hlmsg = "w=\(windowWidth): header row has \(headerLineCount) lines (should be 1) container=\(editor.textContainer?.containerSize.width ?? -1) "
-                + "inset=\(editor.textContainerInset.width) avail=\(editor.availableContentWidth) "
-                + "fragW=\(headerFrameWidth)"
+            let hlmsg = "w=\(windowWidth): header row has \(headerLineCount) lines (should be 1, not force-wrapped)"
             #expect(headerLineCount == 1, Comment(rawValue: hlmsg))
         }
     }

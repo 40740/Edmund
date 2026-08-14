@@ -100,7 +100,16 @@ extension EditorTextView {
             // a trailing pad may hang past the edge but glyphs may not. Same
             // reason `applyOverlay` caps its kern short of the full width.
             let rowSlack: CGFloat = 8
+            // Each row is a single-line paragraph whose text starts at
+            // `firstLineHeadIndent = cellHPad` (set below), so TextKit lays the
+            // line out from that indent — the *usable* layout width is
+            // `availableContentWidth - cellHPad`, not `availableContentWidth`.
+            // Without subtracting it, a table whose columns fill to the
+            // nominal width force-wraps its row at the narrower real width and
+            // the trailing columns' glyphs redraw on a second line on top of
+            // each other (the "last columns overlap" bug, #7).
             let available = max(0, availableContentWidth
+                - cellHPad
                 - CGFloat(numCols) * 2 * cellHPad - rowSlack)
             let clamped = distributeColumnWidths(natural: natural, available: available,
                                                  minWidth: minColWidth)
