@@ -10,6 +10,12 @@ import CoreText
 public class EditorTextStorage: NSTextStorage {
     private let backing = NSMutableAttributedString()
 
+    /// Guards against re-entrant font substitution: `fixAttributes` can be
+    /// re-invoked from the framework's processEditing cycle while we are
+    /// already mid-substitution, and `setAttributes` calls the substitution
+    /// pass directly. The flag keeps the pass from re-entering itself.
+    private var isSubstitutingFonts = false
+
     /// The accumulated string mutation since the last consume, expressed as
     /// "this range of the OLD string was replaced, shifting lengths by
     /// `delta`". Multiple mutations coalesce into the conservative hull.
@@ -79,6 +85,17 @@ public class EditorTextStorage: NSTextStorage {
         _ attrs: [NSAttributedString.Key: Any]?, range: NSRange
     ) {
         backing.setAttributes(attrs, range: range)
+        // Every styled run flows through `setAttributes` (restyleBlock applies
+        // the body font over emoji/CJK, which would otherwise wipe any earlier
+        // substitution). TextKit 2 doesn't reliably re-invoke `fixAttributes`
+        // after such a restyle, so emoji can render as missing-glyph boxes.
+        // Run substitution here too, before the single `edited` below, so the
+        // fallback font is applied and propagated in one notification.
+        guard !isSubstitutingFonts else {
+            edited(.editedAttributes, range: range, changeInLength: 0)
+            return
+        }
+        fixFontSubstitution(in: range)
         edited(.editedAttributes, range: range, changeInLength: 0)
     }
 
@@ -100,7 +117,8 @@ public class EditorTextStorage: NSTextStorage {
     /// size. Substitutions are computed first, then applied, so we never mutate
     /// the attribute we're enumerating mid-pass.
     private func fixFontSubstitution(in range: NSRange) {
-        guard range.length > 0, range.upperBound <= backing.length else { return }
+        guard range.length > 0, range.upperBound <= backing.length,
+              !isSubstitutingFonts else { return }
         let ns = backing.string as NSString
         var fixes: [(NSRange, NSFont)] = []
 
@@ -139,8 +157,18 @@ public class EditorTextStorage: NSTextStorage {
             }
         }
 
+        guard !fixes.isEmpty else { return }
+        // Mutate the backing store directly, preserving every other attribute.
+        // Notification is handled by the caller: setAttributes fires a single
+        // `edited` over the whole range after this pass, and fixAttributes runs
+        // inside the framework's own processEditing cycle (which already
+        // notified the range). Substituting into backing alone — as the old
+        // fixAttributes-only path could leave it — leaves the layout manager
+        // rendering the body font's missing-glyph boxes for emoji.
+        isSubstitutingFonts = true
         for (r, f) in fixes {
             backing.addAttribute(.font, value: f, range: r)
         }
+        isSubstitutingFonts = false
     }
 }
