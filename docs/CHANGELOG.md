@@ -3,6 +3,16 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.22.0] - 2026-08-14
+
+### Fixed
+- **多列表格最后几列仍重叠（真正根治）**：v5.21.0 只处理了 `distributeColumnWidths` 的 `minWidth` 下限超限问题，但实测在**宽窗口 + 居中阅读列**（编辑器把文本限制在 `maxContentWidth` 的居中列内）下，表格列宽仍按 `availableContentWidth`（容器宽度）计算，而 TextKit **实际把表格行折行的宽度**比 `availableContentWidth` 窄一个 `firstLineHeadIndent`（= `cellHPad`，表格行段落的首行缩进）——所以列宽算得偏宽，表格行仍被 TextKit 强制折行，折行后隐藏字符与按列 `x` 单独绘制的换行单元格叠在一起，**最后两列（乃至后几列）文字/边框重叠**。
+- **修复**：表格列宽预算再减去 `firstLineHeadIndent`，让列宽分配反映 TextKit 的真实折行宽度，表格行不再被强制折行；超宽单元格仍走 `.tableCellWraps` 换行绘制。
+- 参考了上游原作者在 `I7T5/Edmund#258`（表格单元格错位）的思路，并补上了它未覆盖的「宽窗口 + 居中阅读列」场景。
+
+### 秒开 / 轻量化保证
+- 改动只在表格渲染时多做一次减法，不引入定时器 / 监听 / 索引 / 网络 / 常驻资源，不碰打开 / 保存路径。
+
 ## [5.21.0] - 2026-08-14
 
 ### Fixed
