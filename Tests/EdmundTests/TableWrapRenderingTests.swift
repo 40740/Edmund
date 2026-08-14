@@ -443,6 +443,7 @@ struct TableWrapRenderingTests {
             editor.theme = .load(from: defaults)
             editor.maxContentWidthPoints = 900
             editor.updateContentInset()
+            Issue.record("DIAGT containerSize=\(editor.textContainer?.containerSize.width ?? -1) inset=\(editor.textContainerInset.width) avail=\(editor.availableContentWidth)")
             let full = source + "\n\nafter"
             editor.loadContent(full)
             editor.recompose(cursorInRaw: (full as NSString).length)
