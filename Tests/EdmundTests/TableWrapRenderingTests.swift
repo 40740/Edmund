@@ -469,17 +469,20 @@ struct TableWrapRenderingTests {
             // glyphs on a second line and overlaps the drawn wraps (the real #7
             // symptom). Find the header row fragment and count its lines.
             var headerLineCount = 0
+            var headerFrameWidth: CGFloat = 0
             tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location,
                                              options: [.ensuresLayout]) { frag in
                 let off = tlm.offset(from: tlm.documentRange.location,
                                      to: frag.rangeInElement.location)
                 if off == 0 {
                     headerLineCount = frag.textLineFragments.count
+                    headerFrameWidth = frag.layoutFragmentFrame.width
                 }
                 return true
             }
             let hlmsg = "w=\(windowWidth): header row has \(headerLineCount) lines (should be 1) container=\(editor.textContainer?.containerSize.width ?? -1) "
-                + "inset=\(editor.textContainerInset.width) avail=\(editor.availableContentWidth)"
+                + "inset=\(editor.textContainerInset.width) avail=\(editor.availableContentWidth) "
+                + "fragW=\(headerFrameWidth)"
             #expect(headerLineCount == 1, Comment(rawValue: hlmsg))
         }
     }
