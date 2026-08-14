@@ -455,9 +455,8 @@ struct TableWrapRenderingTests {
                 as? TableCellWrapList)?.wraps ?? []
             // The last column must not run past the capped reading column.
             if let last = hw.last {
-                #expect(last.x + last.contentWidth <= editor.maxContentWidthPoints + 1,
-                        "w=\(windowWidth): last col ends \(last.x + last.contentWidth) past cap "
-                        + "\(editor.maxContentWidthPoints)")
+                #expect(last.x + last.contentWidth <= editor.maxContentWidthPoints + 1, \
+                        "w=\(windowWidth): last col ends \(last.x + last.contentWidth) past cap \(editor.maxContentWidthPoints)")
             }
             // Columns must not overlap each other.
             for i in 1..<hw.count {
