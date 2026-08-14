@@ -455,19 +455,18 @@ struct TableWrapRenderingTests {
                 as? TableCellWrapList)?.wraps ?? []
             // The last column must not run past the capped reading column.
             if let last = hw.last {
-                #expect(last.x + last.contentWidth <= editor.maxContentWidthPoints + 1, \
-                        "w=\(windowWidth): last col ends \(last.x + last.contentWidth) past cap \(editor.maxContentWidthPoints)")
+                let msg = "w=\(windowWidth): last col ends \(last.x + last.contentWidth) past cap \(editor.maxContentWidthPoints)"
+                #expect(last.x + last.contentWidth <= editor.maxContentWidthPoints + 1, Comment(rawValue: msg))
             }
             // Columns must not overlap each other.
             for i in 1..<hw.count {
-                #expect(hw[i].x >= hw[i-1].x + hw[i-1].contentWidth,
-                        "w=\(windowWidth): col \(i) overlaps col \(i-1)")
+                let msg = "w=\(windowWidth): col \(i) overlaps col \(i-1)"
+                #expect(hw[i].x >= hw[i-1].x + hw[i-1].contentWidth, Comment(rawValue: msg))
             }
             // CRITICAL: the header row (one paragraph) must NOT be force-wrapped
             // by TextKit — a wrapped row redraws the trailing columns' hidden
             // glyphs on a second line and overlaps the drawn wraps (the real #7
             // symptom). Find the header row fragment and count its lines.
-            var fragCount = 0
             var headerLineCount = 0
             tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location,
                                              options: [.ensuresLayout]) { frag in
@@ -476,11 +475,10 @@ struct TableWrapRenderingTests {
                 if off == 0 {
                     headerLineCount = frag.textLineFragments.count
                 }
-                fragCount += 1
                 return true
             }
-            #expect(headerLineCount == 1,
-                    "w=\(windowWidth): header row has \(headerLineCount) lines (should be 1, not force-wrapped)")
+            let hlmsg = "w=\(windowWidth): header row has \(headerLineCount) lines (should be 1, not force-wrapped)"
+            #expect(headerLineCount == 1, Comment(rawValue: hlmsg))
         }
     }
 }
