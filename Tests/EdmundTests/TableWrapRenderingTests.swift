@@ -301,6 +301,10 @@ struct TableWrapRenderingTests {
         let list = storage.attribute(.tableCellWraps, at: rowStart, effectiveRange: nil) as? TableCellWrapList
         let wraps = list?.wraps ?? []
         #expect(wraps.count == 6, "expected 6 wrapping cells, got \(wraps.count)")
+        // Diagnostics: print each column's wrap.x and contentWidth to the log.
+        for (i, w) in wraps.enumerated() {
+            print("DIAG col[\(i)] wrap.x=\(w.x) contentWidth=\(w.contentWidth)")
+        }
         // wrap.x must be strictly ascending and columns must not overlap.
         for i in 1..<wraps.count {
             #expect(wraps[i].x > wraps[i-1].x, "column \(i) start x \(wraps[i].x) not > prev \(wraps[i-1].x)")
