@@ -378,4 +378,48 @@ struct TableWrapRenderingTests {
                     "data wrap.x \(dw.x) not one of header columns")
         }
     }
+
+    @Test("User table never force-wraps the row across a sweep of container widths (issue #7)")
+    func userTableNeverForceWrapsAcrossWidths() {
+        let header = "| 表情（五官含义） | 眼睛怎么画（形状/开合/方向） | 眉毛/眉眼线（位置与力度） | 鼻子怎么画（块面/强调） | 嘴巴怎么画（长度/弧度/是否张开） | 额外线条/嘴角/面部气氛 |"
+        let sep = "|---|---|---|---|---|---|"
+        let data = "| 惊 | 睁大 | 上挑 | 强调 | 微张 | 浅笑 |"
+        let source = "\(header)\n\(sep)\n\(data)"
+        for width in [220, 280, 340, 420, 520, 640, 800, 1000, 1400] {
+            let editor = EditorTextView.makeTextKit2(
+                frame: NSRect(x: 0, y: 0, width: CGFloat(width), height: 600),
+                containerSize: NSSize(width: CGFloat(width), height: CGFloat.greatestFiniteMagnitude))
+            let suite = "EdmundTests.sweep.\(width).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suite)!
+            defaults.removePersistentDomain(forName: suite)
+            editor.themeDefaults = defaults
+            editor.theme = .load(from: defaults)
+            let full = source + "\n\nafter"
+            editor.loadContent(full)
+            editor.recompose(cursorInRaw: (full as NSString).length)
+            editor.layoutSubtreeIfNeeded()
+            guard let tlm = editor.textLayoutManager else { continue }
+            tlm.ensureLayout(for: tlm.documentRange)
+
+            // The table row must be one single-line fragment: if the row got
+            // force-wrapped, the trailing columns' wrapped cells would draw on
+            // top of each other (the #7 overlap). Verify the header row still
+            // fits as one fragment whose last line is the separator row.
+            let storage = editor.textStorage!
+            let hw = (storage.attribute(.tableCellWraps, at: 0, effectiveRange: nil)
+                as? TableCellWrapList)?.wraps ?? []
+            // wrap.x must strictly ascend and never overlap at every width.
+            for i in 1..<hw.count {
+                #expect(hw[i].x > hw[i-1].x,
+                        "w=\(width): col \(i) x \(hw[i].x) not > prev \(hw[i-1].x)")
+                #expect(hw[i].x >= hw[i-1].x + hw[i-1].contentWidth,
+                        "w=\(width): col \(i) overlaps col \(i-1)")
+            }
+            // The last column must not run past the container edge.
+            if let last = hw.last {
+                #expect(last.x + last.contentWidth <= editor.availableContentWidth + 1,
+                        "w=\(width): last col ends past container: \(last.x + last.contentWidth)")
+            }
+        }
+    }
 }
