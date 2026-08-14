@@ -38,7 +38,22 @@ func distributeColumnWidths(natural: [CGFloat], available: CGFloat,
     let perOverShare = remaining / CGFloat(overIdx.count)
     var result = natural
     for ci in overIdx {
-        result[ci] = max(minWidth, min(natural[ci], perOverShare))
+        result[ci] = min(natural[ci], max(minWidth, perOverShare))
+    }
+    // The `minWidth` floor above can push the total past `available` when a
+    // table has many (or very wide) columns — whenever perOverShare falls below
+    // minWidth, every over-share column is floored up to minWidth and their
+    // combined width exceeds the line. The row then force-wraps at the container
+    // edge, which redraws the trailing columns' wrapped cells on top of each
+    // other (the "last two columns overlap" bug). Relax the floor to perOverShare
+    // in that case so the total always fits the line; the overflow cell-wrap
+    // mechanism (`.tableCellWraps`) already handles whatever narrower columns
+    // result. When perOverShare >= minWidth the first pass is already <= available,
+    // so this fallback only ever relaxes the pathological case.
+    if result.reduce(0, +) > available {
+        for ci in overIdx {
+            result[ci] = min(natural[ci], perOverShare)
+        }
     }
     return result
 }

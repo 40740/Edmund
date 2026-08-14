@@ -275,4 +275,20 @@ struct TableWrapRenderingTests {
         let result = distributeColumnWidths(natural: [20, 30], available: 1000, minWidth: 10)
         #expect(result == [20, 30])
     }
+
+    @Test("distributeColumnWidths never lets the total exceed available (#7 table overlap)")
+    func distributeColumnWidthsNeverOverflows() {
+        // Many wide columns in a narrow line: perOverShare < minWidth, so the
+        // old minWidth floor pushed every over-share column up and the total
+        // past `available`, which force-wrapped the row and made the trailing
+        // columns overlap. The total must stay <= available.
+        let natural: [CGFloat] = [126, 224, 196, 168, 238, 168] // 6 wide columns
+        let available: CGFloat = 158
+        let minWidth: CGFloat = 42
+        let result = distributeColumnWidths(natural: natural, available: available, minWidth: minWidth)
+        #expect(result.reduce(0, +) <= available)
+        // Every column is clamped down to its per-over-share (well below the
+        // minWidth floor) so the line fits.
+        #expect(result.allSatisfy { $0 <= available / CGFloat(natural.count) + 0.01 })
+    }
 }
