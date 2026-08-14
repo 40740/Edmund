@@ -164,11 +164,11 @@ struct ImageRenderingTests {
         // Cap the column narrower than the image's natural width.
         editor.maxContentWidthPoints = 22
 
-        print("DIAG containerSize=\(editor.textContainer?.containerSize.width ?? -1)")
-        print("DIAG lineFragmentPadding=\(editor.textContainer?.lineFragmentPadding ?? -1)")
-        print("DIAG textContainerInset=\(editor.textContainerInset.width)")
-        print("DIAG availableContentWidth=\(editor.availableContentWidth)")
-        print("DIAG maxContentWidthPoints=\(editor.maxContentWidthPoints)")
+        Issue.record("DIAG containerSize=\(editor.textContainer?.containerSize.width ?? -1)")
+        Issue.record("DIAG lineFragmentPadding=\(editor.textContainer?.lineFragmentPadding ?? -1)")
+        Issue.record("DIAG textContainerInset=\(editor.textContainerInset.width)")
+        Issue.record("DIAG availableContentWidth=\(editor.availableContentWidth)")
+        Issue.record("DIAG maxContentWidthPoints=\(editor.maxContentWidthPoints)")
 
         let after = editor.textStorage?.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) as? FragmentOverlay
         #expect((after?.bounds.width ?? 9999) <= editor.availableContentWidth + 0.01)
