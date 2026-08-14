@@ -276,6 +276,39 @@ struct TableWrapRenderingTests {
         #expect(result == [20, 30])
     }
 
+    @Test("User 6-col CJK table: wrap.x must strictly ascend and never overlap (issue #7)")
+    func userTableColumnsNeverOverlap() {
+        let editor = EditorTextView.makeTextKit2(
+            frame: NSRect(x: 0, y: 0, width: 320, height: 400),
+            containerSize: NSSize(width: 320, height: CGFloat.greatestFiniteMagnitude))
+        let suite = "EdmundTests.userTable.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        editor.themeDefaults = defaults
+        editor.theme = .load(from: defaults)
+
+        let source = "| 表情（五官含义） | 眼睛怎么画（形状/开合/方向） | 眉毛/眉眼线（位置与力度） | 鼻子怎么画（块面/强调） | 嘴巴怎么画（长度/弧度/是否张开） | 额外线条/嘴角/面部气氛 |\n|---|---|---|---|---|---|"
+        let full = source + "\n\nafter"
+        editor.loadContent(full)
+        editor.recompose(cursorInRaw: (full as NSString).length)
+        editor.layoutSubtreeIfNeeded()
+        guard let tlm = editor.textLayoutManager else { return }
+        tlm.ensureLayout(for: tlm.documentRange)
+        let rowStart = 0
+        // All six CJK columns should overflow in a 320pt container. Read the
+        // wrap markers from the header row's .tableCellWraps attribute.
+        let storage = editor.textStorage!
+        let list = storage.attribute(.tableCellWraps, at: rowStart, effectiveRange: nil) as? TableCellWrapList
+        let wraps = list?.wraps ?? []
+        #expect(wraps.count == 6, "expected 6 wrapping cells, got \(wraps.count)")
+        // wrap.x must be strictly ascending and columns must not overlap.
+        for i in 1..<wraps.count {
+            #expect(wraps[i].x > wraps[i-1].x, "column \(i) start x \(wraps[i].x) not > prev \(wraps[i-1].x)")
+            #expect(wraps[i].x >= wraps[i-1].x + wraps[i-1].contentWidth,
+                    "column \(i) x \(wraps[i].x) overlaps prev width \(wraps[i-1].contentWidth)")
+        }
+    }
+
     @Test("distributeColumnWidths never lets the total exceed available (#7 table overlap)")
     func distributeColumnWidthsNeverOverflows() {
         // Many wide columns in a narrow line: perOverShare < minWidth, so the
