@@ -464,6 +464,24 @@ struct TableWrapRenderingTests {
                 #expect(hw[i].x >= hw[i-1].x + hw[i-1].contentWidth,
                         "w=\(windowWidth): col \(i) overlaps col \(i-1)")
             }
+            // CRITICAL: the header row (one paragraph) must NOT be force-wrapped
+            // by TextKit — a wrapped row redraws the trailing columns' hidden
+            // glyphs on a second line and overlaps the drawn wraps (the real #7
+            // symptom). Find the header row fragment and count its lines.
+            var fragCount = 0
+            var headerLineCount = 0
+            tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location,
+                                             options: [.ensuresLayout]) { frag in
+                let off = tlm.offset(from: tlm.documentRange.location,
+                                     to: frag.rangeInElement.location)
+                if off == 0 {
+                    headerLineCount = frag.textLineFragments.count
+                }
+                fragCount += 1
+                return true
+            }
+            #expect(headerLineCount == 1,
+                    "w=\(windowWidth): header row has \(headerLineCount) lines (should be 1, not force-wrapped)")
         }
     }
 }
