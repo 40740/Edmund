@@ -100,9 +100,9 @@ extension EditorTextView {
     /// top of each other (the "last columns overlap" bug).
     var availableContentWidth: CGFloat {
         guard let container = textContainer else { return 0 }
-        return container.containerSize.width
+        return max(0, container.containerSize.width
             - 2 * container.lineFragmentPadding
-            - 2 * textContainerInset.width
+            - 2 * textContainerInset.width)
     }
 
     // MARK: - Raw LaTeX Source (shown when the cursor is inside the math)
