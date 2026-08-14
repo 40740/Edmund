@@ -86,4 +86,26 @@ struct EmojiRenderingTests {
         #expect(font != nil)
         if let font { #expect(fontCovers("😀", font)) }
     }
+
+    @Test("Emoji keep their fallback font after a restyle")
+    @MainActor func emojiSurvivesRestyle() {
+        // Regression: restyleBlock re-applies the serif body font over every
+        // run (including emoji), so the substitution must be re-applied on the
+        // styled range — not only on the one-off fixAttributes pass — or emoji
+        // render as missing-glyph boxes once the block is restyled.
+        let editor = makeEditor()
+        editor.loadContent("before 😀 after")
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        editor.recompose(cursorInRaw: 0)
+
+        // Restyle the whole document (theme/rerender path) and confirm the
+        // emoji still carries a covering font afterward.
+        editor.rerenderStyles()
+        let ts = editor.textStorage!
+        let r = (ts.string as NSString).range(of: "😀")
+        #expect(r.location != NSNotFound)
+        let font = ts.attributes(at: r.location, effectiveRange: nil)[.font] as? NSFont
+        #expect(font != nil)
+        if let font { #expect(fontCovers("😀", font)) }
+    }
 }
