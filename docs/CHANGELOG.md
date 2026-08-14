@@ -3,6 +3,15 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.21.0] - 2026-08-14
+
+### Fixed
+- **多列表格最后几列重叠**：当表格列数较多、列很宽或窗口较窄时，`distributeColumnWidths` 给每列设的 `minWidth` 下限会把所有“超平均份额”的列一起抬到 `minWidth`，使**所有列的总宽超过可用行宽**。表格行本身是单个段落，TextKit 2 在容器边缘强制折行，折行后第二行从容器左缘重新排布，与按列 `x` 单独绘制的超宽单元格换行内容叠在一起 → 表现为**最后两列（乃至后几列）文字/边框重叠**。
+- **修复**：`distributeColumnWidths` 计算完分布后校验总宽，若超过可用宽度，把被 `minWidth` 下限抬高的列回落到 `perOverShare`，保证**总宽始终 ≤ 可用行宽**；超宽单元格继续走 `.tableCellWraps` 换行绘制。当 `perOverShare >= minWidth`（绝大多数正常情况）行为与之前完全一致，无回归。
+
+### 秒开 / 轻量化保证
+- 改动只在表格渲染时多做一次总宽求和与比较，不引入定时器 / 监听 / 索引 / 网络 / 常驻资源，不碰打开 / 保存路径。
+
 ## [5.20.0] - 2026-08-12
 
 ### Changed / Removed
