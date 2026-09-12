@@ -191,6 +191,23 @@ public final class SyntaxDefinitionStore {
         }
     }
 
+    /// SwiftPM's resource bundle for this module, or nil when it is missing or
+    /// malformed — in which case `Bundle.module` would trap and must not be
+    /// touched. A legal bundle always carries a bundle identifier; that is the
+    /// same precondition the generated accessor asserts on.
+    private static var wellFormedModuleBundle: Bundle? {
+        for root in [Bundle.main.bundleURL,
+                     Bundle.main.resourceURL,
+                     Bundle(for: SyntaxDefinitionStore.self).bundleURL].compactMap({ $0 }) {
+            for candidate in moduleResourceBundles(in: root) {
+                if let bundle = Bundle(path: candidate.path), bundle.bundleIdentifier != nil {
+                    return bundle
+                }
+            }
+        }
+        return nil
+    }
+
     private static func loadUser() -> [(LanguageDefinition, URL)] {
         guard let urls = try? FileManager.default.contentsOfDirectory(
             at: userDirectory, includingPropertiesForKeys: nil) else { return [] }
