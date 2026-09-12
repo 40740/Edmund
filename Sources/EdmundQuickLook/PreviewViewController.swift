@@ -180,7 +180,23 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
         layoutWebView()
         webView.render(html: Self.html(for: markdown, url: url, dark: currentDocumentIsDark),
                        theme: .quickLook, dark: currentDocumentIsDark)
+        reportRenderDiagnostics(webView)
     }
+
+    /// Writes the render pipeline's *recorded* diagnostics to the log.
+    ///
+    /// `EdmundRender` sits below the module that owns the logger, so
+    /// `DocumentHTML` collects what it had to substitute rather than logging it.
+    /// The extension reports them here — a preview that shows less than the
+    /// document is otherwise a mystery, and the log is the one artefact a user can
+    /// send back. The web view's load is asynchronous, so its own failure lands in
+    /// the log from `webViewDidFail`, below.
+    private func reportRenderDiagnostics(_ webView: ReadModeWebView) {
+        for reason in RenderOutcome.lastRunReasons {
+            Log.error(reason.message, category: .render)
+        }
+    }
+
 
     /// The complete page for one document in one appearance. Assembled once per
     /// render — by `showDocument` for the first one, and again by

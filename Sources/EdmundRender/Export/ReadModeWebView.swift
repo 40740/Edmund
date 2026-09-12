@@ -27,7 +27,7 @@ public final class ReadModeWebView: WKWebView {
     /// among other things). A Quick Look extension builds one of these per
     /// preview and is judged on how fast it answers, so nothing here may run
     /// until there is a page to show.
-    private var configuration: WKWebViewConfiguration?
+    private var renderConfiguration: WKWebViewConfiguration?
 
     public init() {
         super.init(frame: .zero, configuration: WKWebViewConfiguration())
@@ -38,7 +38,7 @@ public final class ReadModeWebView: WKWebView {
     /// Called by `render(...)` right before the first load, so the configuration
     /// is in place before WebKit is asked to draw.
     private func prepareConfiguration() {
-        guard configuration == nil else { return }
+        guard renderConfiguration == nil else { return }
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences.allowsContentJavaScript = false
         // QUIRK: `isInspectable` (macOS 13.3+) marks the webview as inspectable
@@ -47,7 +47,7 @@ public final class ReadModeWebView: WKWebView {
         // the menu item. Both must be set for right-click → Inspect Element to
         // work; the developer tools must also be enabled in Safari's settings.
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
-        configuration = config
+        renderConfiguration = config
         if #available(macOS 13.3, *) { isInspectable = true }
     }
 
@@ -69,6 +69,9 @@ public final class ReadModeWebView: WKWebView {
     /// extension awaits this to tell Quick Look the preview is ready, so a
     /// dropped failure here is an eternal loading state.
     public var onLoadFinished: (() -> Void)?
+
+    /// The description of the most recent failed navigation, for the owner to log.
+    public private(set) var lastLoadFailureReason: String?
 
     /// The error from the most recent failed navigation, when there was one.
     /// `onLoadFinished` fires for a failure too, so a caller that has to decide
@@ -305,7 +308,9 @@ public final class ReadModeWebView: WKWebView {
 
     /// Forwarded from the coordinator's `didFail`/`didFailProvisionalNavigation`.
     fileprivate func handleDidFailLoad(_ error: Error) {
-        Log.error("read-mode load failed: \(error.localizedDescription)", category: .render)
+        // Recorded rather than logged so the owner reports it alongside its own
+        // context; `lastLoadFailed` is the signal every caller already reads.
+        lastLoadFailureReason = error.localizedDescription
         lastLoadFailed = true
         applyPendingScrollRestoreAndNotify()
     }

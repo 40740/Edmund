@@ -1,4 +1,5 @@
 import AppKit
+import EdmundRender
 
 // MARK: - Display Composition & Coordinate Mapping
 //

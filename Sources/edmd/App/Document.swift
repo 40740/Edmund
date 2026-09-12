@@ -590,6 +590,22 @@ class Document: NSDocument, HeadingNavigable {
         editor?.scrollToHeading(heading)
     }
 
+    /// Writes the render pipeline's *recorded* diagnostics to the log.
+    ///
+    /// `EdmundRender` sits below `EdmundCore` and has no logger (see
+    /// Package.swift), so `DocumentHTML` collects the assets it had to substitute
+    /// and `ReadModeWebView` records why a load failed. The layer that does have a
+    /// logger reports them — otherwise Read mode's degraded renders would be
+    /// silent, and "the page isn't quite the document" would be unfalsifiable.
+    private func reportRenderDiagnostics(for webView: ReadModeWebView?) {
+        for reason in RenderOutcome.lastRunReasons {
+            Log.error(reason.message, category: .render)
+        }
+        if let why = webView?.lastLoadFailureReason {
+            Log.error("read-mode load failed: \(why)", category: .render)
+        }
+    }
+
     // MARK: - Sidebar & Outline
 
     /// Points the sidebar at this document's directory and refreshes the outline
@@ -870,8 +886,9 @@ class Document: NSDocument, HeadingNavigable {
                 // document is actually ready, so there's never a blank gap.
                 // Set once, at creation — every later render (re-entry, live
                 // re-render) reuses this same webview and callback.
-                v.onLoadFinished = { [weak self] in
+                v.onLoadFinished = { [weak self, weak v] in
                     guard let self, self.editor.viewMode == .reading, let read = self.readView else { return }
+                    self.reportRenderDiagnostics(for: v)
                     read.isHidden = false
                     self.scrollView.isHidden = true
                     self.editor.window?.makeFirstResponder(read)
@@ -890,6 +907,7 @@ class Document: NSDocument, HeadingNavigable {
                         callouts: mergedCallouts,
                         baseURL: documentDirectory,
                         options: renderOptions)
+            reportRenderDiagnostics(for: read)
         } else {
             if let read = readView, !read.isHidden {
                 // While the webview is still alive, capture where the user

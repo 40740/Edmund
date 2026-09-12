@@ -142,8 +142,21 @@ public final class SyntaxDefinitionStore {
         // when its bundle is well-formed enough that the accessor's own
         // precondition holds — otherwise it would trap right here.
         if let module = wellFormedModuleBundle {
-            let found = module.urls(forResourcesWithExtension: "json", subdirectory: "Syntaxes")
-            return (found as? [URL]) ?? []
+            // Deliberately not `module.urls(forResourcesWithExtension:subdirectory:)`:
+            // that one is `[URL]?` on Darwin but `[URL]` under
+            // swift-corelibs-foundation, and no single annotation satisfies both.
+            // `resourceURL` + `urls(forResourcesWithExtension:subdirectory:)`'s
+            // documented layout is what we're after anyway, so build it by hand.
+            let syntaxes = module.bundleURL.appendingPathComponent("Contents/Resources/Syntaxes",
+                                                                   isDirectory: true)
+            let flat = module.bundleURL.appendingPathComponent("Syntaxes", isDirectory: true)
+            for directory in [syntaxes, flat] {
+                guard let entries = try? FileManager.default.contentsOfDirectory(
+                    at: directory, includingPropertiesForKeys: nil) else { continue }
+                let json = (entries as [URL]).filter { $0.pathExtension.lowercased() == "json" }
+                if !json.isEmpty { return json }
+            }
+            return []
         }
         // Say *where* we looked. Without this a "no syntax highlighting" report
         // is unfalsifiable: the payload may be at a path none of the candidates

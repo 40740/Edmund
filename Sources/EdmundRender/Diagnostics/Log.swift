@@ -1,10 +1,16 @@
 import Foundation
-import EdmundMarkdown
 
 // MARK: - Diagnostic logging
 //
-// A small always-on (opt-out) file logger that writes human-readable lines to
-// `~/.edmund/logs/edmund-YYYY-MM-DD.log` (one file per day) so problems can be
+// This lives in `EdmundRender` rather than in the app target so that every
+// process which renders a document — the app *and* the Quick Look extension —
+// writes to the same `~/.edmund/logs/edmund-<date>.log`. The extension is started
+// by the system rather than by the app, so it cannot be handed a configured
+// logger; instead the default enablement is resolved here from the preference the
+// app writes (`settings.general.diagnosticLogging`), on first use.
+//
+// It is a small always-on (opt-out) file logger that writes human-readable lines
+// to `~/.edmund/logs/edmund-YYYY-MM-DD.log` (one file per day) so problems can be
 // diagnosed after the fact. Logs stay on the user's Mac and may contain document
 // text — that's fine because they never leave the device.
 //
@@ -94,6 +100,15 @@ public enum Log {
         LogStore.shared.isEnabled && LogStore.shared.isVerbose
     }
 
+    /// Writes an already-formatted line at `level`. The `debug`/`info`/`error`
+    /// helpers above cover everything the render pipeline needs; this is for
+    /// helpers that live outside this module (see `Log+BlockStructure.swift`) and
+    /// have computed their line already.
+    public static func write(level: Level, category: Category, message: String) {
+        guard shouldLog(level) else { return }
+        LogStore.shared.write(level: level, category: category, message: message, date: Date())
+    }
+
     /// Runs `body`, and if logging is active emits one line with how long it took.
     /// Zero overhead (just runs `body`) when the level is filtered out or logging
     /// is off.
@@ -111,38 +126,12 @@ public enum Log {
         return result
     }
 
-    /// Logs the structure of a block array at `debug` level: each block's kind
-    /// and character count, with no document text. Example output:
-    ///   Structure (4): heading(2)·18c, paragraph·234c, codeBlock(swift)·456c, callout·120c
-    public static func blockStructure(_ blocks: [Block], category: Category = .compose) {
-        guard shouldLog(.debug) else { return }
-        let parts = blocks.map { b -> String in
-            let c = b.range.length
-            switch b.kind {
-            case .paragraph:              return "paragraph·\(c)c"
-            case .heading(let level):     return "heading(\(level))·\(c)c"
-            case .quoteRun(let isCallout): return "\(isCallout ? "callout" : "quote")·\(c)c"
-            case .fence:                  return "fence·\(c)c"
-            case .indentedCode:           return "indentedCode·\(c)c"
-            case .mathDisplay:            return "math·\(c)c"
-            case .table:                  return "table·\(c)c"
-            case .listItem:               return "listItem·\(c)c"
-            case .thematicBreak:          return "hr·\(c)c"
-            case .htmlBlock:              return "htmlBlock·\(c)c"
-            case .blank:                  return "blank·\(c)c"
-            case .frontMatter:            return "frontMatter·\(c)c"
-            case .multiBlockComment:      return "comment·\(c)c"
-            }
-        }
-        LogStore.shared.write(level: .debug, category: category,
-                              message: "Structure (\(blocks.count)): \(parts.joined(separator: ", "))",
-                              date: Date())
-    }
-
     /// Blocks until queued writes have hit disk. For tests.
     public static func flush() { LogStore.shared.flush() }
 
-    private static func shouldLog(_ level: Level) -> Bool {
+    /// Whether a line at `level` is written. Internal (not private) because the
+    /// editor-side helpers in `Log+BlockStructure.swift` gate on the same rules.
+    static func shouldLog(_ level: Level) -> Bool {
         guard level >= minLevel else { return false }
         // Touching `isEnabled` resolves the built-in default on first use (see
         // `LogStore._enabled`), so a line written by a process that never calls

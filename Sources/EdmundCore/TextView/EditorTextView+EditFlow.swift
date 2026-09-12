@@ -1,4 +1,5 @@
 import AppKit
+import EdmundRender
 import EdmundMarkdown
 
 /// The edit pipeline: how keystrokes flow from NSTextView into `rawSource`,

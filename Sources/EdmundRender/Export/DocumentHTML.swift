@@ -25,6 +25,12 @@ public enum RenderOutcome {
     @MainActor public static var lastRunUsedFallbacks: Bool {
         DocumentHTML.lastRenderUsedFallbacks
     }
+
+    /// Everything the most recent render had to substitute, with the why. The
+    /// caller reports these (see `DocumentHTML.lastPassReasons`).
+    @MainActor public static var lastRunReasons: [DocumentHTML.RenderReason] {
+        DocumentHTML.lastPassReasons
+    }
 }
 
 @MainActor
@@ -37,10 +43,37 @@ public enum DocumentHTML {
     /// page that silently isn't the document.
     @MainActor public private(set) static var lastPassDegraded = false
 
-    /// Read-only view of `lastPassDegraded` for the `RenderOutcome` shim above — the
-    /// public name callers outside the module can actually reach (`DocumentHTML`
-    /// is internal, and a public member of an internal type may as well not exist
-    /// for the Quick Look appex, which links its own copy of `EdmundCore`).
+    /// Everything the last render had to substitute, in the order it happened.
+    /// Populated alongside `lastPassDegraded`, with the *why*: a render that
+    /// degrades silently is what makes "the preview shows the wrong thing"
+    /// unfalsifiable. The caller reports them, so they land in the log with the
+    /// context of whatever was being rendered.
+    @MainActor public private(set) static var lastPassReasons: [RenderReason] = []
+
+    /// One substituted asset, and why.
+    public enum RenderReason: Equatable, Sendable {
+        /// The math engine produced nothing for this equation.
+        case mathFailed(latex: String)
+        /// The engine produced an image that couldn't be turned into a PNG.
+        case mathRasterFailed(latex: String)
+        /// An image was replaced by its alt text / a placeholder.
+        case imageSubstituted(source: String, reason: String)
+        /// This process isn't allowed to read the directory the images are in.
+        case imageDirectoryUnreadable(path: String)
+
+        /// A one-line description, in the shape the log wants.
+        public var message: String {
+            switch self {
+            case .mathFailed(let latex):        return "math engine produced nothing for \(latex)"
+            case .mathRasterFailed(let latex):  return "math raster failed for \(latex)"
+            case .imageSubstituted(let source, let why): return "image substituted (\(why)): \(source)"
+            case .imageDirectoryUnreadable(let path):
+                return "not allowed to read images in \(path); degraded to placeholders"
+            }
+        }
+    }
+
+    /// Read-only view of `lastPassDegraded` for the `RenderOutcome` shim above.
     @MainActor static var lastRenderUsedFallbacks: Bool { lastPassDegraded }
 
     /// Builds a complete `<!DOCTYPE html>…` document for `markdown`. `baseURL` is
@@ -52,6 +85,7 @@ public enum DocumentHTML {
                      baseURL: URL? = nil,
                      options: ReadRenderOptions = .default) -> String {
         lastPassDegraded = false
+        lastPassReasons = []
         var body = HTMLRenderer.render(markdown: markdown, options: options)
         body = fillMath(body, theme: theme, dark: dark)
         body = fillImages(body, baseURL: baseURL, options: options,
@@ -146,11 +180,14 @@ public enum DocumentHTML {
             // `RenderedMath` is the engine-agnostic result; rasterizing it is the
             // HTML pipeline's job, which is why the PNG step lives here and not
             // with the engine (the editor draws the same `NSImage` directly).
+            lastPassReasons.append(.mathFailed(latex: String(latex.prefix(60))))
             lastPassDegraded = true
             return nil
         }
         guard let png = ImageRaster.pngData(rendered.image, scale: 2) else {
-            Log.error("math raster failed for \(latex.prefix(60))", category: .render)
+            // Recorded, not logged: the caller reports it (see `lastPassReasons`),
+            // so the line lands in the log with the context of this render.
+            lastPassReasons.append(.mathRasterFailed(latex: String(latex.prefix(60))))
             lastPassDegraded = true
             return nil
         }
@@ -185,6 +222,7 @@ public enum DocumentHTML {
         /// alt text instead: the author's own words in the image's place.
         func placeholder(_ src: String, alt: String, reason: ImageLoadFailure) -> String {
             lastPassDegraded = true
+            lastPassReasons.append(.imageSubstituted(source: src, reason: reason.label))
             if plainTextFallback {
                 let label = unescapeAttr(alt).trimmingCharacters(in: .whitespacesAndNewlines)
                 return "<span class=\"md-image-omitted\">\(HTMLRenderer.escape(label.isEmpty ? src : label))</span>"
@@ -198,8 +236,8 @@ public enum DocumentHTML {
         func denied(_ fileURL: URL) -> Bool {
             guard !FileManager.default.isReadableFile(atPath: fileURL.path) else { return false }
             if warnedDirectories.insert(fileURL.deletingLastPathComponent().path).inserted {
-                Log.error("not allowed to read images next to the document; degraded to placeholders",
-                          category: .io)
+                lastPassReasons.append(
+                    .imageDirectoryUnreadable(path: fileURL.deletingLastPathComponent().path))
             }
             return true
         }

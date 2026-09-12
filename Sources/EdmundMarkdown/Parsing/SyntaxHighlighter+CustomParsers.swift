@@ -22,7 +22,7 @@ extension SyntaxHighlighter {
     /// Parses footnotes (not supported by swift-markdown):
     ///   - `[^id]:` at the start of a block → a `.footnoteDefinition` marker.
     ///   - `[^id]` elsewhere → a `.footnoteReference`.
-    static func parseFootnotes(_ text: String, into spans: inout [Span]) {
+    public static func parseFootnotes(_ text: String, into spans: inout [Span]) {
         let ns = text as NSString
         let whole = NSRange(location: 0, length: ns.length)
 
@@ -65,7 +65,7 @@ extension SyntaxHighlighter {
     /// Parses Obsidian-style `%%comment%%` spans (not supported by
     /// swift-markdown). Matches across newlines within a block; skips `%%`
     /// inside code spans / code blocks.
-    static func parseComments(_ text: String, into spans: inout [Span]) {
+    public static func parseComments(_ text: String, into spans: inout [Span]) {
         let ns = text as NSString
         for m in commentRegex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
             let full = m.range(at: 0)
@@ -96,7 +96,7 @@ extension SyntaxHighlighter {
     /// Parses Obsidian `#tag` tokens (not supported by swift-markdown). The pill
     /// covers the whole `#tag` (the `#` stays visible). Skips a tag inside a code
     /// or math span.
-    static func parseTag(_ text: String, into spans: inout [Span]) {
+    public static func parseTag(_ text: String, into spans: inout [Span]) {
         let ns = text as NSString
         for m in tagRegex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
             let full = m.range(at: 0)   // includes the leading `#`
@@ -124,7 +124,7 @@ extension SyntaxHighlighter {
     /// by swift-markdown). Zero-length content + full-range delimiter ⇒ the whole
     /// `^id` hides when rendered / dims at the caret, like a comment. No linking.
     /// Skips a `^id` inside a code or math span.
-    static func parseBlockRef(_ text: String, into spans: inout [Span]) {
+    public static func parseBlockRef(_ text: String, into spans: inout [Span]) {
         let ns = text as NSString
         guard let m = blockRefRegex.firstMatch(
             in: text, range: NSRange(location: 0, length: ns.length)) else { return }
@@ -178,7 +178,7 @@ extension SyntaxHighlighter {
     /// segment of an alt/label string (`![alt|200](url)`, `![[img.png|200x100]]`).
     /// Returns `(nil, nil)` when the last `|`-segment isn't a size. Also returns
     /// the label with the size segment removed (for callers that display it).
-    static func parseImageDimensions(from label: String) -> (width: Int?, height: Int?, stripped: String) {
+    public static func parseImageDimensions(from label: String) -> (width: Int?, height: Int?, stripped: String) {
         guard let pipe = label.range(of: "|", options: .backwards) else { return (nil, nil, label) }
         let size = label[pipe.upperBound...].trimmingCharacters(in: .whitespaces)
         let parts = size.split(separator: "x", maxSplits: 1, omittingEmptySubsequences: false)
@@ -199,7 +199,7 @@ extension SyntaxHighlighter {
     /// visible display text (the alias when present, else the target); the
     /// `[[`, an optional `target|`, and the `]]` are delimiter ranges hidden
     /// when rendered. Skips `[[` inside code spans / code blocks.
-    static func parseWikiLinks(_ text: String, into spans: inout [Span],
+    public static func parseWikiLinks(_ text: String, into spans: inout [Span],
                                features: MarkdownFeatures = .all) {
         let ns = text as NSString
         for m in wikiLinkRegex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
@@ -281,7 +281,7 @@ extension SyntaxHighlighter {
     /// Parses ==highlight== spans using regex (not supported by swift-markdown).
     /// GFM-style flanking: the content must not begin or end with whitespace
     /// (`== spaced ==` stays literal), matching how cmark treats `**`/`~~`.
-    static func parseHighlight(_ text: String, into spans: inout [Span]) {
+    public static func parseHighlight(_ text: String, into spans: inout [Span]) {
         let nsText = text as NSString
         guard let regex = try? NSRegularExpression(pattern: "==(?!\\s)(.+?)(?<!\\s)==", options: []) else { return }
         let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsText.length))
@@ -315,7 +315,7 @@ extension SyntaxHighlighter {
     /// side — mirrors the Pandoc rule in `parseMath`. Newlines are allowed so a
     /// block-merged `$$\n … \n$$` still matches. Runs before `parseMath`, which
     /// skips ranges inside a `.math(display: true)` span.
-    static func parseDisplayMath(_ text: String, into spans: inout [Span]) {
+    public static func parseDisplayMath(_ text: String, into spans: inout [Span]) {
         let ns = text as NSString
         let n = ns.length
         let dollar: unichar = 0x24, backslash: unichar = 0x5C
@@ -378,7 +378,7 @@ extension SyntaxHighlighter {
     ///     not followed by a digit,
     ///   - `\$` is a literal escape, `$$` is skipped (display math, later phase),
     ///   - inline math never spans a newline.
-    static func parseMath(_ text: String, into spans: inout [Span]) {
+    public static func parseMath(_ text: String, into spans: inout [Span]) {
         let ns = text as NSString
         let n = ns.length
         let dollar: unichar = 0x24, backslash: unichar = 0x5C, newline: unichar = 0x0A
@@ -514,17 +514,17 @@ extension SyntaxHighlighter {
     // `<img>` attribute extractors — double-, single-, and unquoted values
     // (§6.10). Exactly one of groups 1–3 participates per match. Shared with the
     // read-mode renderer so both back-ends accept the same tags.
-    static let imgSrcRegex = try! NSRegularExpression(
+    public static let imgSrcRegex = try! NSRegularExpression(
         pattern: #"\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"#, options: [.caseInsensitive])
-    static let imgAltRegex = try! NSRegularExpression(
+    public static let imgAltRegex = try! NSRegularExpression(
         pattern: #"\salt\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"#, options: [.caseInsensitive])
-    static let imgWidthRegex = try! NSRegularExpression(
+    public static let imgWidthRegex = try! NSRegularExpression(
         pattern: #"\swidth\s*=\s*(?:"(\d+)"|'(\d+)'|(\d+))"#, options: [.caseInsensitive])
-    static let imgHeightRegex = try! NSRegularExpression(
+    public static let imgHeightRegex = try! NSRegularExpression(
         pattern: #"\sheight\s*=\s*(?:"(\d+)"|'(\d+)'|(\d+))"#, options: [.caseInsensitive])
 
     /// The matched value range: whichever of groups 1–3 participated.
-    static func attrValueRange(_ m: NSTextCheckingResult) -> NSRange {
+    public static func attrValueRange(_ m: NSTextCheckingResult) -> NSRange {
         for i in 1...3 where m.range(at: i).location != NSNotFound { return m.range(at: i) }
         return m.range(at: 0)
     }
@@ -635,7 +635,7 @@ extension SyntaxHighlighter {
     /// `.link` spans with no delimiters (the whole match is content). Skips
     /// candidates inside code, math, comments, wikilinks, real links/images,
     /// and HTML tags. Must run after every other pass.
-    static func parseAutolinks(_ text: String, into spans: inout [Span]) {
+    public static func parseAutolinks(_ text: String, into spans: inout [Span]) {
         let ns = text as NSString
 
         func isTrimPunct(_ c: unichar) -> Bool {

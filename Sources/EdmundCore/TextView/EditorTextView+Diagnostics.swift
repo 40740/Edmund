@@ -1,4 +1,5 @@
 import AppKit
+import EdmundRender
 
 // MARK: - Editor diagnostics
 //

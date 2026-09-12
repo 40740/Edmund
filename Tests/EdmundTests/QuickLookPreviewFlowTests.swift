@@ -102,6 +102,23 @@ struct QuickLookDependencyTests {
                 "EdmundRender is below EdmundCore — the editor depends on it, not the reverse")
     }
 
+    /// The extension has to be able to write its own diagnostics: it is started by
+    /// the system rather than by the app, so nothing hands it a configured logger.
+    /// Two halves to that — the logger lives in a module both processes link, and
+    /// the extension's own source reports what it rendered.
+    @Test("The extension can log on its own")
+    func extensionLogsOnItsOwn() throws {
+        let log = try repoFile("Sources/EdmundRender/Diagnostics/Log.swift")
+        #expect(log.contains("\"settings.general.diagnosticLogging\""),
+                """
+                the logger resolves the app's preference itself, or an extension \
+                started without the app leaves no reason behind when a preview fails
+                """)
+        let preview = try previewCode()
+        #expect(preview.contains("Log.error"),
+                "the preview reports what it could not render")
+    }
+
     /// `main.swift` runs during static initialization of the appex module. It
     /// used to import `EdmundCore` just to point the log at the app's directory,
     /// which is exactly the kind of thing that pulls a framework in before the

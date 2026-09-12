@@ -1,15 +1,17 @@
 import AppKit
 import EdmundMarkdown
-import EdmundRender
 
 // MARK: - EditorTheme (AppKit)
 //
 // The AppKit-facing half of `EditorTheme`: it resolves the stored values into
-// `NSFont` / `NSColor` for the editor. The stored model itself lives in
-// `EdmundMarkdown`, which has no AppKit dependency — the Quick Look preview
-// needs the theme's *hex* values (they go into the page's CSS) and nothing else,
-// so pulling AppKit in for them would put the whole editor's framework on the
-// preview's launch path for a handful of color strings.
+// `NSFont` / `NSColor`. The stored model itself lives in `EdmundMarkdown`, which
+// has no AppKit dependency.
+//
+// This belongs to the *rendering* layer rather than the editor: `HTMLTheme`
+// resolves the same NSColors into the page's CSS and `DocumentHTML` tints the
+// math bitmaps with `bodyTextColorResolved(dark:)`, so the editor and Read mode
+// keep one definition of the ink. `EdmundCore` imports it like any other part of
+// its rendering pipeline.
 extension EditorTheme {
 
 

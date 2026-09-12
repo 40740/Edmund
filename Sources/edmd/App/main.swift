@@ -1,5 +1,6 @@
 import AppKit
 import EdmundCore
+import EdmundRender
 import Sparkle
 
 // Entry point for the app the user knows as "Edmund" (CFBundleName). The
