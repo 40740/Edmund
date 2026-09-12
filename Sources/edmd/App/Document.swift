@@ -580,6 +580,7 @@ class Document: NSDocument, HeadingNavigable {
     /// — a fresh launch stays full-window just like before). It only lists a
     /// directory when the user has explicitly turned it on, so the open path and
     /// default launch remain untouched and instant.
+    ///
     /// Whether this document has a window (and so a built view tree) yet.
     /// `NSDocument` has no such accessor — its `windowControllers` is an
     /// implicitly-unwrapped optional, and `isWindowLoaded` belongs to
@@ -588,6 +589,7 @@ class Document: NSDocument, HeadingNavigable {
     /// `makeWindowControllers` runs there are no controllers to ask.
     var hasWindow: Bool { windowControllers.first?.window != nil }
 
+    /// Re-lists this document's directory in the sidebar, if it's showing.
     private func refreshSidebar() {
         // Implicitly-unwrapped stored properties are nil until
         // `makeWindowControllers` builds the view tree, and `fileURL` can change
