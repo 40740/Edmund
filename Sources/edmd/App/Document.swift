@@ -585,7 +585,7 @@ class Document: NSDocument, HeadingNavigable {
         // `makeWindowControllers` builds the view tree, and `fileURL` can change
         // before that (see the `fileURL` override), so this has to be a no-op
         // until the window — and with it the sidebar — exists.
-        guard windowControllers.first?.window != nil, let fileSidebar else { return }
+        guard isWindowLoaded, let fileSidebar else { return }
         guard !fileSidebar.isHidden else { return }
         fileSidebar.showDirectory(documentDirectory)
     }
@@ -686,14 +686,25 @@ class Document: NSDocument, HeadingNavigable {
     /// reach any refresh. The guard also keeps the whole hook off the open path
     /// — reading a file touches no view; the initial refresh is done by the
     /// window setup and `showWindows()`.
+    ///
+    /// The refresh is a **main-actor hop**, not a direct call: `NSDocument.fileURL`
+    /// is not main-actor isolated (AppKit assigns it from the thread doing the
+    /// read), so `windowControllers` / `refreshSidebar()` / the toolbar button are
+    /// unreachable from here — the compiler rejects it. The hop also *is* the
+    /// guard: it lands after any read that is still in flight has finished
+    /// building the view tree, and the methods it calls are themselves no-ops
+    /// while the window isn't loaded (`isWindowLoaded`).
     override var fileURL: URL? {
         get { super.fileURL }
         set {
             let changed = newValue != super.fileURL
             super.fileURL = newValue
-            guard changed, windowControllers.first?.window != nil else { return }
-            refreshRevealInFinderButton()
-            refreshSidebar()
+            guard changed else { return }
+            Task { @MainActor [weak self] in
+                guard let self, self.isWindowLoaded else { return }
+                self.refreshRevealInFinderButton()
+                self.refreshSidebar()
+            }
         }
     }
 
