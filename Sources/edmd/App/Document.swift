@@ -580,12 +580,20 @@ class Document: NSDocument, HeadingNavigable {
     /// — a fresh launch stays full-window just like before). It only lists a
     /// directory when the user has explicitly turned it on, so the open path and
     /// default launch remain untouched and instant.
+    /// Whether this document has a window (and so a built view tree) yet.
+    /// `NSDocument` has no such accessor — its `windowControllers` is an
+    /// implicitly-unwrapped optional, and `isWindowLoaded` belongs to
+    /// `NSWindowController`, not the document — so the check lives here once and
+    /// both call sites use it. Nil-safe by construction: before
+    /// `makeWindowControllers` runs there are no controllers to ask.
+    var hasWindow: Bool { windowControllers.first?.window != nil }
+
     private func refreshSidebar() {
         // Implicitly-unwrapped stored properties are nil until
         // `makeWindowControllers` builds the view tree, and `fileURL` can change
         // before that (see the `fileURL` override), so this has to be a no-op
         // until the window — and with it the sidebar — exists.
-        guard isWindowLoaded, let fileSidebar else { return }
+        guard hasWindow, let fileSidebar else { return }
         guard !fileSidebar.isHidden else { return }
         fileSidebar.showDirectory(documentDirectory)
     }
@@ -693,7 +701,7 @@ class Document: NSDocument, HeadingNavigable {
     /// unreachable from here — the compiler rejects it. The hop also *is* the
     /// guard: it lands after any read that is still in flight has finished
     /// building the view tree, and the methods it calls are themselves no-ops
-    /// while the window isn't loaded (`isWindowLoaded`).
+    /// while the window isn't loaded (`hasWindow`).
     override var fileURL: URL? {
         get { super.fileURL }
         set {
@@ -701,7 +709,7 @@ class Document: NSDocument, HeadingNavigable {
             super.fileURL = newValue
             guard changed else { return }
             Task { @MainActor [weak self] in
-                guard let self, self.isWindowLoaded else { return }
+                guard let self, self.hasWindow else { return }
                 self.refreshRevealInFinderButton()
                 self.refreshSidebar()
             }
