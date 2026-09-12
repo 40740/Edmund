@@ -13,7 +13,18 @@ BUNDLE="build/${APP_NAME}.app"
 EXECUTABLE="edmd"
 
 echo "Building release binary..."
-swift build -c release 2>&1 | tail -3
+# Keep the last lines on success, but dump the *whole* log when the build fails
+# — `| tail -3` used to swallow every diagnostic, leaving a release run failing
+# with nothing but "exit code 1" in the CI log.
+BUILD_LOG="$(mktemp)"
+if ! swift build -c release >"$BUILD_LOG" 2>&1; then
+    echo "swift build failed — full log:"
+    cat "$BUILD_LOG"
+    rm -f "$BUILD_LOG"
+    exit 1
+fi
+tail -3 "$BUILD_LOG"
+rm -f "$BUILD_LOG"
 
 echo "Creating ${APP_NAME}.app bundle..."
 rm -rf "$BUNDLE"
