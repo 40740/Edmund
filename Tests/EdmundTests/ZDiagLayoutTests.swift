@@ -23,6 +23,6 @@ struct ZDiagLayoutTests {
         dump("core.bundleURL", core.bundleURL)
         dump("core.resourceURL", core.resourceURL)
         dump("exe", URL(fileURLWithPath: CommandLine.arguments[0]))
-        Issue.record("LAYOUT >>> " + lines.joined(separator: " // "))
+        Issue.record("LAYOUT >>> " + lines.joined(separator: String(" // ")))
     }
 }
