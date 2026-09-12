@@ -1,14 +1,15 @@
 import AppKit
 import EdmundMarkdown
 
-// MARK: - VersionHistory (NSFileVersion)
+// MARK: - VersionHistoryStore (NSFileVersion)
 //
-// The macOS version-history half of `VersionHistory`. The `VersionInfo` model
-// itself lives in `EdmundMarkdown` (the app, the settings UI and the preview all
-// name it), but reading versions off disk is `NSFileVersion` work — AppKit — so
-// it lives here, out of the module the preview links.
+// The disk half of the version-history store: `scanFolder` (a plain directory
+// walk) lives with the model in `EdmundMarkdown`, and this extension adds the
+// `NSFileVersion` queries. The model — `VersionInfo` — is in `EdmundMarkdown`
+// too, since the settings UI and the preview both name it; only the AppKit part
+// is here.
 
-extension VersionHistory {
+extension VersionHistoryStore {
 
     /// Query macOS version history for each URL and flatten to `VersionInfo`.
     public static func gather(urls: [URL]) -> [VersionInfo] {
