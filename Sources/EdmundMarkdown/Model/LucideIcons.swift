@@ -63,11 +63,10 @@ public enum LucideIcons {
 
     /// Wraps inner `geometry` in Lucide's canonical stroke-based `<svg>`.
     ///
-    /// Not `private`: the AppKit halves in `EdmundRender/Theme/LucideIcons+AppKit.swift`
-    /// rasterize this exact markup, which is what keeps the vector and the bitmap
-    /// identical. Not `public` either — it is an implementation detail of the two
-    /// public front-ends above.
-    static func strokeSVG(geometry: String, stroke: String) -> String {
+    /// `public` because the AppKit halves in
+    /// `EdmundRender/Theme/LucideIcons+AppKit.swift` rasterize this exact markup —
+    /// one builder is what keeps the editor's icon and the HTML icon identical.
+    public static func strokeSVG(geometry: String, stroke: String) -> String {
         #"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke=""#
             + stroke
             + #"" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">"#
