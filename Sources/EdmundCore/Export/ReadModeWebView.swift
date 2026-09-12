@@ -47,8 +47,17 @@ public final class ReadModeWebView: WKWebView {
     public var onOpenInternalLink: ((String) -> Void)?
 
     /// Called after a `loadHTMLString` finishes (including any pending scroll
-    /// restore, applied first — see `pendingScrollRestore`).
+    /// restore, applied first — see `pendingScrollRestore`), **or** when the load
+    /// failed (`didFail`) — a page that can't be rendered must not leave a
+    /// caller waiting on a callback that will never come. The Quick Look
+    /// extension awaits this to tell Quick Look the preview is ready, so a
+    /// dropped failure here is an eternal loading state.
     public var onLoadFinished: (() -> Void)?
+
+    /// The error from the most recent failed navigation, when there was one.
+    /// `onLoadFinished` fires for a failure too, so a caller that has to decide
+    /// what to show (rather than just "done") can tell the two apart.
+    public var lastLoadFailed: Bool = false
 
     /// A code block's copy button was clicked. Handled entirely here (unlike
     /// `onOpenWikiLink`/`onOpenInternalLink`, which need the app's document
@@ -181,6 +190,7 @@ public final class ReadModeWebView: WKWebView {
             return
         }
         lastLoadedHTML = html
+        lastLoadFailed = false
         loadHTMLString(html, baseURL: ReadModeNavigationPolicy.trustedBaseURL)
     }
 
@@ -234,6 +244,13 @@ public final class ReadModeWebView: WKWebView {
 
     /// Forwarded from the navigation coordinator's `didFinish`.
     fileprivate func handleDidFinishLoad() {
+        applyPendingScrollRestoreAndNotify()
+    }
+
+    /// Forwarded from the coordinator's `didFail`/`didFailProvisionalNavigation`.
+    fileprivate func handleDidFailLoad(_ error: Error) {
+        Log.error("read-mode load failed: \(error.localizedDescription)", category: .render)
+        lastLoadFailed = true
         applyPendingScrollRestoreAndNotify()
     }
 
@@ -387,6 +404,18 @@ private final class ReadModeNavigationCoordinator: NSObject, WKNavigationDelegat
     // about; the plain delegate method matches the requirement as written.
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         owner?.handleDidFinishLoad()
+    }
+
+    /// Report a failed load through the same channel as a finished one. Without
+    /// this, a load that fails never calls back and whoever awaited the render
+    /// waits forever (Quick Look: an eternal spinner — issue #8).
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        owner?.handleDidFailLoad(error)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
+                 withError error: Error) {
+        owner?.handleDidFailLoad(error)
     }
 }
 

@@ -3,6 +3,19 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.25.0] - 2026-09-12
+
+### Fixed
+- **访达按空格预览 `.md` 一直转圈加载（Quick Look 扩展）**：v5.24.0 修掉了崩溃，但预览仍然出不来内容。根因是 Quick Look **要等 `preparePreviewOfFile` 返回才结束加载态**，而它当时 `await` 的是 web view 的「加载完成」回调，**没有超时、也没有失败路径**——只要渲染没跑完（或干脆没开始），预览就永远停在加载中，而且不留任何线索。现在：
+  - 渲染等待加**超时兜底**（8s），超时/失败都会**在预览里显示明确提示**，而不是无限转圈。
+  - `ReadModeWebView` 补上 `didFail` / `didFailProvisionalNavigation` 回调——原来加载失败**不会**触发任何回调，谁等谁卡死；现在失败也走完成通道并标记 `lastLoadFailed`。
+  - 每一步（读文件、渲染、图片权限探测、结果）都写入 `~/.edmund/logs/edmund-<日期>.log`，扩展启动时自动接上这个日志目录——以前扩展只走 `os_log`，用户无法提供、我们也无法诊断。
+- **预览里的本地图片（Quick Look 沙盒）**：预览扩展是沙盒的，只有被预览文件本身的读权限，**同目录的图片读不到**。以前会把每张图都渲染成「Image not found」占位图标——一个装满警告图标的页面看起来就像「预览坏了」。现在扩展**先探测**目录读权限，读不到时用**作者写的 alt 文本**占位（没有 alt 就用路径），预览仍然是一份能读的文档。
+  - 同时新增 `ImageLoadFailure.notReadable`（「No permission to read image」），把「没权限读」和「文件不存在」区分开——这两种情况的原因和解决办法完全不同。App 内（非沙盒）行为不变，真实缺失的图片仍然照旧报错。
+
+### Changed
+- `DocumentHTML` 暴露 `lastPassDegraded`：最近一次渲染是否用过可见兜底（数学栅格化失败、图片被替换等）。Quick Look 用它决定是否在预览里给出提示；App 的编辑/阅读/导出路径不受影响。
+
 ## [5.24.0] - 2026-09-12
 
 > 复核（第一版发布构建失败后修订）：应用 0017 时复读了新增的 `fileURL` 钩子——`fileURL` 是在**读取（打开文件）阶段**就被赋值的，那时 `makeWindowControllers` 还没建出视图树，`fileSidebar` 仍是 nil，直接刷新会踩隐式解包。现改为**用 setter 把赋值本身也挡住**（`get { super.fileURL }` + 在 `set` 里先写 `super` 再判断 `windowControllers.first?.window`），`refreshSidebar()` 同样加守卫（句柄没建出来时 `windowControllers.first?.window` 本身是 nil，没有 IB 隐式解包风险）。打开路径依旧不碰任何视图，读盘后的首次刷新由窗口创建与 `showWindows()` 负责。另把 `scripts/build-app.sh` 的 `swift build ... | tail -3` 改成构建失败时打印完整日志——第一版正是因为它只留 `exit code 1`、看不到编译错误才多绕了一圈。

@@ -390,6 +390,10 @@ enum HTMLTheme {
                         border: 1px dashed var(--rule); border-radius: 6px;
                         padding: 0.3em 0.6em; font-size: 0.9em; }
     .md-image-blocked svg { width: 1.1em; height: 1.1em; flex: 0 0 auto; }
+    /* An image the caller asked to keep in words (Quick Look: its sandbox can't
+       read files next to the previewed one). Italic + faint so it reads as the
+       author's placeholder text rather than run-in body copy. */
+    .md-image-omitted { color: var(--faint); font-style: italic; }
 
     /* Callouts: tinted box + colored title; the icon sits as a non-shrinking
        flex child so a long custom title wraps under the title text, never under

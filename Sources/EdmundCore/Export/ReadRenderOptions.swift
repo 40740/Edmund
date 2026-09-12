@@ -29,6 +29,19 @@ public struct ReadRenderOptions: Sendable, Equatable {
     /// flag drops that syntax from the rendered HTML.
     public var features: MarkdownFeatures
 
+    /// When true, an image the renderer can't show — most importantly one this
+    /// process isn't allowed to read — is replaced by the author's alt text (or
+    /// the source path) instead of a placeholder icon and a reason label.
+    ///
+    /// Set by the Quick Look preview. A preview runs in a sandboxed appex whose
+    /// only file access is the previewed document, so images next to the file
+    /// are, by construction, unreadable there — while the embedded editor (not
+    /// sandboxed) shows them fine. Reporting "Image not found" would be plainly
+    /// wrong, and a page of warning icons reads as "the preview is broken".
+    /// Keeping the author's own words in place keeps the preview a usable
+    /// reading of the document.
+    public var plainTextImageFallback: Bool
+
     /// When true (the Markdown default), a single source newline is a *soft*
     /// break — collapsed to a space/newline so the two lines flow as one
     /// paragraph. When false, each single newline renders as a visible `<br>`,
@@ -37,12 +50,14 @@ public struct ReadRenderOptions: Sendable, Equatable {
 
     public init(preserveBlankLines: Bool = true, allowRemoteImages: Bool = false,
                 maxContentWidthPoints: Double = .greatestFiniteMagnitude,
-                features: MarkdownFeatures = .all, strictLineBreaks: Bool = true) {
+                features: MarkdownFeatures = .all, strictLineBreaks: Bool = true,
+                plainTextImageFallback: Bool = false) {
         self.preserveBlankLines = preserveBlankLines
         self.allowRemoteImages = allowRemoteImages
         self.maxContentWidthPoints = maxContentWidthPoints
         self.features = features
         self.strictLineBreaks = strictLineBreaks
+        self.plainTextImageFallback = plainTextImageFallback
     }
 
     public static let `default` = ReadRenderOptions()

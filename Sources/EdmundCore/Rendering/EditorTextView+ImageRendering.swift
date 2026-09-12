@@ -50,6 +50,11 @@ enum ImageLoadFailure: Equatable {
     case blockedBySetting
     case notAnImage
     case notFound
+    /// The file is there, but this process isn't allowed to read it — sandbox
+    /// denial or POSIX permissions. Distinct from `.notFound` because the fix is
+    /// different (run the app, or move the file), and "Image not found" would send
+    /// the reader looking for a file that is sitting right there.
+    case notReadable
     /// A `![[file]]` embed of a type Obsidian supports (audio/video/pdf/note)
     /// but Edmund can't render.
     case embedTypeUnsupported
@@ -62,6 +67,7 @@ enum ImageLoadFailure: Equatable {
         case .blockedBySetting: return "External images blocked"
         case .notAnImage: return "Not an image"
         case .notFound: return "Image not found"
+        case .notReadable: return "No permission to read image"
         case .embedTypeUnsupported: return "Embeded file not an image"
         case .embedTypeGenerallyUnsupported: return "Embed file type generally unsupported"
         }

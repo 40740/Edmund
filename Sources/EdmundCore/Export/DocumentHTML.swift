@@ -14,6 +14,13 @@ import AppKit
 @MainActor
 enum DocumentHTML {
 
+    /// Set by the most recent `full(...)` call when an asset it could not render
+    /// was replaced by a visible fallback (a failed rasterization, or an image
+    /// this process isn't allowed to read). Callers that show the page to a user
+    /// — the Quick Look preview — surface it on screen, instead of presenting a
+    /// page that silently isn't the document.
+    @MainActor private(set) static var lastPassDegraded = false
+
     /// Builds a complete `<!DOCTYPE html>…` document for `markdown`. `baseURL` is
     /// the document's directory, used to resolve relative image paths for inlining.
     static func full(markdown: String,
@@ -22,9 +29,11 @@ enum DocumentHTML {
                      dark: Bool,
                      baseURL: URL? = nil,
                      options: ReadRenderOptions = .default) -> String {
+        lastPassDegraded = false
         var body = HTMLRenderer.render(markdown: markdown, options: options)
         body = fillMath(body, theme: theme, dark: dark)
-        body = fillImages(body, baseURL: baseURL, options: options)
+        body = fillImages(body, baseURL: baseURL, options: options,
+                          plainTextFallback: options.plainTextImageFallback)
         let css = HTMLTheme.css(theme, callouts: callouts, dark: dark,
                                 maxContentWidthPoints: options.maxContentWidthPoints)
         return """
@@ -59,9 +68,8 @@ enum DocumentHTML {
         var out = replaceMatches(html, pattern: displayMathPattern) { groups in
             let id = groups[1]
             let tex = unescapeAttr(groups[2])
-            guard let r = MathRendering.shared.render(latex: tex, displayMode: true,
-                                                      pointSize: theme.fontSize, color: color),
-                  let png = pngData(r.image, scale: 2) else {
+            guard let png = mathPNG(latex: tex, displayMode: true,
+                                    pointSize: theme.fontSize, color: color) else {
                 return "<div\(id) class=\"math-display\"><code>\(HTMLRenderer.escape(tex))</code></div>"
             }
             let uri = "data:image/png;base64,\(png.data.base64EncodedString())"
@@ -69,9 +77,8 @@ enum DocumentHTML {
         }
         out = replaceMatches(out, pattern: inlineMathPattern) { groups in
             let tex = unescapeAttr(groups[1])
-            guard let r = MathRendering.shared.render(latex: tex, displayMode: false,
-                                                      pointSize: theme.fontSize, color: color),
-                  let png = pngData(r.image, scale: 2) else {
+            guard let png = mathPNG(latex: tex, displayMode: false,
+                                    pointSize: theme.fontSize, color: color) else {
                 return "<code>\(HTMLRenderer.escape(tex))</code>"
             }
             let uri = "data:image/png;base64,\(png.data.base64EncodedString())"
@@ -95,15 +102,34 @@ enum DocumentHTML {
             // block (a `<span>` promoted to display:block, since the placeholder
             // sits inside a `<p>` where a `<div>` would be invalid). The
             // paragraph's text keeps flowing above and below it.
-            guard let r = MathRendering.shared.render(latex: tex, displayMode: true,
-                                                      pointSize: theme.fontSize, color: color),
-                  let png = pngData(r.image, scale: 2) else {
+            guard let png = mathPNG(latex: tex, displayMode: true,
+                                    pointSize: theme.fontSize, color: color) else {
                 return "<span class=\"math-display-block\"><code>\(HTMLRenderer.escape(tex))</code></span>"
             }
             let uri = "data:image/png;base64,\(png.data.base64EncodedString())"
             return "<span class=\"math-display-block\"><img class=\"math\" style=\"width:\(fmt(png.cssWidth))px; height:\(fmt(png.cssHeight))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\"></span>"
         }
         return out
+    }
+
+    /// Renders math and returns its bitmap, or nil when the engine produced
+    /// nothing *or* the raster pass failed. Callers fall back to the raw TeX in a
+    /// `<code>`, never to an empty hole — a page missing an equation with no sign
+    /// anything is absent is a partial copy of the document, not a rendering of it.
+    private static func mathPNG(latex: String, displayMode: Bool,
+                                pointSize: CGFloat, color: NSColor) -> PNGResult? {
+        guard let rendered = MathRendering.shared.render(latex: latex, displayMode: displayMode,
+                                                         pointSize: pointSize, color: color) else {
+            Log.error("math engine produced nothing for \(latex.prefix(60))", category: .render)
+            lastPassDegraded = true
+            return nil
+        }
+        guard let png = pngData(rendered.image, scale: 2) else {
+            Log.error("math raster failed for \(latex.prefix(60))", category: .render)
+            lastPassDegraded = true
+            return nil
+        }
+        return png
     }
 
     // MARK: Images (local → inlined data URI; remote → off by default)
@@ -120,30 +146,61 @@ enum DocumentHTML {
     /// gets a visible icon + reason (`ImageLoadFailure`, shared with Edit
     /// mode's inline preview) instead of silently showing nothing.
     private static func fillImages(_ html: String, baseURL: URL?,
-                                   options: ReadRenderOptions) -> String {
+                                   options: ReadRenderOptions,
+                                   plainTextFallback: Bool = false) -> String {
         var cache: [String: String] = [:]   // resolved path → data URI
+        /// So an unreadable image directory is reported once, not once per image.
+        var warnedDirectories = Set<String>()
+
+        /// The visible stand-in for an image this process couldn't read. The
+        /// Quick Look preview runs inside a sandboxed appex whose only file
+        /// access is the document being previewed, so a page with local images
+        /// comes out all placeholder icons — the reason a preview can look empty
+        /// while the app renders the same file fine. That context asks for the
+        /// alt text instead: the author's own words in the image's place.
+        func placeholder(_ src: String, alt: String, reason: ImageLoadFailure) -> String {
+            lastPassDegraded = true
+            if plainTextFallback {
+                let label = unescapeAttr(alt).trimmingCharacters(in: .whitespacesAndNewlines)
+                return "<span class=\"md-image-omitted\">\(HTMLRenderer.escape(label.isEmpty ? src : label))</span>"
+            }
+            return blockedImagePlaceholder(reason: reason)
+        }
+
+        /// True when the file exists but this process may not read it (sandbox
+        /// denial, permissions) — the case that needs explaining rather than
+        /// being reported as "missing".
+        func denied(_ fileURL: URL) -> Bool {
+            guard !FileManager.default.isReadableFile(atPath: fileURL.path) else { return false }
+            if warnedDirectories.insert(fileURL.deletingLastPathComponent().path).inserted {
+                Log.error("not allowed to read images next to the document; degraded to placeholders",
+                          category: .io)
+            }
+            return true
+        }
+
         return replaceMatches(html, pattern: imagePattern) { groups in
             let src = unescapeAttr(groups[1])
             let alt = groups[2]   // already attribute-escaped by the renderer
             let dims = groups[3] + groups[4]   // optional ` width="N" height="N"`
 
-            if src.isEmpty { return blockedImagePlaceholder(reason:.notFound) }
+            if src.isEmpty { return placeholder(src, alt: alt, reason: .notFound) }
             let lower = src.lowercased()
             if lower.hasPrefix("data:") {
                 return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\"\(dims)>"
             }
             if lower.hasPrefix("http://") {
-                return blockedImagePlaceholder(reason:.httpUnsupported)
+                return placeholder(src, alt: alt, reason: .httpUnsupported)
             }
             if lower.hasPrefix("https://") {
                 guard options.allowRemoteImages else {
-                    return blockedImagePlaceholder(reason:.blockedBySetting)
+                    return placeholder(src, alt: alt, reason: .blockedBySetting)
                 }
                 return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\"\(dims)>"
             }
             // Local: resolve against the document directory, read, inline.
             guard let fileURL = resolveLocalImage(src, baseURL: baseURL) else {
-                return blockedImagePlaceholder(reason:.notFound)
+                return placeholder(src, alt: alt, reason: .notFound)
             }
             if let cached = cache[fileURL.path] {
                 return "<img class=\"md-image\" src=\"\(cached)\" alt=\"\(alt)\"\(dims)>"
@@ -153,10 +210,11 @@ enum DocumentHTML {
             // undecodable one would otherwise fail `imageDataURI` identically —
             // check existence first so the two get distinct, accurate messages.
             guard FileManager.default.fileExists(atPath: fileURL.path) else {
-                return blockedImagePlaceholder(reason:.notFound)
+                return placeholder(src, alt: alt, reason: .notFound)
             }
+            if denied(fileURL) { return placeholder(src, alt: alt, reason: .notReadable) }
             guard let uri = imageDataURI(fileURL) else {
-                return blockedImagePlaceholder(reason:.notAnImage)
+                return placeholder(src, alt: alt, reason: .notAnImage)
             }
             cache[fileURL.path] = uri
             return "<img class=\"md-image\" src=\"\(uri)\" alt=\"\(alt)\"\(dims)>"
