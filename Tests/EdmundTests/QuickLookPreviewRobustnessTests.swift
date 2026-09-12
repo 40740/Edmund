@@ -19,6 +19,21 @@ import AppKit
 @MainActor
 struct QuickLookPreviewRobustnessTests {
 
+    /// The document *body* of a render, with the `<style>` block removed.
+    ///
+    /// Asserting on the whole page is a trap: the stylesheet legitimately carries
+    /// rules named after the very classes under test (`.md-image-blocked`,
+    /// `.md-image-omitted`), so `contains("md-image-blocked")` is true for any
+    /// document that includes the theme — including one that rendered the image
+    /// just fine. The element is what's being tested; look only at markup.
+    private func body(_ out: String) -> String {
+        guard let open = out.range(of: "<style>"),
+              let close = out.range(of: "</style>", range: open.upperBound..<out.endIndex)
+        else { return out }
+        return String(out[out.startIndex..<open.lowerBound])
+             + String(out[close.upperBound...])
+    }
+
     /// A render that needs no fallback must not report itself as degraded —
     /// otherwise every preview would carry the "some content couldn't be
     /// rendered" notice and the signal would be worthless.
@@ -52,9 +67,9 @@ struct QuickLookPreviewRobustnessTests {
         let out = DocumentHTML.full(markdown: "before ![架构图](missing.png) after",
                                     theme: .quickLook, callouts: Callout.defaultStyles,
                                     dark: false, options: options)
-        #expect(out.contains("md-image-omitted"))
-        #expect(out.contains("架构图"))
-        #expect(!out.contains("md-image-blocked"))
+        #expect(body(out).contains("md-image-omitted"))
+        #expect(body(out).contains("架构图"))
+        #expect(!body(out).contains("md-image-blocked"))
         #expect(DocumentHTML.lastPassDegraded, "a replaced image still counts as degraded")
     }
 
@@ -67,8 +82,8 @@ struct QuickLookPreviewRobustnessTests {
         let out = DocumentHTML.full(markdown: "![](missing.png)",
                                     theme: .quickLook, callouts: Callout.defaultStyles,
                                     dark: false, options: options)
-        #expect(out.contains("missing.png"))
-        #expect(!out.contains("md-image-blocked"))
+        #expect(body(out).contains("missing.png"))
+        #expect(!body(out).contains("md-image-blocked"))
     }
 
     /// The app's own render (and PDF/print export, which shares this assembly)
@@ -78,9 +93,9 @@ struct QuickLookPreviewRobustnessTests {
     func defaultKeepsPlaceholderIcon() {
         let out = DocumentHTML.full(markdown: "![x](https://example.com/x.png)",
                                     theme: .default, callouts: Callout.defaultStyles, dark: false)
-        #expect(out.contains("md-image-blocked"))
-        #expect(out.contains("External images blocked"))
-        #expect(!out.contains("md-image-omitted"))
+        #expect(body(out).contains("md-image-blocked"))
+        #expect(body(out).contains("External images blocked"))
+        #expect(!body(out).contains("md-image-omitted"))
     }
 
     /// The alt text reaches the page as *text*, not markup: the renderer escapes
@@ -93,7 +108,7 @@ struct QuickLookPreviewRobustnessTests {
         let out = DocumentHTML.full(markdown: "![a <script>b</script>](missing.png)",
                                     theme: .quickLook, callouts: Callout.defaultStyles,
                                     dark: false, options: options)
-        #expect(!out.contains("<script>"))
-        #expect(out.contains("&lt;script&gt;"))
+        #expect(!body(out).contains("<script>"))
+        #expect(body(out).contains("&lt;script&gt;"))
     }
 }

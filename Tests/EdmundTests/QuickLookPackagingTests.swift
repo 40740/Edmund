@@ -69,6 +69,24 @@ struct QuickLookSyntaxPackagingTests {
         #expect(store.availableLanguages().first?.id == "plain")
     }
 
+    @Test("A resource bundle keeps a flat Syntaxes next to the Contents/Resources one")
+    func packagingScriptKeepsBothLayouts() throws {
+        // `SyntaxDefinitionStore` probes the flat and the Contents/Resources
+        // layout, and the bundle's own `Bundle.module` accessor finds the flat
+        // one. The packaging step must therefore leave both in place — a `mv`
+        // here silently breaks whichever reader uses the other.
+        let script = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("scripts/build-app.sh")
+        let text = try String(contentsOf: script, encoding: .utf8)
+        #expect(!text.contains("mv \"$bundle/Syntaxes\""),
+                "the payload must be copied, not moved — the flat layout is load-bearing")
+        #expect(text.contains("cp -R \"$bundle/Syntaxes\""),
+                "the flat payload must be copied into Contents/Resources")
+    }
+
     @Test("The packaging script writes an Info.plist into every copied resource bundle")
     func packagingScriptMakesBundlesLegal() throws {
         // The root-cause half of the fix lives in build-app.sh, which the Linux
@@ -85,6 +103,6 @@ struct QuickLookSyntaxPackagingTests {
         #expect(text.contains("CFBundlePackageType"),
                 "the generated plist must declare a package type")
         #expect(text.contains("Contents/Resources/Syntaxes"),
-                "the flat .copy payload must be moved under Contents/Resources")
+                "the payload must be *also* laid out under Contents/Resources")
     }
 }

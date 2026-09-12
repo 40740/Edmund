@@ -140,42 +140,55 @@ public final class SyntaxDefinitionStore {
     }
 
     /// Every place the `Syntaxes` payload can live, most specific first:
-    /// - `Bundle.main.resourceURL` — the appex (`Contents/Resources`) and a
-    ///   normal `.app` (`Contents/Resources`).
-    /// - `Bundle.main.bundleURL` — where the app's own SwiftPM resource bundles
-    ///   sit (the `.app` root); the flat `.copy` payload lands at
-    ///   `<bundle>/Syntaxes`, a legal bundle at
-    ///   `<bundle>/Contents/Resources/Syntaxes`.
-    /// - `Bundle(for:)` — the framework/test-bundle case, so unit tests keep
-    ///   loading the real defs.
+    /// 1. next to the running binary's resources (`Bundle.main.resourceURL`):
+    ///    the app's `Contents/Resources`, an appex's `Contents/Resources` — and,
+    ///    for `swift test`, the test bundle's resources next to the JSON itself.
+    ///    A flat `Syntaxes/` folder here is what SwiftPM's `.copy` lands as when
+    ///    it isn't wrapped in a resource bundle.
+    /// 2. inside the module's resource bundle, wherever that bundle is: the
+    ///    `.app` root, `Contents/Resources`, or the directory of the test bundle.
+    ///    Its payload lives at `Contents/Resources/Syntaxes` once it's a legal
+    ///    bundle (see `scripts/build-app.sh`) and at `Syntaxes` while flat.
+    ///
+    /// The bundle's *name* is deliberately not assumed. SwiftPM derives it from
+    /// the package and target (`Edmund_EdmundCore.bundle` here) but the product
+    /// name decides what ships — the Quick Look appex is assembled by hand and
+    /// has carried `EdmundCore_EdmundCore.bundle`. Looking for one spelling makes
+    /// the whole lookup silently fail on the other, which is exactly how a
+    /// preview ends up unable to load its syntax defs. Matching any
+    /// `*EdmundCore.bundle` directory does not care which one is present.
     ///
     /// Read-only probing: a path that doesn't exist simply yields nothing.
     private static var bundledSyntaxDirectories: [URL] {
-        let bundleName = "Edmund_EdmundCore.bundle"
         var roots: [URL] = []
         for bundle in [Bundle.main, Bundle(for: SyntaxDefinitionStore.self)] {
             if let resources = bundle.resourceURL { roots.append(resources) }
             roots.append(bundle.bundleURL)
         }
+        // Deduplicate: `Bundle.main` and `Bundle(for:)` are the same object under
+        // `swift test`, and a repeated root only repeats the same failed lookups.
+        var seenRoots = Set<String>()
         var directories: [URL] = []
-        for root in roots {
+        for root in roots where seenRoots.insert(root.path).inserted {
             directories.append(root.appendingPathComponent("Syntaxes", isDirectory: true))
-            let nested = root.appendingPathComponent(bundleName, isDirectory: true)
-            directories.append(nested.appendingPathComponent("Contents/Resources/Syntaxes",
-                                                             isDirectory: true))
-            directories.append(nested.appendingPathComponent("Syntaxes", isDirectory: true))
+            for bundle in moduleResourceBundles(in: root) {
+                directories.append(bundle.appendingPathComponent("Contents/Resources/Syntaxes",
+                                                                 isDirectory: true))
+                directories.append(bundle.appendingPathComponent("Syntaxes", isDirectory: true))
+            }
         }
         return directories
     }
 
-    /// SwiftPM's resource bundle for this module, or nil when it is missing or
-    /// malformed — in which case `Bundle.module` would trap and must not be
-    /// touched. A legal bundle always carries a bundle identifier; that is the
-    /// same precondition the generated accessor asserts on.
-    private static var wellFormedModuleBundle: Bundle? {
-        let candidate = Bundle.main.bundleURL.appendingPathComponent("Edmund_EdmundCore.bundle")
-        let bundle = Bundle(path: candidate.path)
-        return bundle?.bundleIdentifier != nil ? bundle : nil
+    /// Every SwiftPM-style resource bundle for this module that sits directly in
+    /// `directory`, whatever it is named. Empty when there is none — a missing
+    /// bundle is a normal case (the app also ships the defs flat), not an error.
+    private static func moduleResourceBundles(in directory: URL) -> [URL] {
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil)) ?? []
+        return entries.filter {
+            $0.pathExtension == "bundle" && $0.lastPathComponent.contains("EdmundCore")
+        }
     }
 
     private static func loadUser() -> [(LanguageDefinition, URL)] {

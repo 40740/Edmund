@@ -140,6 +140,7 @@ for bundle in .build/release/*.bundle; do
         # writing a crash report and restarting quicklookd — issue #8, 17 crashes.
         # Give every resource bundle inside the appex a valid Info.plist so it's a
         # *legal* bundle and `Bundle.module` resolves instead of trapping.
+        echo "  · resource bundle: $(basename "$bundle")"
         if [ ! -f "$bundle/Contents/Info.plist" ]; then
             echo "  → adding Info.plist to $(basename "$bundle")"
             RES_BUNDLE_ID="$(basename "$bundle" .bundle | tr '_' '.')"
@@ -168,7 +169,12 @@ PLIST
             # way Foundation expects a resource bundle to be.
             if [ -d "$bundle/Syntaxes" ] && [ ! -d "$bundle/Contents/Resources/Syntaxes" ]; then
                 mkdir -p "$bundle/Contents/Resources"
-                mv "$bundle/Syntaxes" "$bundle/Contents/Resources/Syntaxes"
+                # Copy, don't move: `SyntaxDefinitionStore` probes both layouts
+                # (flat and Contents/Resources), and the flat copy is the one the
+                # bundle's own `Bundle.module` accessor finds. Moving it would fix
+                # our path lookup while breaking anything that still goes through
+                # the generated accessor.
+                cp -R "$bundle/Syntaxes" "$bundle/Contents/Resources/Syntaxes"
             fi
         fi
     fi

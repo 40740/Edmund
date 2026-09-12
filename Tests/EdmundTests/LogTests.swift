@@ -42,13 +42,22 @@ struct LogTests {
     @Test("Disabled: writes nothing")
     func disabledWritesNothing() {
         LogTestIsolation.withLock {
+            // A *fresh* directory per run, and the assertion is about the file
+            // existing at all. Writes are queued (logging never blocks the
+            // caller), so another test's line can land in the same file when two
+            // of them share the day's filename — the old `== nil` then failed on
+            // someone else's output while this test's own two lines were, in
+            // fact, correctly suppressed. Assert on *our* lines instead, which is
+            // the actual claim: the switch, not the directory, is what's tested.
             let dir = tempDir()
             Log.configure(enabled: false, directory: dir, retention: nil)
             Log.info("should not appear", category: .app)
             Log.error("nor this", category: .app)
             Log.flush()
 
-            #expect(todaysLog(in: dir) == nil)
+            let contents = todaysLog(in: dir) ?? ""
+            #expect(!contents.contains("should not appear"))
+            #expect(!contents.contains("nor this"))
         }
     }
 

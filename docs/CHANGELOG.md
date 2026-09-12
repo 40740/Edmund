@@ -13,8 +13,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - **预览里的本地图片（Quick Look 沙盒）**：预览扩展是沙盒的，只有被预览文件本身的读权限，**同目录的图片读不到**。以前会把每张图都渲染成「Image not found」占位图标——一个装满警告图标的页面看起来就像「预览坏了」。现在扩展**先探测**目录读权限，读不到时用**作者写的 alt 文本**占位（没有 alt 就用路径），预览仍然是一份能读的文档。
   - 同时新增 `ImageLoadFailure.notReadable`（「No permission to read image」），把「没权限读」和「文件不存在」区分开——这两种情况的原因和解决办法完全不同。App 内（非沙盒）行为不变，真实缺失的图片仍然照旧报错。
 
+### Fixed（构建与测试）
+- **v5.24.0 实际上从未编译通过**：`NSDocument.fileURL` 不是 main-actor 隔离的（AppKit 在读文件的线程上赋值），而 v5.24.0 的 setter 直接调用了 `windowControllers` / `refreshSidebar()` / 工具栏按钮——编译报错，两个 v5.24.0 tag 的 CI 都红、Release 也是死在 `Build app bundle`。现在改为 `Task { @MainActor }` 跳转后再刷新，并在那里用 `hasWindow` 守卫（和为 `NSDocument` 补上的 `hasWindow`，它本身没有 `isWindowLoaded`）。
+- 语法定义查找**不再假定资源包名字**：SwiftPM 按包名+目标名生成 `Edmund_EdmundCore.bundle`，而 QuickLook appex 是手工组装的，历史上出现过 `EdmundCore_EdmundCore.bundle`。只找一个拼写会让另一处**静默失败**（预览就是这么丢掉语法定义的）。现在匹配任意 `*EdmundCore.bundle`，并且打包脚本给它**同时**保留扁平 `Syntaxes/` 与 `Contents/Resources/Syntaxes`（原来用 `mv`，会把 `Bundle.module` 依赖的扁平布局移走）。
+- 打包日志会打印每个资源包的名字（`· resource bundle: …`），不再只有「加了 Info.plist」那一行。
+- 测试：`LogTests` 的「Disabled: writes nothing」改为断言**自己那两行**没有出现（写日志是异步入队的，断言「文件不存在」会被并行测试写入的当天文件误伤）；预览资产测试只看页面 **body**，不再被样式表里同名 CSS 规则干扰。
+
 ### Changed
-- `DocumentHTML` 暴露 `lastPassDegraded`：最近一次渲染是否用过可见兜底（数学栅格化失败、图片被替换等）。Quick Look 用它决定是否在预览里给出提示；App 的编辑/阅读/导出路径不受影响。
+- `RenderOutcome.lastRunUsedFallbacks`（public）暴露「最近一次渲染是否用过可见兜底」（数学栅格化失败、图片被替换等）。Quick Look 用它决定是否在预览里给出提示；App 的编辑/阅读/导出路径不受影响。
 
 ## [5.24.0] - 2026-09-12
 
