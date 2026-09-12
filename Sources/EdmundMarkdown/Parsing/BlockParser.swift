@@ -619,7 +619,7 @@ public enum BlockParser {
     /// True if `s` is a list line whose entire content after the marker is blank
     /// — i.e. the marker alone. Lets the renderer treat a leading list marker as
     /// "the block is owned by what follows" (e.g. a `$$…$$` display block).
-    static func isListMarkerOnly(_ s: String) -> Bool {
+    public static func isListMarkerOnly(_ s: String) -> Bool {
         isListLine(s) && contentAfterListMarker(s).allSatisfy { $0 == " " || $0 == "\t" }
     }
 

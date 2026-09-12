@@ -60,19 +60,23 @@ import EdmundMarkdown
 @objc(EdmundPreviewViewController)
 final class PreviewViewController: NSViewController, QLPreviewingController {
 
-    /// The log line and the on-screen explanation for each way a preview can
-    /// land. Kept together so a reason can never be logged without being
-    /// showable (or vice versa).
+    /// The on-screen explanation for each way a preview can land. Kept together
+    /// so a reason can never be logged without being showable (or vice versa).
+    ///
+    /// All three are reachable *after* `preparePreviewOfFile` has returned: the
+    /// page is handed to WebKit and the view goes up immediately, so a load that
+    /// fails (`.renderFailed`) is stated in the pane by `showLoadFailure` once its
+    /// callback lands, rather than holding the preview open for it.
     private enum Settled {
         case empty
         case unreadable
-        case loadFailed
+        case renderFailed
 
-        var notice: String? {
+        var notice: String {
             switch self {
-            case .empty:      return "这个 Markdown 文件是空的"
-            case .unreadable: return "无法读取这个文件（编码不受支持）"
-            case .loadFailed: return "预览渲染失败，未能显示该文档（详见 ~/.edmund/logs）"
+            case .empty:        return "这个 Markdown 文件是空的"
+            case .unreadable:   return "无法读取这个文件（编码不受支持）"
+            case .renderFailed: return "预览渲染失败，未能显示该文档（详见 ~/.edmund/logs）"
             }
         }
     }
@@ -187,9 +191,25 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
             self.webView = webView
         }
         layoutWebView()
+        // The load is asynchronous — the view is already on screen when it lands —
+        // so a failure is reported *here* rather than by replacing the view in
+        // `preparePreviewOfFile`. Without this the pane would just stay empty.
+        webView.onLoadFinished = { [weak self, weak webView] in
+            guard let self, let webView, webView === self.webView else { return }
+            reportRenderDiagnostics(webView)
+            if webView.lastLoadFailed { showLoadFailure() }
+        }
         webView.render(html: Self.html(for: markdown, url: url, dark: currentDocumentIsDark),
                        theme: .quickLook, dark: currentDocumentIsDark)
-        reportRenderDiagnostics(webView)
+    }
+
+    /// The page WebKit was handed could not be shown. Stated in the pane, so the
+    /// preview is never an unexplained empty rectangle — the shape issue #8 kept
+    /// taking, where "nothing" was indistinguishable from "still working".
+    private func showLoadFailure() {
+        let why = webView?.lastLoadFailureReason.map { ": \($0)" } ?? ""
+        Log.error("preview load failed\(why)", category: .render)
+        show(.renderFailed)
     }
 
     /// Writes the render pipeline's *recorded* diagnostics to the log.
@@ -328,7 +348,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
         currentDocument = nil
         container.subviews.forEach { $0.removeFromSuperview() }
 
-        let label = NSTextField(wrappingLabelWithString: settled.notice ?? "")
+        let label = NSTextField(wrappingLabelWithString: settled.notice)
         label.alignment = .center
         label.textColor = .secondaryLabelColor
         label.font = .systemFont(ofSize: 15)

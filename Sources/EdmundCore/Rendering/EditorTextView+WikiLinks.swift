@@ -1,4 +1,5 @@
 import AppKit
+import EdmundRender
 import EdmundMarkdown
 
 // MARK: - Internal Link Following

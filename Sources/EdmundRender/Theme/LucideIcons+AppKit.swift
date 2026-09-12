@@ -26,7 +26,7 @@ extension LucideIcons {
     /// tint's alpha — invisible with the opaque theme colors this was first
     /// used with, but it flattens a translucent tint to solid opaque. `nil` for
     /// an unknown id or if the platform SVG decoder can't build the image.
-    static func image(_ name: String, color: NSColor, pointSize: CGFloat) -> NSImage? {
+    public static func image(_ name: String, color: NSColor, pointSize: CGFloat) -> NSImage? {
         guard let g = geometry[name],
               let data = strokeSVG(geometry: g, stroke: "#000000").data(using: .utf8),
               let base = NSImage(data: data) else { return nil }
@@ -49,7 +49,7 @@ extension LucideIcons {
     /// *shape*, not an image — an image on a wrapping TextKit 2 fragment
     /// wedges its layout to one line (see FragmentOverlay). `nil` for an
     /// unknown id.
-    static func path(_ name: String) -> CGPath? {
+    public static func path(_ name: String) -> CGPath? {
         guard let g = geometry[name] else { return nil }
         return SVGPath.path(fromGeometry: g)
     }

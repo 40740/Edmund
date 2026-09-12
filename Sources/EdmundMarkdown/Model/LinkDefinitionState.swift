@@ -19,6 +19,10 @@ public struct LinkDefinitionState: Equatable {
     /// add/remove stays exact when the same line appears more than once.
     private var lines: [String: Int] = [:]
 
+    /// The editor holds one of these per document, so the (implicit) memberwise
+    /// init has to be reachable from `EdmundCore`.
+    public init() {}
+
     /// The collected definition lines, sorted and newline-joined. Empty when the
     /// document defines no references (then parsing skips the append entirely).
     public var defsText: String { lines.keys.sorted().joined(separator: "\n") }

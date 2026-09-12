@@ -15,7 +15,7 @@ extension Log {
     /// and character count, with no document text. Example output:
     ///   Structure (4): heading(2)·18c, paragraph·234c, codeBlock(swift)·456c, callout·120c
     public static func blockStructure(_ blocks: [Block], category: Category = .compose) {
-        guard shouldLog(.debug) else { return }
+        guard Log.isLoggingEnabled(for: .debug) else { return }
         let parts = blocks.map { b -> String in
             let c = b.range.length
             switch b.kind {

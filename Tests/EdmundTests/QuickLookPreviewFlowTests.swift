@@ -169,12 +169,14 @@ struct QuickLookLayoutTests {
         // returned view is already complete — nothing about the *content* waits.
         #expect(source.contains("DocumentHTML.full("),
                 "the page is built up front, not by a later callback")
-        #expect(!implementation.contains("webView.onLoadFinished"),
-                """
-                nothing may gate the preview on a WebKit callback — Quick Look \
-                holds its loading state until preparePreviewOfFile returns, and a \
-                callback that never arrives is what "still loading" always meant
-                """)
+        // The callback exists, but only to *report* a failure after the fact —
+        // nothing waits on it. The distinction is the whole fix: Quick Look holds
+        // its loading state until `preparePreviewOfFile` returns, and a preview
+        // that would not return until WebKit called back is the eternal spinner.
+        #expect(implementation.contains("webView.onLoadFinished"),
+                "a load that fails after the view is up still has to be reported")
+        #expect(implementation.contains("showLoadFailure"),
+                "and reported on screen, not only in the log")
     }
 
     /// `ReadModeWebView` builds its `WKWebViewConfiguration` on first render

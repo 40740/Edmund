@@ -129,9 +129,12 @@ public enum Log {
     /// Blocks until queued writes have hit disk. For tests.
     public static func flush() { LogStore.shared.flush() }
 
-    /// Whether a line at `level` is written. Internal (not private) because the
-    /// editor-side helpers in `Log+BlockStructure.swift` gate on the same rules.
-    static func shouldLog(_ level: Level) -> Bool {
+    private static func shouldLog(_ level: Level) -> Bool { isLoggingEnabled(for: level) }
+
+    /// Whether a line at `level` would be written. Public because the editor-side
+    /// helpers (`Log+BlockStructure.swift`) live in another module and gate their
+    /// own work on the same rules rather than formatting a line nobody will read.
+    public static func isLoggingEnabled(for level: Level) -> Bool {
         guard level >= minLevel else { return false }
         // Touching `isEnabled` resolves the built-in default on first use (see
         // `LogStore._enabled`), so a line written by a process that never calls
