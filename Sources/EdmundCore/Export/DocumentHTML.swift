@@ -19,7 +19,12 @@ enum DocumentHTML {
     /// this process isn't allowed to read). Callers that show the page to a user
     /// — the Quick Look preview — surface it on screen, instead of presenting a
     /// page that silently isn't the document.
-    @MainActor private(set) static var lastPassDegraded = false
+    @MainActor public private(set) static var lastPassDegraded = false
+
+    /// Public read-only view of `lastPassDegraded` for callers outside
+    /// `EdmundCore` (the Quick Look extension ships its own copy of this module
+    /// and can't see internal members) that have to decide what to put on screen.
+    @MainActor public static var lastRenderUsedFallbacks: Bool { lastPassDegraded }
 
     /// Builds a complete `<!DOCTYPE html>…` document for `markdown`. `baseURL` is
     /// the document's directory, used to resolve relative image paths for inlining.

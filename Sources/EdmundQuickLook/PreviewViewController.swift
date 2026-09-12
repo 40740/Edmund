@@ -81,7 +81,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
         let outcome = await waitForRender()
         switch outcome {
         case .finished:
-            let degraded = DocumentHTML.lastPassDegraded
+            let degraded = DocumentHTML.lastRenderUsedFallbacks
             let loadFailed = webView.lastLoadFailed
             Log.info("render finished (degraded: \(degraded), loadFailed: \(loadFailed))",
                      category: .render)
