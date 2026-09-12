@@ -101,14 +101,19 @@ struct QuickLookPreviewRobustnessTests {
     /// The alt text reaches the page as *text*, not markup: the renderer escapes
     /// it for an attribute, and the fallback un-escapes then re-escapes for the
     /// element body, so an author's `<` can't become a tag either way.
+    ///
+    /// An HTML tag in the alt text is not itself the interesting case — the
+    /// markdown parser treats it as raw HTML and drops it before the fallback ever
+    /// sees it. A lone `<` in plain text is: it reaches the placeholder verbatim,
+    /// and that is the path where an unescaped one would produce a tag.
     @Test("Alt text is escaped on the way into the page")
     func plainTextFallbackEscapesAltText() {
         var options = ReadRenderOptions()
         options.plainTextImageFallback = true
-        let out = DocumentHTML.full(markdown: "![a <script>b</script>](missing.png)",
+        let out = DocumentHTML.full(markdown: "![5 < 7 & 9 > 2](missing.png)",
                                     theme: .quickLook, callouts: Callout.defaultStyles,
                                     dark: false, options: options)
-        #expect(!body(out).contains("<script>"))
-        #expect(body(out).contains("&lt;script&gt;"))
+        #expect(!body(out).contains("< 7"))
+        #expect(body(out).contains("5 &lt; 7 &amp; 9 &gt; 2"))
     }
 }
