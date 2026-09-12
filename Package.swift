@@ -61,18 +61,18 @@ let package = Package(
         // packaged as an `.appex` by build-app.sh; its entry point is
         // Foundation's NSExtensionMain, redirected via the linker `-e` flag
         // (SwiftPM has no first-class app-extension product type).
-        // `-fapplication-extension` (the `-application_extension` marker) is what
-        // makes the linked binary refuse to use APIs that are unavailable to app
-        // extensions, and — more to the point here — what makes the result a
-        // *real* extension to anything that inspects it. Without it an appex can
-        // be rejected before its principal class is ever asked for a view.
+        // `-e _NSExtensionMain` is the entry point (SwiftPM has no
+        // app-extension product). `-fapplication-extension` goes through
+        // `-Xcc` because it is a *frontend* flag, not a linker one — passing it
+        // to `ld` fails with "unknown options". It compiles the target against
+        // the app-extension availability rules, which is what makes the binary a
+        // real extension rather than an executable that happens to sit in an
+        // `.appex`.
         .executableTarget(
             name: "EdmundQuickLook",
             dependencies: ["EdmundRender"],
-            linkerSettings: [.unsafeFlags([
-                "-Xlinker", "-e", "-Xlinker", "_NSExtensionMain",
-                "-Xlinker", "-fapplication-extension",
-            ])]),
+            swiftSettings: [.unsafeFlags(["-Xcc", "-fapplication-extension"])],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"])]),
         .testTarget(
             name: "EdmundTests",
             dependencies: ["EdmundCore", "EdmundMarkdown", "EdmundRender", "edmd"]),

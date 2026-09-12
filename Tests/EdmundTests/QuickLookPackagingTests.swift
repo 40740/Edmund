@@ -160,8 +160,14 @@ struct QuickLookSyntaxPackagingTests {
             .deletingLastPathComponent()
             .appendingPathComponent("Package.swift")
         let text = try String(contentsOf: manifest, encoding: .utf8)
-        #expect(text.contains("-fapplication-extension"),
-                "the appex must be linked with the extension marker")
+        // `-fapplication-extension` is a *frontend* flag: it has to reach the
+        // compiler through `-Xcc`. Passing it to `ld` fails outright
+        // ("unknown options"), which is exactly what a bare `-Xlinker` entry
+        // did. The distinction is the whole content of this test.
+        #expect(text.contains("\"-Xcc\", \"-fapplication-extension\""),
+                "the extension marker must reach the compiler, not the linker")
+        #expect(!text.contains("\"-Xlinker\", \"-fapplication-extension\""),
+                "the linker rejects -fapplication-extension: it is a frontend flag")
         #expect(text.contains("_NSExtensionMain"),
                 "its entry point is NSExtensionMain, not the target's main.swift")
     }
