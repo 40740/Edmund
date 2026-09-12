@@ -3,6 +3,25 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.26.0] - 2026-09-12
+
+### Fixed
+- **访达按空格预览 `.md` 仍在无限加载（Quick Look 扩展，第三次修复）**。前两轮都修错了地方，这次是真正的根因：
+  - **v5.24.0 的「打包层根治」从来没有生效。** `build-app.sh` 确实会为资源包补写合法的 `Contents/Info.plist`，但那行 `cp -R "$bundle" "${APPEX}/Contents/Resources/"` 写在**补 plist 之前**——appex 拿到的是**补 plist 之前的原始目录**，也就是那个「只有 `Syntaxes/`、没有 `Info.plist`」的非法 bundle。补好的 plist 被写进了 `.build` 工件里，而工件早就拷走了。所以崩溃的根因（`Bundle.module` 遇到无标识符 bundle 直接 trap）依然原封不动地随包发出。现在 `cp -R` 移到补 plist + 归位 `Contents/Resources/Syntaxes` **之后**执行，并用回归测试锁死这个**顺序**（只锁"写了 plist"不够——这次就是写了、但白写）。
+  - **`preparePreviewOfFile` 不再等待任何东西。** v5.25.0 给「等 web view 加载完成」加了 8 秒超时，但 Quick Look 是**等这个方法返回才结束加载态**的：只要主线程被占住（同步全量重排、资源内联、扩展拿不到激活权限），连那个超时都跑不到，屏幕上就是 Quick Look 自己的无限加载。现在这个方法**不渲染也不等**，直接返回一个**已经完整的视图**——文档，或者一条明确的说明；「还在加载」在这条代码路径上已经不可达。
+  - 预览视图改为「一个容器 + 藏在里面的 web view」：容器立刻返回，web view 由自身的加载回调再换上来（只换最新那一次预览，避免连续按空格时上一个文档的回调盖住当前文档）。
+  - 传了 `isHidden`、但**尺寸没传下去**：容器的尺寸靠 autoresizing 交给 web view（自动布局下一个没有固有尺寸的 web view 会排成 0×0，什么都没渲染——这种空白任何回调都救不回来）。
+  - 加载确实失败时，预览里显示原因，而不是一片空白。
+- **Quick Look 扩展不再生成、也不再抢占一个 Edmund 主窗口**。扩展链接了 `EdmundCore`，而 `NSDocumentController` 打开被预览文件时走的是完整文档流程：会造出 `800×520`、带工具栏和侧边栏的真窗口，`isRestorable = true`，还会 `window.center()`。`NSDocumentController` 打开文档时会把窗口提到最前，于是扩展举着一个真窗口去抢激活——而它该填的预览面板还在等。现在扩展进程里**不居中、不进可恢复集合**（用 bundle 标识符后缀 `.quicklook` 判断，和打包用的 `com.i7t5.edmund.quicklook` 对齐）。
+- **预览的明暗不再靠猜**：扩展从不拥有一个会继承外观的窗口，所以它自己按 App 的规则解析外观（ColaMD 预设优先于浅色/深色选择器，否则 `settings.appearance.mode`，认不出就跟随系统）。之前 `effectiveAppearance` 在 appex 里读到的是进程默认值，深色模式会渲染出一张白页。
+
+### Changed
+- Quick Look 扩展版本 `0.3.1` → `0.4.0`（`CFBundleVersion` 10）。
+
+### 测试
+- 新增 `QuickLookPreviewFlowTests`：锁定「`preparePreviewOfFile` 不 await 任何需要先完成的东西」「返回的是容器而不是 web view」「web view 由容器给尺寸」「加载失败要有可见原因」「扩展进程不居中外加不进入可恢复集合」「外观键与 `AppSettings` 一致」。
+- 新增 `QuickLookPackagingTests.packagingCopiesAfterMakingBundlesLegal`：锁定 appex 的 `cp -R` 在补 plist **之后**执行（此测试在旧脚本上会 FAIL，已实测）。
+
 ## [5.25.0] - 2026-09-12
 
 ### Fixed

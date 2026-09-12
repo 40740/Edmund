@@ -87,6 +87,42 @@ struct QuickLookSyntaxPackagingTests {
                 "the flat payload must be copied into Contents/Resources")
     }
 
+    /// The ordering bug behind "the preview still doesn't work" after v5.24.0:
+    /// the script wrote the legal `Info.plist` into the `.build` artifact *after*
+    /// `cp -R` had already staged that artifact into the appex — so the appex
+    /// shipped the original identifier-less directory and `Bundle.module` kept
+    /// trapping. The fix is only real if the copy happens last.
+    @Test("The appex copy happens after the bundle is made legal")
+    func packagingCopiesAfterMakingBundlesLegal() throws {
+        let script = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("scripts/build-app.sh")
+        let text = try String(contentsOf: script, encoding: .utf8)
+
+        guard let loopStart = text.range(of: "for bundle in .build/release/*.bundle; do"),
+              let loopEnd = text.range(of: "\ndone\n", range: loopStart.upperBound..<text.endIndex)
+        else {
+            Issue.record("could not locate the resource-bundle loop in build-app.sh")
+            return
+        }
+        let loop = String(text[loopStart.lowerBound..<loopEnd.upperBound])
+
+        guard let copyIntoAppex = loop.range(of: "cp -R \"$bundle\" \"${APPEX}/Contents/Resources/\""),
+              let plistWrite = loop.range(of: "cat > \"$bundle/Contents/Info.plist\"")
+        else {
+            Issue.record("could not find the appex copy and/or the Info.plist write")
+            return
+        }
+        #expect(plistWrite.lowerBound < copyIntoAppex.lowerBound,
+                """
+                the appex copy must come *after* the Info.plist is written — \
+                copying first ships the identifier-less bundle that Bundle.module \
+                traps on (this is the bug that survived v5.24.0)
+                """)
+    }
+
     @Test("The packaging script writes an Info.plist into every copied resource bundle")
     func packagingScriptMakesBundlesLegal() throws {
         // The root-cause half of the fix lives in build-app.sh, which the Linux

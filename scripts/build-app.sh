@@ -128,7 +128,6 @@ cp ".build/release/${QL_NAME}" "${APPEX}/Contents/MacOS/${QL_NAME}"
 cp Resources/QuickLookInfo.plist "${APPEX}/Contents/Info.plist"
 for bundle in .build/release/*.bundle; do
     if [ -e "$bundle" ]; then
-        cp -R "$bundle" "${APPEX}/Contents/Resources/"
         # SwiftPM's `.copy("Resources/Syntaxes")` produces a resource bundle that
         # is *only* a `Syntaxes/` folder — no `Contents/Info.plist`. Foundation's
         # generated `Bundle.module` accessor (SwiftPM ≥ 5.9 on macOS) therefore
@@ -177,6 +176,13 @@ PLIST
                 cp -R "$bundle/Syntaxes" "$bundle/Contents/Resources/Syntaxes"
             fi
         fi
+        # Copy LAST. The appex must receive the bundle that now has its
+        # Info.plist and its `Contents/Resources/Syntaxes` layout — copying
+        # first, as this used to, shipped the *original* identifier-less
+        # directory, which is precisely the shape `Bundle.module` traps on. The
+        # plist was being written into the `.build` artifact after it had already
+        # been staged, so the fix existed in the script and never in the app.
+        cp -R "$bundle" "${APPEX}/Contents/Resources/"
     fi
 done
 

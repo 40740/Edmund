@@ -213,6 +213,27 @@ class Document: NSDocument, HeadingNavigable {
 
     // MARK: - Window Setup
 
+    /// True when this process is the Quick Look extension rather than the app.
+    ///
+    /// The `.appex` links the same `Document` class (it shares `EdmundCore`) and
+    /// `NSDocumentController` opens the previewed file through the ordinary
+    /// document machinery — so a Space-bar preview in Finder was building a full
+    /// Edmund window: `800×520`, a toolbar, the sidebar, `isRestorable = true`,
+    /// `window.center()`. `NSDocumentController` orders a window whose controller
+    /// it holds front on open, so the extension came up owning a real window and
+    /// taking activation for it, while the preview pane it was actually supposed
+    /// to fill was still waiting.
+    ///
+    /// The bundle identifier is the reliable signal: the app is com.i7t5.edmd,
+    /// the extension com.i7t5.edmund.quicklook (`Resources/QuickLookInfo.plist`).
+    /// Everything the preview needs — parsing, rendering, `DocumentHTML` — comes
+    /// out of `EdmundCore` and touches none of this. The window is built but left
+    /// uncentered and out of the restorable set, so nothing in the host is
+    /// disturbed.
+    static let isQuickLookExtension: Bool = {
+        Bundle.main.bundleIdentifier?.hasSuffix(".quicklook") == true
+    }()
+
     override func makeWindowControllers() {
         // Default content size for first launch. Any saved size is applied as a
         // full window frame at the end of setup (below), once the toolbar is in
@@ -242,7 +263,9 @@ class Document: NSDocument, HeadingNavigable {
         // the preference applies — AppDelegate.applicationShouldTerminate turns
         // this off before terminating when it is disabled, so nothing is archived
         // and the next launch starts fresh.
-        window.isRestorable = true
+        // Never restorable from the extension process: its window is an
+        // artifact of NSDocument, not something the user should get back.
+        window.isRestorable = !Self.isQuickLookExtension
         window.minSize = NSSize(width: 320, height: 400)
         window.backgroundColor = NSColor.textBackgroundColor
 
@@ -388,7 +411,9 @@ class Document: NSDocument, HeadingNavigable {
         if let savedSize = AppSettings.lastWindowSize {
             window.setFrame(NSRect(origin: window.frame.origin, size: savedSize), display: false)
         }
-        window.center()
+        // Centering is for a window the user is about to use. The extension's
+        // window exists only to satisfy NSDocument and must never surface.
+        if !Self.isQuickLookExtension { window.center() }
 
         let wc = DocumentWindowController(window: window)
         addWindowController(wc)
