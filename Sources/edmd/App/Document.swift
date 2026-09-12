@@ -14,7 +14,12 @@ class Document: NSDocument, HeadingNavigable {
     private var viewModeButton: NSButton?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
     private var sidebarButton: NSButton?
+    private var revealInFinderButton: NSButton?
     private static let sidebarItemID = NSToolbarItem.Identifier("sidebar")
+    /// "Reveal in Finder" — opens the file's containing folder, selecting the
+    /// file itself. Fixed (always on the bar), like the sidebar / view-mode
+    /// buttons, because it's a file-level action rather than a format command.
+    private static let revealInFinderItemID = NSToolbarItem.Identifier("revealInFinder")
 
     // Toolbar format buttons.
     // Lightweight icon-only toggles that route through the responder chain to
@@ -576,7 +581,11 @@ class Document: NSDocument, HeadingNavigable {
     /// directory when the user has explicitly turned it on, so the open path and
     /// default launch remain untouched and instant.
     private func refreshSidebar() {
-        guard let fileSidebar else { return }
+        // Implicitly-unwrapped stored properties are nil until
+        // `makeWindowControllers` builds the view tree, and `fileURL` can change
+        // before that (see the `fileURL` override), so this has to be a no-op
+        // until the window — and with it the sidebar — exists.
+        guard hasWindow, let fileSidebar else { return }
         guard !fileSidebar.isHidden else { return }
         fileSidebar.showDirectory(documentDirectory)
     }
@@ -607,6 +616,29 @@ class Document: NSDocument, HeadingNavigable {
         refreshSidebarButton()
     }
 
+    // MARK: - Reveal in Finder
+
+    /// Opens the folder containing this document in Finder, with the document
+    /// itself selected. Unsaved (untitled) documents have no file to reveal, so
+    /// the button is disabled for them rather than opening an arbitrary folder.
+    @objc func revealInFinder(_ sender: Any?) {
+        guard let url = fileURL else { NSSound.beep(); return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    /// Keeps the button enabled/disabled and its tooltip in sync with whether
+    /// this document has a file on disk yet.
+    private func refreshRevealInFinderButton() {
+        guard let revealInFinderButton else { return }
+        if let url = fileURL {
+            revealInFinderButton.isEnabled = true
+            revealInFinderButton.toolTip = "在访达中显示 \(url.lastPathComponent)"
+        } else {
+            revealInFinderButton.isEnabled = false
+            revealInFinderButton.toolTip = "文档尚未保存，无法打开所在目录"
+        }
+    }
+
     /// Keeps the toolbar's sidebar toggle in sync with the persisted visibility.
     private func refreshSidebarButton() {
         guard let sidebarButton else { return }
@@ -635,6 +667,31 @@ class Document: NSDocument, HeadingNavigable {
 
     // MARK: - Rename & Move (manual — NSDocument's built-in versions
     //         are disabled without Info.plist / .app bundle)
+
+    /// The document's on-disk location changed (first save, Save As, or the
+    /// manual rename/move below). One hook covers them all, because every path
+    /// — `read(from:ofType:)` setting the URL, AppKit's own save, and the two
+    /// overrides here — funnels through `fileURL` (`Hooks.fileURLDidChange` is
+    /// on the NSDocument Swift overlay).
+    ///
+    /// Two things depend on it: the toolbar's reveal button is meaningless until
+    /// there is a file, and the sidebar lists *this file's* directory, so a
+    /// Save-As has to re-list it (previously only `showWindows` refreshed the
+    /// sidebar, so a Save-As left it pointing at the old folder).
+    override var fileURL: URL? {
+        didSet {
+            guard fileURL != oldValue else { return }
+            // The URL is assigned while the document is being *read*, before
+            // `makeWindowControllers` has run — `editor`/`fileSidebar` don't
+            // exist yet at that point, so there is nothing to refresh. Bail out
+            // (the window setup and `showWindows()` do the initial refresh).
+            // Also keeps the didSet off the instant-open path: reading a file
+            // must not touch any view.
+            guard hasWindow else { return }
+            refreshRevealInFinderButton()
+            refreshSidebar()
+        }
+    }
 
     override func rename(_ sender: Any?) {
         guard let url = fileURL, let window = windowControllers.first?.window else { return }
@@ -1075,7 +1132,8 @@ class Document: NSDocument, HeadingNavigable {
 
 extension Document: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        Self.defaultFormatIDs + [.flexibleSpace, Self.sidebarItemID, Self.viewModeItemID]
+        Self.defaultFormatIDs
+            + [.flexibleSpace, Self.revealInFinderItemID, Self.sidebarItemID, Self.viewModeItemID]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -1083,7 +1141,7 @@ extension Document: NSToolbarDelegate {
         // spacers and the app's fixed buttons. Users drag what they use onto the
         // visible bar; palette-only entries are never instantiated, so this costs
         // nothing on the open/秒开 path.
-        [.flexibleSpace, .space, Self.sidebarItemID, Self.viewModeItemID]
+        [.flexibleSpace, .space, Self.revealInFinderItemID, Self.sidebarItemID, Self.viewModeItemID]
             + Self.formatToolbarCatalog.map { $0.id }
     }
 
@@ -1141,6 +1199,30 @@ extension Document: NSToolbarDelegate {
         if let spec = Self.formatSpec(for: itemIdentifier) {
             return makeFormatToolbarItem(id: spec.id, symbol: spec.symbol,
                 label: spec.label, tooltip: spec.tooltip, action: spec.action)
+        }
+        if itemIdentifier == Self.revealInFinderItemID {
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "所在目录"
+            item.paletteLabel = "打开文件所在目录"
+            item.toolTip = "在访达中显示当前文件所在的目录"
+            item.visibilityPriority = .high
+            // `image` as well as `view`: without it the Customize Toolbar palette
+            // renders the entry as a non-draggable placeholder.
+            let revealImage = NSImage(systemSymbolName: "folder",
+                                      accessibilityDescription: "打开文件所在目录")
+            item.image = revealImage
+
+            let button = NSButton(image: revealImage ?? NSImage(),
+                                  target: self, action: #selector(revealInFinder(_:)))
+            button.bezelStyle = .texturedRounded
+            button.imagePosition = .imageOnly
+            configureToolbarButtonSize(button)
+            revealInFinderButton = button
+            item.view = button
+            item.minSize = button.frame.size
+            item.maxSize = button.frame.size
+            refreshRevealInFinderButton()
+            return item
         }
         if itemIdentifier == Self.sidebarItemID {
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)

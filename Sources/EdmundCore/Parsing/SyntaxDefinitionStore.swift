@@ -100,9 +100,82 @@ public final class SyntaxDefinitionStore {
         return base.appendingPathComponent("Edmund/Syntaxes", isDirectory: true)
     }
 
+    /// The bundled `Syntaxes/*.json` files, resolved **without** touching
+    /// `Bundle.module` unless it is known to be safe.
+    ///
+    /// `Bundle.module` is SwiftPM's generated accessor, and on macOS it *traps*
+    /// (`fatalError` → EXC_BREAKPOINT / SIGTRAP — not a throwable Swift error)
+    /// when the resource bundle it points at isn't a legal `Bundle`. The bundle
+    /// `.copy("Resources/Syntaxes")` produces is just a `Syntaxes/` folder; it
+    /// only becomes a legal bundle once the packaging step writes an
+    /// `Info.plist` into it (see `scripts/build-app.sh`).
+    ///
+    /// That gap crashed the Quick Look appex: a Space-bar preview in Finder
+    /// reached `reload()` → `Bundle.module` on the first md file and trapped
+    /// (issue #8). Packaging now writes the missing plist, and this lookup adds
+    /// a second line of defence — it finds the JSON files by path first and only
+    /// calls `Bundle.module` when that came up empty *and* the bundle it would
+    /// use is well-formed. A mis-packaged bundle therefore degrades to "no
+    /// syntax highlighting" instead of taking the process down.
     private static func loadBundled() -> [(LanguageDefinition, URL)] {
-        let urls = Bundle.module.urls(forResourcesWithExtension: "json", subdirectory: "Syntaxes") ?? []
-        return urls.compactMap(decode)
+        syntaxResourceURLs().compactMap(decode)
+    }
+
+    private static func syntaxResourceURLs() -> [URL] {
+        for directory in bundledSyntaxDirectories {
+            guard let entries = try? FileManager.default.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: nil) else { continue }
+            let json = entries.filter { $0.pathExtension.lowercased() == "json" }
+            if !json.isEmpty { return json }
+        }
+        // Nothing found by path. SwiftPM's accessor is the last resort, and only
+        // when its bundle is well-formed enough that the accessor's own
+        // precondition holds — otherwise it would trap right here.
+        if let module = wellFormedModuleBundle {
+            return module.urls(forResourcesWithExtension: "json", subdirectory: "Syntaxes") ?? []
+        }
+        Log.error("No bundled Syntaxes resources found; code blocks render unhighlighted",
+                  category: .io)
+        return []
+    }
+
+    /// Every place the `Syntaxes` payload can live, most specific first:
+    /// - `Bundle.main.resourceURL` — the appex (`Contents/Resources`) and a
+    ///   normal `.app` (`Contents/Resources`).
+    /// - `Bundle.main.bundleURL` — where the app's own SwiftPM resource bundles
+    ///   sit (the `.app` root); the flat `.copy` payload lands at
+    ///   `<bundle>/Syntaxes`, a legal bundle at
+    ///   `<bundle>/Contents/Resources/Syntaxes`.
+    /// - `Bundle(for:)` — the framework/test-bundle case, so unit tests keep
+    ///   loading the real defs.
+    ///
+    /// Read-only probing: a path that doesn't exist simply yields nothing.
+    private static var bundledSyntaxDirectories: [URL] {
+        let bundleName = "Edmund_EdmundCore.bundle"
+        var roots: [URL] = []
+        for bundle in [Bundle.main, Bundle(for: SyntaxDefinitionStore.self)] {
+            if let resources = bundle.resourceURL { roots.append(resources) }
+            roots.append(bundle.bundleURL)
+        }
+        var directories: [URL] = []
+        for root in roots {
+            directories.append(root.appendingPathComponent("Syntaxes", isDirectory: true))
+            let nested = root.appendingPathComponent(bundleName, isDirectory: true)
+            directories.append(nested.appendingPathComponent("Contents/Resources/Syntaxes",
+                                                             isDirectory: true))
+            directories.append(nested.appendingPathComponent("Syntaxes", isDirectory: true))
+        }
+        return directories
+    }
+
+    /// SwiftPM's resource bundle for this module, or nil when it is missing or
+    /// malformed — in which case `Bundle.module` would trap and must not be
+    /// touched. A legal bundle always carries a bundle identifier; that is the
+    /// same precondition the generated accessor asserts on.
+    private static var wellFormedModuleBundle: Bundle? {
+        let candidate = Bundle.main.bundleURL.appendingPathComponent("Edmund_EdmundCore.bundle")
+        let bundle = Bundle(path: candidate.path)
+        return bundle?.bundleIdentifier != nil ? bundle : nil
     }
 
     private static func loadUser() -> [(LanguageDefinition, URL)] {

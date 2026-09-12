@@ -116,7 +116,51 @@ mkdir -p "${APPEX}/Contents/MacOS" "${APPEX}/Contents/Resources"
 cp ".build/release/${QL_NAME}" "${APPEX}/Contents/MacOS/${QL_NAME}"
 cp Resources/QuickLookInfo.plist "${APPEX}/Contents/Info.plist"
 for bundle in .build/release/*.bundle; do
-    [ -e "$bundle" ] && cp -R "$bundle" "${APPEX}/Contents/Resources/"
+    if [ -e "$bundle" ]; then
+        cp -R "$bundle" "${APPEX}/Contents/Resources/"
+        # SwiftPM's `.copy("Resources/Syntaxes")` produces a resource bundle that
+        # is *only* a `Syntaxes/` folder — no `Contents/Info.plist`. Foundation's
+        # generated `Bundle.module` accessor (SwiftPM ≥ 5.9 on macOS) therefore
+        # fails its `bundleIdentifier != nil` precondition the first time it runs,
+        # and the failure is a trap: EXC_BREAKPOINT / SIGTRAP, not a throw.
+        # In the Quick Look appex that trap fires inside
+        # `SyntaxDefinitionStore.reload()` → `Bundle.module` and Quick Look
+        # silently drops the preview (falls back to the generic icon) while
+        # writing a crash report and restarting quicklookd — issue #8, 17 crashes.
+        # Give every resource bundle inside the appex a valid Info.plist so it's a
+        # *legal* bundle and `Bundle.module` resolves instead of trapping.
+        if [ ! -f "$bundle/Contents/Info.plist" ]; then
+            echo "  → adding Info.plist to $(basename "$bundle")"
+            RES_BUNDLE_ID="$(basename "$bundle" .bundle | tr '_' '.')"
+            mkdir -p "$bundle/Contents"
+            cat > "$bundle/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.i7t5.edmund.resources.${RES_BUNDLE_ID}</string>
+    <key>CFBundleName</key>
+    <string>${RES_BUNDLE_ID}</string>
+    <key>CFBundlePackageType</key>
+    <string>BNDL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info.plist)</string>
+    <key>CFBundleVersion</key>
+    <string>$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' Info.plist)</string>
+</dict>
+</plist>
+PLIST
+            # `.copy` lays the payload out flat (`<bundle>/Syntaxes`), but a
+            # legal macOS bundle keeps resources under `Contents/Resources`.
+            # Move it so the bundle is both a valid bundle *and* laid out the
+            # way Foundation expects a resource bundle to be.
+            if [ -d "$bundle/Syntaxes" ] && [ ! -d "$bundle/Contents/Resources/Syntaxes" ]; then
+                mkdir -p "$bundle/Contents/Resources"
+                mv "$bundle/Syntaxes" "$bundle/Contents/Resources/Syntaxes"
+            fi
+        fi
+    fi
 done
 
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.

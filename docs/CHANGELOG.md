@@ -3,6 +3,22 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.24.0] - 2026-09-12
+
+### Fixed
+- **访达按空格预览 `.md` 必然崩溃（QuickLook 扩展）**：Quick Look 扩展里随包分发的资源包 `Edmund_EdmundCore.bundle`（`.copy("Resources/Syntaxes")` 的产物）**只有 `Syntaxes/` 文件夹、没有 `Contents/Info.plist`**，因此不是合法 bundle。Foundation 生成的 `Bundle.module` 访问器在 macOS 上遇到无标识符的 bundle 会**直接 trap**（`fatalError` → EXC_BREAKPOINT / SIGTRAP，不是可捕获的错误）。扩展第一次进入 `SyntaxDefinitionStore.reload()` → `Bundle.module` 就命中该断言：预览显示不出来（退回通用图标）、写一份崩溃报告、quicklookd 重启一次；连续浏览一批 md 就表现为崩溃成簇（issue #8，17 次）。修复分两层：
+  - **打包层（根治）**：`scripts/build-app.sh` 现在给 appex 内每个 SwiftPM 资源包补齐 `Contents/Info.plist`（合法的 `BNDL` bundle），并在包内把 `.copy` 平铺的 `Syntaxes/` 归位到 `Contents/Resources/Syntaxes`，使 `Bundle.module` 能正常解析。
+  - **代码层（防御）**：`SyntaxDefinitionStore` 不再直接依赖会 trap 的 `Bundle.module`——改为先按「可执行文件旁边 / `Bundle.main` 资源目录」显式查找 `Syntaxes/*.json`，仅在显式查找落空、且 `Bundle.module` 的包确实合法（有 bundle 标识符）时才回退调用它。这样即便某个包被打包坏，也只是**退化为无语法高亮**，绝不崩溃。
+- 顺带把 Quick Look 扩展的版本从 `0.2.1` 提到 `0.3.0`（`CFBundleVersion` 8）——之前它一直停留在旧版本号，正是「插件没跟着主程序更新」的表征。
+
+### Added
+- **工具栏「打开文件所在目录」按钮**：主程序工具栏新增一个固定在右侧的按钮（`folder` 图标），一键在访达中打开当前 md 文件所在目录并选中该文件（`NSWorkspace.activateFileViewerSelecting`）。未保存的文档没有磁盘位置，此时按钮自动置灰并给出提示。该按钮同样出现在「自定义工具栏…」面板里，可自由拖拽增删。
+
+### 秒开 / 轻量化保证
+- 工具栏仅多一个按钮，复用既有按钮构造路径，无常驻开销，不碰打开 / 保存路径。
+- 语法定义的资源查找只在 `reload()`（初始化 / 用户改设置）时跑一次，路径候选最多 4 个目录，代价可忽略。
+- 「打开所在目录」的按钮状态 / 侧边栏刷新统一挂在 `fileURL` 的 `didSet` 上，并加了 `isWindowLoaded` 守卫：**读取（打开文件）时窗口尚未创建，直接返回**，所以打开路径上一个视图都不会碰，秒开契约不受影响。
+
 ## [5.22.0] - 2026-08-14
 
 ### Fixed
