@@ -77,15 +77,23 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
         }
     }
 
-    /// The view handed to the host. It draws the page background itself and
-    /// tracks where the host put it, which is what the web view is laid out
-    /// against (see `viewDidLayout`).
+    /// The view handed to the host. It draws the page background itself and tracks
+    /// where the host put it, which is what the web view is laid out against (see
+    /// `viewDidLayout`). It also owns the appearance: an appex has no window whose
+    /// appearance it could inherit (Quick Look owns the panel), so a change has to
+    /// be observed here, on the view, rather than on the controller.
     private final class PreviewContainer: NSView {
         var onLayout: (() -> Void)?
+        var onAppearanceChange: (() -> Void)?
 
         override func layout() {
             super.layout()
             onLayout?()
+        }
+
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            onAppearanceChange?()
         }
     }
 
@@ -103,6 +111,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
         Log.info("loadView", category: .render)
         container.appearance = NSAppearance(named: Self.preferredAppearance())
         container.onLayout = { [weak self] in self?.layoutWebView() }
+        container.onAppearanceChange = { [weak self] in self?.appearanceChanged() }
         view = container
     }
 
@@ -274,8 +283,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
     /// appearance-specific — background, ink and code colours are baked into its
     /// CSS — so it has to be rebuilt, and only this layer knows the markdown it
     /// was built from (the web view was handed a finished string).
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
+    private func appearanceChanged() {
         guard let document = currentDocument, let webView, isDark != currentDocumentIsDark else {
             return
         }
