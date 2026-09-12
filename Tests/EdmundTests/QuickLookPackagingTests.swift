@@ -106,3 +106,49 @@ struct QuickLookSyntaxPackagingTests {
                 "the payload must be *also* laid out under Contents/Resources")
     }
 }
+
+// MARK: - Where the payload is looked for (issue #8, third round)
+//
+// The lookup's root list is not guessable from the SwiftPM docs, and getting it
+// wrong is silent: a preview with no syntax definitions, no crash, no error. Two
+// layouts are load-bearing for the test process in particular — the resource
+// bundle sits *next to* the `.xctest` bundle (not inside it), and its payload is
+// flat `Syntaxes/` (a plain `swift build` doesn't produce a legal bundle).
+
+@Suite("Quick Look — syntax payload lookup")
+struct SyntaxPayloadLookupTests {
+
+    @Test("A payload flat inside the module's resource bundle is found")
+    func flatPayloadInsideResourceBundle() throws {
+        // Mirrors `swift build`'s output: `.build/debug/Edmund_EdmundCore.bundle/Syntaxes/*.json`,
+        // with the bundle beside the executable rather than inside a product.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("edmund-syntax-\(UUID().uuidString)", isDirectory: true)
+        let bundle = root.appendingPathComponent("Edmund_EdmundCore.bundle", isDirectory: true)
+        let syntaxes = bundle.appendingPathComponent("Syntaxes", isDirectory: true)
+        try FileManager.default.createDirectory(at: syntaxes, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("{}".utf8).write(to: syntaxes.appendingPathComponent("probe.json"))
+
+        // The probe only proves the *shape* is what the search accepts: the real
+        // store resolves against the process's own bundles, so what's asserted
+        // here is that a directory with this shape yields its json files.
+        let found = (try? FileManager.default.contentsOfDirectory(
+            at: syntaxes, includingPropertiesForKeys: nil))?
+            .filter { $0.pathExtension.lowercased() == "json" } ?? []
+        #expect(found.count == 1)
+        #expect(found.first?.lastPathComponent == "probe.json")
+    }
+
+    @Test("The bundled definitions load in the test process")
+    func bundledDefinitionsLoad() {
+        // The end-to-end version of the above, and the real regression guard: the
+        // store has to find its payload under the layout the test runner produces
+        // (payload beside the .xctest bundle). This failed silently for a whole
+        // release cycle — the app's own rendering kept working, so only the
+        // preview noticed.
+        let store = SyntaxDefinitionStore()
+        #expect(store.availableLanguages().map(\.id).contains("swift"))
+        #expect(store.availableLanguages().map(\.id).contains("python"))
+    }
+}

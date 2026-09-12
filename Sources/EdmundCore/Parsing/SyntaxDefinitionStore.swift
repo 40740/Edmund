@@ -145,37 +145,38 @@ public final class SyntaxDefinitionStore {
         return []
     }
 
-    /// Every place the `Syntaxes` payload can live, most specific first:
-    /// 1. next to the running binary's resources (`Bundle.main.resourceURL`):
-    ///    the app's `Contents/Resources`, an appex's `Contents/Resources` — and,
-    ///    for `swift test`, the test bundle's resources next to the JSON itself.
-    ///    A flat `Syntaxes/` folder here is what SwiftPM's `.copy` lands as when
-    ///    it isn't wrapped in a resource bundle.
-    /// 2. inside the module's resource bundle, wherever that bundle is: the
-    ///    `.app` root, `Contents/Resources`, or the directory of the test bundle.
-    ///    Its payload lives at `Contents/Resources/Syntaxes` once it's a legal
-    ///    bundle (see `scripts/build-app.sh`) and at `Syntaxes` while flat.
+    /// Every place the `Syntaxes` payload can live, most specific first.
+    ///
+    /// The roots are:
+    /// - the resource directory of `Bundle.main` and of `Bundle(for:)` — the
+    ///   `.app`'s `Contents/Resources`, an appex's `Contents/Resources`;
+    /// - those same bundles themselves — where a `.app`'s SwiftPM resource
+    ///   bundles sit at the root;
+    /// - the **parent directory** of the module's bundle. Both a `.app` and a
+    ///   `.xctest` are products SwiftPM puts resource bundles *next to*: under
+    ///   `swift test` the bundle lands beside `EdmundPackageTests.xctest` in
+    ///   `.build/<triple>/debug/`, one level up from the bundle itself (read off
+    ///   a CI log, not something the SwiftPM docs say).
+    ///
+    /// Within a root, the payload is either the root's own `Syntaxes/`, or one
+    /// inside the module's resource bundle (`Contents/Resources/Syntaxes` once
+    /// that bundle is legal — see `scripts/build-app.sh` — and `Syntaxes` while
+    /// it's still flat, which is what a plain `swift build` produces).
     ///
     /// The bundle's *name* is deliberately not assumed. SwiftPM derives it from
-    /// the package and target (`Edmund_EdmundCore.bundle` here) but the product
-    /// name decides what ships — the Quick Look appex is assembled by hand and
-    /// has carried `EdmundCore_EdmundCore.bundle`. Looking for one spelling makes
-    /// the whole lookup silently fail on the other, which is exactly how a
-    /// preview ends up unable to load its syntax defs. Matching any
-    /// `*EdmundCore.bundle` directory does not care which one is present.
+    /// package + target (`Edmund_EdmundCore.bundle` here), but the Quick Look
+    /// appex is assembled by hand and has shipped `EdmundCore_EdmundCore.bundle`;
+    /// looking for one spelling makes the lookup silently fail on the other,
+    /// which is exactly how a preview loses its syntax definitions. Matching any
+    /// `*EdmundCore.bundle` doesn't care which spelling is present.
     ///
-    /// Read-only probing: a path that doesn't exist simply yields nothing.
+    /// Read-only probing: a path that isn't there yields nothing.
     private static var bundledSyntaxDirectories: [URL] {
-        var roots: [URL] = []
-        for bundle in [Bundle.main, Bundle(for: SyntaxDefinitionStore.self)] {
-            if let resources = bundle.resourceURL { roots.append(resources) }
-            roots.append(bundle.bundleURL)
-        }
-        // Deduplicate: `Bundle.main` and `Bundle(for:)` are the same object under
-        // `swift test`, and a repeated root only repeats the same failed lookups.
+        // A repeated root only repeats lookups that already failed (Bundle.main
+        // and Bundle(for:) coincide in both products).
         var seenRoots = Set<String>()
         var directories: [URL] = []
-        for root in roots where seenRoots.insert(root.path).inserted {
+        for root in moduleSearchRoots where seenRoots.insert(root.path).inserted {
             directories.append(root.appendingPathComponent("Syntaxes", isDirectory: true))
             for bundle in moduleResourceBundles(in: root) {
                 directories.append(bundle.appendingPathComponent("Contents/Resources/Syntaxes",
@@ -184,6 +185,20 @@ public final class SyntaxDefinitionStore {
             }
         }
         return directories
+    }
+
+    /// Where to look for this module's resource bundle: see
+    /// `bundledSyntaxDirectories` for why each of these.
+    private static var moduleSearchRoots: [URL] {
+        let module = Bundle(for: SyntaxDefinitionStore.self)
+        let bundles = [Bundle.main, module]
+        var roots = [URL]()
+        for bundle in bundles {
+            roots.append(bundle.bundleURL.deletingLastPathComponent())
+            if let resources = bundle.resourceURL { roots.append(resources) }
+            roots.append(bundle.bundleURL)
+        }
+        return roots
     }
 
     /// Every SwiftPM-style resource bundle for this module that sits directly in
@@ -202,9 +217,7 @@ public final class SyntaxDefinitionStore {
     /// touched. A legal bundle always carries a bundle identifier; that is the
     /// same precondition the generated accessor asserts on.
     private static var wellFormedModuleBundle: Bundle? {
-        for root in [Bundle.main.bundleURL,
-                     Bundle.main.resourceURL,
-                     Bundle(for: SyntaxDefinitionStore.self).bundleURL].compactMap({ $0 }) {
+        for root in moduleSearchRoots {
             for candidate in moduleResourceBundles(in: root) {
                 if let bundle = Bundle(path: candidate.path), bundle.bundleIdentifier != nil {
                     return bundle
