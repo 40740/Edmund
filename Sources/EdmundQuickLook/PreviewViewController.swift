@@ -81,7 +81,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
         let outcome = await waitForRender()
         switch outcome {
         case .finished:
-            let degraded = DocumentHTML.lastRenderUsedFallbacks
+            let degraded = RenderOutcome.lastRunUsedFallbacks
             let loadFailed = webView.lastLoadFailed
             Log.info("render finished (degraded: \(degraded), loadFailed: \(loadFailed))",
                      category: .render)
@@ -103,7 +103,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
 
     // MARK: - Waiting for the render
 
-    private enum RenderOutcome { case finished, timedOut }
+    /// How the render ended. `waitForRender` must always produce one — the entire
+    /// point of the deadline is that there is no "still waiting" case left to
+    /// report, because "still waiting" is what the spinner already means.
+    private enum PreviewStep { case finished, timedOut }
 
     /// Resolves when the web view reports its first load finished, or when the
     /// deadline passes. Exactly one of the two — a late `didFinish` after a
@@ -111,8 +114,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
     /// resume. `preparePreviewOfFile` returning is what tells Quick Look the
     /// preview is ready, so this must always return.
     @MainActor
-    private func waitForRender() async -> RenderOutcome {
-        await withCheckedContinuation { (cont: CheckedContinuation<RenderOutcome, Never>) in
+    private func waitForRender() async -> PreviewStep {
+        await withCheckedContinuation { (cont: CheckedContinuation<PreviewStep, Never>) in
             var finished = false
             // `deadline` re-enters the main actor before touching the shared
             // state, and the render callback is delivered on main — so the flag

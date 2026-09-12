@@ -11,6 +11,21 @@ import AppKit
 // Raw HTML in the markdown passes through per GFM, filtered by
 // `HTMLRenderer.filterRawHTML` (tagfilter + hardening); the page also carries a
 // `script-src 'none'` CSP meta as defense-in-depth (§G, ARCHITECTURE §10).
+/// What the last render produced, for callers outside `EdmundCore`. The Quick
+/// Look appex links its own copy of this module and can't see `DocumentHTML`
+/// (internal), so this is the public name for the one fact the preview needs:
+/// whether the page it is about to show is the document, or the document with
+/// visibly substituted fallbacks.
+public enum RenderOutcome {
+    /// True when the most recent `DocumentHTML.full(...)` render replaced
+    /// something it couldn't produce — a failed math rasterization, an image this
+    /// process isn't allowed to read — with a visible stand-in. The preview uses
+    /// it to say so on screen rather than presenting a silently incomplete page.
+    @MainActor public static var lastRunUsedFallbacks: Bool {
+        DocumentHTML.lastRenderUsedFallbacks
+    }
+}
+
 @MainActor
 enum DocumentHTML {
 
@@ -21,10 +36,11 @@ enum DocumentHTML {
     /// page that silently isn't the document.
     @MainActor public private(set) static var lastPassDegraded = false
 
-    /// Public read-only view of `lastPassDegraded` for callers outside
-    /// `EdmundCore` (the Quick Look extension ships its own copy of this module
-    /// and can't see internal members) that have to decide what to put on screen.
-    @MainActor public static var lastRenderUsedFallbacks: Bool { lastPassDegraded }
+    /// Read-only view of `lastPassDegraded` for the `RenderOutcome` shim above — the
+    /// public name callers outside the module can actually reach (`DocumentHTML`
+    /// is internal, and a public member of an internal type may as well not exist
+    /// for the Quick Look appex, which links its own copy of `EdmundCore`).
+    @MainActor static var lastRenderUsedFallbacks: Bool { lastPassDegraded }
 
     /// Builds a complete `<!DOCTYPE html>…` document for `markdown`. `baseURL` is
     /// the document's directory, used to resolve relative image paths for inlining.
