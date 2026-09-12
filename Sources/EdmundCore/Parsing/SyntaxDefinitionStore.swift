@@ -134,7 +134,13 @@ public final class SyntaxDefinitionStore {
         if let module = wellFormedModuleBundle {
             return module.urls(forResourcesWithExtension: "json", subdirectory: "Syntaxes") ?? []
         }
-        Log.error("No bundled Syntaxes resources found; code blocks render unhighlighted",
+        // Say *where* we looked. Without this a "no syntax highlighting" report
+        // is unfalsifiable: the payload may be at a path none of the candidates
+        // cover (a packaging change SwiftPM doesn't tell us about), and a log of
+        // the exact paths is what turns that into a one-line fix instead of
+        // another build-and-guess round trip.
+        Log.error("No bundled Syntaxes resources found; code blocks render unhighlighted "
+                  + "(probed: \(bundledSyntaxDirectories.map(\.path).joined(separator: ", ")))",
                   category: .io)
         return []
     }
