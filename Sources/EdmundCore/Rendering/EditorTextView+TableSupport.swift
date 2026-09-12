@@ -1,4 +1,5 @@
 import AppKit
+import EdmundMarkdown
 
 // MARK: - Table Rendering Support
 //
@@ -81,33 +82,6 @@ func tableColumnAlignments(separatorRow: String, count: Int) -> [ColumnAlign] {
 
 // MARK: - Table Row Parsing
 
-/// Splits a markdown table row into cell strings (text between pipes).
-/// Handles both `| A | B |` (outer pipes) and `A | B` (no outer pipes).
-/// A `\|` is escaped content, not a cell separator (GFM Example 200).
-func splitTableRow(_ line: String) -> [String] {
-    var parts: [String] = []
-    var current = ""
-    var prevWasBackslash = false
-    for ch in line {
-        if ch == "|" && !prevWasBackslash {
-            parts.append(current)
-            current = ""
-        } else {
-            current.append(ch)
-        }
-        prevWasBackslash = (ch == "\\") && !prevWasBackslash
-    }
-    parts.append(current)
-
-    // Remove empty/whitespace-only first/last from outer pipes.
-    if let first = parts.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
-        parts.removeFirst()
-    }
-    if let last = parts.last, last.trimmingCharacters(in: .whitespaces).isEmpty {
-        parts.removeLast()
-    }
-    return parts
-}
 
 /// Returns `(start, end)` character ranges for each cell in a table line.
 /// Works with or without outer pipes. `start` is the first content char,

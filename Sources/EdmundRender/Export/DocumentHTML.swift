@@ -1,4 +1,5 @@
 import AppKit
+import EdmundMarkdown
 
 // MARK: - DocumentHTML
 //
@@ -11,11 +12,11 @@ import AppKit
 // Raw HTML in the markdown passes through per GFM, filtered by
 // `HTMLRenderer.filterRawHTML` (tagfilter + hardening); the page also carries a
 // `script-src 'none'` CSP meta as defense-in-depth (§G, ARCHITECTURE §10).
-/// What the last render produced, for callers outside `EdmundCore`. The Quick
-/// Look appex links its own copy of this module and can't see `DocumentHTML`
-/// (internal), so this is the public name for the one fact the preview needs:
-/// whether the page it is about to show is the document, or the document with
-/// visibly substituted fallbacks.
+
+/// What the last render produced: whether the page just built is the document, or
+/// the document with visibly substituted fallbacks (a failed rasterization, an
+/// image this process can't read). `DocumentHTML`'s own bookkeeping is private,
+/// so this is the public name for it.
 public enum RenderOutcome {
     /// True when the most recent `DocumentHTML.full(...)` render replaced
     /// something it couldn't produce — a failed math rasterization, an image this
@@ -27,7 +28,7 @@ public enum RenderOutcome {
 }
 
 @MainActor
-enum DocumentHTML {
+public enum DocumentHTML {
 
     /// Set by the most recent `full(...)` call when an asset it could not render
     /// was replaced by a visible fallback (a failed rasterization, or an image
@@ -44,7 +45,7 @@ enum DocumentHTML {
 
     /// Builds a complete `<!DOCTYPE html>…` document for `markdown`. `baseURL` is
     /// the document's directory, used to resolve relative image paths for inlining.
-    static func full(markdown: String,
+    public static func full(markdown: String,
                      theme: EditorTheme,
                      callouts: [String: CalloutStyle],
                      dark: Bool,
@@ -139,14 +140,16 @@ enum DocumentHTML {
     /// `<code>`, never to an empty hole — a page missing an equation with no sign
     /// anything is absent is a partial copy of the document, not a rendering of it.
     private static func mathPNG(latex: String, displayMode: Bool,
-                                pointSize: CGFloat, color: NSColor) -> (image: PNGResult, descent: CGFloat)? {
+                                pointSize: CGFloat, color: NSColor) -> (image: ImageRaster.PNGResult, descent: CGFloat)? {
         guard let rendered = MathRendering.shared.render(latex: latex, displayMode: displayMode,
                                                          pointSize: pointSize, color: color) else {
-            Log.error("math engine produced nothing for \(latex.prefix(60))", category: .render)
+            // `RenderedMath` is the engine-agnostic result; rasterizing it is the
+            // HTML pipeline's job, which is why the PNG step lives here and not
+            // with the engine (the editor draws the same `NSImage` directly).
             lastPassDegraded = true
             return nil
         }
-        guard let png = pngData(rendered.image, scale: 2) else {
+        guard let png = ImageRaster.pngData(rendered.image, scale: 2) else {
             Log.error("math raster failed for \(latex.prefix(60))", category: .render)
             lastPassDegraded = true
             return nil
@@ -290,39 +293,7 @@ enum DocumentHTML {
     /// A rasterized PNG plus the CSS `width`/`height` (`pixelSize / scale`)
     /// that exactly matches it — declaring anything else forces WebKit to
     /// resample the bitmap, which is what was thinning 1-2px strokes.
-    private struct PNGResult {
-        let data: Data
-        let pixelSize: CGSize
-        let scale: CGFloat
-        var cssWidth: CGFloat { pixelSize.width / scale }
-        var cssHeight: CGFloat { pixelSize.height / scale }
-    }
 
-    /// Rasterizes an `NSImage` to PNG `Data` at `scale`× its point size.
-    /// Returns the PNG's actual pixel dimensions alongside it — those, not an
-    /// independent re-rounding of `image.size * scale`, are what the caller
-    /// must derive the `<img>`'s CSS size from, or the two roundings can
-    /// disagree and leave a non-exact scale ratio (see `PNGResult`).
-    private static func pngData(_ image: NSImage, scale: CGFloat) -> PNGResult? {
-        let size = image.size
-        guard size.width > 0, size.height > 0 else { return nil }
-        let pixelsWide = Int((size.width * scale).rounded())
-        let pixelsHigh = Int((size.height * scale).rounded())
-        guard pixelsWide > 0, pixelsHigh > 0,
-              let rep = NSBitmapImageRep(
-                bitmapDataPlanes: nil,
-                pixelsWide: pixelsWide,
-                pixelsHigh: pixelsHigh,
-                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
-        rep.size = size
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        image.draw(in: NSRect(origin: .zero, size: size))
-        NSGraphicsContext.restoreGraphicsState()
-        guard let data = rep.representation(using: .png, properties: [:]) else { return nil }
-        return PNGResult(data: data, pixelSize: CGSize(width: pixelsWide, height: pixelsHigh), scale: scale)
-    }
 
     /// Reverses the HTML-attribute escaping done by `HTMLRenderer.attr` so the
     /// raw LaTeX/symbol can be recovered from a placeholder attribute.

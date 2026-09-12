@@ -1,5 +1,7 @@
 import Testing
 import AppKit
+import EdmundRender
+import EdmundMarkdown
 @testable import EdmundCore
 
 /// Every Markdown extension is individually toggleable. These assert both

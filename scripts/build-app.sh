@@ -116,6 +116,8 @@ install_name_tool -add_rpath "@executable_path/../Frameworks" \
 # Assemble the Quick Look preview extension as an .appex in Contents/PlugIns.
 # It's an executable target (SwiftPM has no app-extension product); its entry
 # point is Foundation's NSExtensionMain via the linker flag in Package.swift.
+# The link now includes the extension marker (Package.swift) so the appex is a
+# real app extension to the rest of the system, not just a .appex-shaped folder.
 # Unlike the app's own SwiftMath bundle (copied to the .app root *after* the
 # seal), the appex's resource bundles go inside Contents/Resources *before* it
 # is signed, so they're sealed legally: an appex's Bundle.module resolves via
@@ -126,25 +128,23 @@ APPEX="${BUNDLE}/Contents/PlugIns/${QL_NAME}.appex"
 mkdir -p "${APPEX}/Contents/MacOS" "${APPEX}/Contents/Resources"
 cp ".build/release/${QL_NAME}" "${APPEX}/Contents/MacOS/${QL_NAME}"
 cp Resources/QuickLookInfo.plist "${APPEX}/Contents/Info.plist"
+
+# The appex carries its own copy of the shared rendering modules' resource
+# bundles (the syntax definitions). SwiftPM's `.copy("Resources/Syntaxes")`
+# produces a bundle that is *only* a `Syntaxes/` folder — no
+# `Contents/Info.plist` — and Foundation's generated `Bundle.module` accessor
+# (SwiftPM ≥ 5.9 on macOS) fails its `bundleIdentifier != nil` precondition on
+# such a bundle. That failure is a trap (EXC_BREAKPOINT / SIGTRAP, not a throw),
+# so an appex shipped in that shape dies the first time a syntax definition is
+# loaded. Make every resource bundle a legal bundle first, then stage it.
 for bundle in .build/release/*.bundle; do
-    if [ -e "$bundle" ]; then
-        # SwiftPM's `.copy("Resources/Syntaxes")` produces a resource bundle that
-        # is *only* a `Syntaxes/` folder — no `Contents/Info.plist`. Foundation's
-        # generated `Bundle.module` accessor (SwiftPM ≥ 5.9 on macOS) therefore
-        # fails its `bundleIdentifier != nil` precondition the first time it runs,
-        # and the failure is a trap: EXC_BREAKPOINT / SIGTRAP, not a throw.
-        # In the Quick Look appex that trap fires inside
-        # `SyntaxDefinitionStore.reload()` → `Bundle.module` and Quick Look
-        # silently drops the preview (falls back to the generic icon) while
-        # writing a crash report and restarting quicklookd — issue #8, 17 crashes.
-        # Give every resource bundle inside the appex a valid Info.plist so it's a
-        # *legal* bundle and `Bundle.module` resolves instead of trapping.
-        echo "  · resource bundle: $(basename "$bundle")"
-        if [ ! -f "$bundle/Contents/Info.plist" ]; then
-            echo "  → adding Info.plist to $(basename "$bundle")"
-            RES_BUNDLE_ID="$(basename "$bundle" .bundle | tr '_' '.')"
-            mkdir -p "$bundle/Contents"
-            cat > "$bundle/Contents/Info.plist" <<PLIST
+    [ -e "$bundle" ] || continue
+    echo "  · resource bundle: $(basename "$bundle")"
+    if [ ! -f "$bundle/Contents/Info.plist" ]; then
+        echo "  → adding Info.plist to $(basename "$bundle")"
+        RES_BUNDLE_ID="$(basename "$bundle" .bundle | tr '_' '.')"
+        mkdir -p "$bundle/Contents"
+        cat > "$bundle/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -162,28 +162,20 @@ for bundle in .build/release/*.bundle; do
 </dict>
 </plist>
 PLIST
-            # `.copy` lays the payload out flat (`<bundle>/Syntaxes`), but a
-            # legal macOS bundle keeps resources under `Contents/Resources`.
-            # Move it so the bundle is both a valid bundle *and* laid out the
-            # way Foundation expects a resource bundle to be.
-            if [ -d "$bundle/Syntaxes" ] && [ ! -d "$bundle/Contents/Resources/Syntaxes" ]; then
-                mkdir -p "$bundle/Contents/Resources"
-                # Copy, don't move: `SyntaxDefinitionStore` probes both layouts
-                # (flat and Contents/Resources), and the flat copy is the one the
-                # bundle's own `Bundle.module` accessor finds. Moving it would fix
-                # our path lookup while breaking anything that still goes through
-                # the generated accessor.
-                cp -R "$bundle/Syntaxes" "$bundle/Contents/Resources/Syntaxes"
-            fi
+        # `.copy` lays the payload out flat (`<bundle>/Syntaxes`); a legal macOS
+        # bundle keeps resources under `Contents/Resources`. Copy rather than
+        # move: the syntax store probes both layouts, and the flat copy is the
+        # one a generated `Bundle.module` accessor looks for.
+        if [ -d "$bundle/Syntaxes" ] && [ ! -d "$bundle/Contents/Resources/Syntaxes" ]; then
+            mkdir -p "$bundle/Contents/Resources"
+            cp -R "$bundle/Syntaxes" "$bundle/Contents/Resources/Syntaxes"
         fi
-        # Copy LAST. The appex must receive the bundle that now has its
-        # Info.plist and its `Contents/Resources/Syntaxes` layout — copying
-        # first, as this used to, shipped the *original* identifier-less
-        # directory, which is precisely the shape `Bundle.module` traps on. The
-        # plist was being written into the `.build` artifact after it had already
-        # been staged, so the fix existed in the script and never in the app.
-        cp -R "$bundle" "${APPEX}/Contents/Resources/"
     fi
+    # Copy LAST: the appex must receive the bundle that now has its Info.plist
+    # and its `Contents/Resources/Syntaxes` layout. Copying before that
+    # transformation shipped the original, identifier-less directory — the shape
+    # `Bundle.module` traps on.
+    cp -R "$bundle" "${APPEX}/Contents/Resources/"
 done
 
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.

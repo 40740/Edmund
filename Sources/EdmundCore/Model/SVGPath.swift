@@ -1,10 +1,11 @@
-import CoreGraphics
+import AppKit
 import Foundation
 
 // MARK: - SVGPath
 //
 // Minimal SVG → CGPath converter for the vendored Lucide icon geometry
-// (`LucideIcons.geometry`). Exists so the editor can draw a callout icon as a
+// (`LucideIcons.geometry`). Lives in EdmundCore, not EdmundMarkdown, because a
+// CGPath is a drawing object: only the editor consumes one. Exists so the editor can draw a callout icon as a
 // *stroked vector path* instead of an NSImage: drawing an image on a wrapping,
 // multi-line TextKit 2 layout fragment wedges that fragment's layout to a
 // single line, while shape drawing does not (see

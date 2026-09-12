@@ -121,27 +121,36 @@ public final class SyntaxDefinitionStore {
         syntaxResourceURLs().compactMap(decode)
     }
 
+    /// Where the last failed lookup looked. `EdmundMarkdown` has no logger (the
+    /// diagnostic writer lives in the app layer), so the paths are recorded here
+    /// and the caller that *does* have one reports them. Without this a "no
+    /// syntax highlighting" report is unfalsifiable: the payload may be at a path
+    /// none of the candidates cover, and a log of the exact paths is what turns
+    /// that into a one-line fix instead of another build-and-guess round trip.
+    nonisolated(unsafe) public private(set) static var lastProbedDirectories: [String] = []
+
     private static func syntaxResourceURLs() -> [URL] {
+        lastProbedDirectories = []
         for directory in bundledSyntaxDirectories {
             guard let entries = try? FileManager.default.contentsOfDirectory(
                 at: directory, includingPropertiesForKeys: nil) else { continue }
-            let json = entries.filter { $0.pathExtension.lowercased() == "json" }
+            let json: [URL] = (entries as NSArray).compactMap { $0 as? URL }
+                .filter { $0.pathExtension.lowercased() == "json" }
             if !json.isEmpty { return json }
         }
         // Nothing found by path. SwiftPM's accessor is the last resort, and only
         // when its bundle is well-formed enough that the accessor's own
         // precondition holds — otherwise it would trap right here.
         if let module = wellFormedModuleBundle {
-            return module.urls(forResourcesWithExtension: "json", subdirectory: "Syntaxes") ?? []
+            let found = module.urls(forResourcesWithExtension: "json", subdirectory: "Syntaxes")
+            return (found as? [URL]) ?? []
         }
         // Say *where* we looked. Without this a "no syntax highlighting" report
         // is unfalsifiable: the payload may be at a path none of the candidates
         // cover (a packaging change SwiftPM doesn't tell us about), and a log of
         // the exact paths is what turns that into a one-line fix instead of
         // another build-and-guess round trip.
-        Log.error("No bundled Syntaxes resources found; code blocks render unhighlighted "
-                  + "(probed: \(bundledSyntaxDirectories.map(\.path).joined(separator: ", ")))",
-                  category: .io)
+        lastProbedDirectories = bundledSyntaxDirectories.map(\.path)
         return []
     }
 
@@ -164,11 +173,12 @@ public final class SyntaxDefinitionStore {
     /// it's still flat, which is what a plain `swift build` produces).
     ///
     /// The bundle's *name* is deliberately not assumed. SwiftPM derives it from
-    /// package + target (`Edmund_EdmundCore.bundle` here), but the Quick Look
-    /// appex is assembled by hand and has shipped `EdmundCore_EdmundCore.bundle`;
-    /// looking for one spelling makes the lookup silently fail on the other,
-    /// which is exactly how a preview loses its syntax definitions. Matching any
-    /// `*EdmundCore.bundle` doesn't care which spelling is present.
+    /// package + target — `Edmund_EdmundMarkdown.bundle` today, and
+    /// `Edmund_EdmundCore.bundle` before the rendering pipeline was split out of
+    /// the editor — and the Quick Look appex is assembled by hand on top of that.
+    /// Looking for one spelling makes the lookup silently fail on another, which
+    /// is exactly how a preview loses its syntax definitions; matching any
+    /// `Edmund*.bundle` doesn't care which spelling is present.
     ///
     /// Read-only probing: a path that isn't there yields nothing.
     private static var bundledSyntaxDirectories: [URL] {
@@ -208,7 +218,7 @@ public final class SyntaxDefinitionStore {
         let entries = (try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: nil)) ?? []
         return entries.filter {
-            $0.pathExtension == "bundle" && $0.lastPathComponent.contains("EdmundCore")
+            $0.pathExtension == "bundle" && $0.lastPathComponent.contains("Edmund")
         }
     }
 

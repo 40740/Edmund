@@ -1,4 +1,6 @@
 import AppKit
+import EdmundRender
+import EdmundMarkdown
 
 // MARK: - Format-menu actions
 //

@@ -1,6 +1,8 @@
 import Testing
 import Foundation
 import AppKit
+import EdmundRender
+import EdmundMarkdown
 @testable import EdmundCore
 
 // HTML tags in edit mode: every recognized tag is colored source (name red,

@@ -1,4 +1,5 @@
 import Foundation
+import EdmundMarkdown
 
 /// User-configurable options for the Read-mode / export HTML rendering. Kept in
 /// EdmundCore (no AppKit/UserDefaults dependency) so the renderer stays pure;

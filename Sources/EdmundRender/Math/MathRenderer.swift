@@ -1,19 +1,23 @@
 import AppKit
 import SwiftMath
 
-// MARK: - MathRenderer
+// MARK: - Math rendering engines
 //
 // A pluggable math-typesetting engine. `SwiftMathRenderer` wraps the bundled,
-// always-available SwiftMath renderer; other engines (e.g. a future RaTeX
-// extension) implement the same interface so `EditorTextView` (edit mode) and
-// `DocumentHTML` (read mode) don't care which one draws math — both render
-// through the `MathRendering` coordinator below instead of calling a specific
-// engine directly.
+// always-available SwiftMath renderer; `MathRendering` (in
+// `MathRendering.swift`) coordinates which one is active. Every back-end that
+// draws math renders through these — the editor's fragments and `DocumentHTML`'s
+// HTML — so neither knows what engine drew it.
+//
+// This lives in `EdmundRender`, not `EdmundCore`, because the HTML pipeline
+// needs it: turning a `$$…$$` into an inlined PNG is rendering, not editing. The
+// RaTeX (WASM) engine, its installer and the extension host stay in the editor,
+// and a preview process never loads them.
 
 /// One rendered equation, tinted to the requested color: the image plus the
 /// typographic ascent/descent needed to sit it on the surrounding text's
-/// baseline (inline math) or split its reserved space correctly (display
-/// math). `ascent + descent == image.size.height`.
+/// baseline (inline math) or split its reserved space correctly (display math).
+/// `ascent + descent == image.size.height`.
 public struct RenderedMath {
     public let image: NSImage
     /// Height above the baseline.
@@ -21,6 +25,12 @@ public struct RenderedMath {
     /// Height below the baseline (>= 0).
     public let descent: CGFloat
     public var size: CGSize { image.size }
+
+    public init(image: NSImage, ascent: CGFloat, descent: CGFloat) {
+        self.image = image
+        self.ascent = ascent
+        self.descent = descent
+    }
 }
 
 /// A math-typesetting engine. Renders LaTeX to an image plus the metrics
@@ -114,51 +124,4 @@ public final class SwiftMathRenderer: MathRenderer {
         cache.setObject(Cached(image: image, ascent: ascent, descent: descent), forKey: key)
         return RenderedMath(image: image, ascent: ascent, descent: descent)
     }
-}
-
-/// Coordinates which math engine is active and falls back to SwiftMath
-/// per-equation when a non-default engine can't render a given equation
-/// (e.g. one it doesn't yet support), so a single hard construct doesn't
-/// blank the whole document. `EditorTextView` and `DocumentHTML` both render
-/// math through this rather than calling a renderer directly.
-@MainActor
-public final class MathRendering {
-    public static let shared = MathRendering()
-
-    public let swiftMath = SwiftMathRenderer()
-    /// A non-default engine, once one is enabled and installed (e.g. RaTeX).
-    /// `nil` until an extension provides one.
-    public var alternate: MathRenderer?
-
-    private init() {}
-
-    /// The engine that should render right now: `alternate` if set and ready,
-    /// else the always-available SwiftMath default.
-    public var active: MathRenderer {
-        (alternate?.isReady == true) ? alternate! : swiftMath
-    }
-
-    public func render(latex: String, displayMode: Bool,
-                       pointSize: CGFloat, color: NSColor) -> RenderedMath? {
-        let primary = active
-        if let r = primary.render(latex: latex, displayMode: displayMode,
-                                  pointSize: pointSize, color: color) {
-            return r
-        }
-        guard primary !== swiftMath else { return nil }
-        return swiftMath.render(latex: latex, displayMode: displayMode,
-                                pointSize: pointSize, color: color)
-    }
-
-    /// Call after switching the active engine (or finishing an install) so
-    /// on-screen equations re-render with the new engine.
-    public func engineDidChange() {
-        NotificationCenter.default.post(name: .mathEngineChanged, object: nil)
-    }
-}
-
-public extension Notification.Name {
-    /// Posted by `MathRendering.engineDidChange()`. Editors observe this and
-    /// recompose their math blocks (narrowest recompose that covers them).
-    static let mathEngineChanged = Notification.Name("EdmundCore.mathEngineChanged")
 }

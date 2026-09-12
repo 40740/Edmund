@@ -3,6 +3,8 @@
 // the CotEditor/Safari style; detail pane modeled on Obsidian's plugin
 // browser (misc/frontend-refs/obsidian-plugin-installed.png).
 
+import EdmundRender
+import EdmundMarkdown
 import SwiftUI
 import AppKit
 import EdmundCore

@@ -1,5 +1,6 @@
 import Testing
 import AppKit
+import EdmundRender
 import CoreText
 @testable import EdmundCore
 

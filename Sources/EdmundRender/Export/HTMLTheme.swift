@@ -1,4 +1,5 @@
 import AppKit
+import EdmundMarkdown
 
 // MARK: - HTMLTheme
 //
@@ -11,7 +12,7 @@ import AppKit
 //
 // Colors are resolved for one appearance (`dark`); the Read view re-renders when
 // the system appearance flips.
-enum HTMLTheme {
+public enum HTMLTheme {
 
     /// The page background hex for the given appearance — shared by the CSS
     /// `--bg` variable and `ReadModeWebView.underPageBackgroundColor` so the
@@ -25,12 +26,12 @@ enum HTMLTheme {
 
     /// `NSColor` form of `backgroundHex`, for `WKWebView.underPageBackgroundColor`.
     @MainActor
-    static func backgroundColor(_ theme: EditorTheme, dark: Bool) -> NSColor {
+    public static func backgroundColor(_ theme: EditorTheme, dark: Bool) -> NSColor {
         NSColor(hex: backgroundHex(theme, dark: dark)) ?? .textBackgroundColor
     }
 
     @MainActor
-    static func css(_ theme: EditorTheme,
+    public static func css(_ theme: EditorTheme,
                     callouts: [String: CalloutStyle],
                     dark: Bool,
                     maxContentWidthPoints: Double = .greatestFiniteMagnitude) -> String {

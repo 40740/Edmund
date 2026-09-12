@@ -9,6 +9,7 @@
 // Only `.paragraph` blocks are touched. Everything else — fences, tables,
 // headings, front matter — is copied through byte for byte.
 
+import EdmundMarkdown
 import Foundation
 
 public enum HardWrap {

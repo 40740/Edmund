@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import EdmundMarkdown
 @testable import EdmundCore
 
 @Suite("BlockParser")

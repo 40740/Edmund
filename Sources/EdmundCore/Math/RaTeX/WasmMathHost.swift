@@ -1,4 +1,5 @@
 import AppKit
+import EdmundRender
 import JavaScriptCore
 
 /// Hosts RaTeX's `ratex-wasm` in a `JSContext` and renders LaTeX by asking the

@@ -1,4 +1,5 @@
 import AppKit
+import EdmundMarkdown
 
 /// A single NSTextView with word-level inline preview.
 ///

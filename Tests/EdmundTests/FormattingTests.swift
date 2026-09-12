@@ -1,5 +1,6 @@
 import Testing
 import AppKit
+import EdmundMarkdown
 @testable import EdmundCore
 
 // Tests for the Format-menu commands (EditorTextView+Formatting*). Each asserts

@@ -1,5 +1,6 @@
 import Testing
 import AppKit
+import EdmundRender
 @testable import EdmundCore
 
 @Suite("MathRenderer — abstraction")

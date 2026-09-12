@@ -1,4 +1,5 @@
 import Foundation
+import EdmundMarkdown
 
 // MARK: - Diagnostic logging
 //
@@ -142,7 +143,11 @@ public enum Log {
     public static func flush() { LogStore.shared.flush() }
 
     private static func shouldLog(_ level: Level) -> Bool {
-        level >= minLevel && LogStore.shared.isEnabled
+        guard level >= minLevel else { return false }
+        // Touching `isEnabled` resolves the built-in default on first use (see
+        // `LogStore._enabled`), so a line written by a process that never calls
+        // `configure` — the Quick Look extension — still lands on disk.
+        return LogStore.shared.isEnabled
     }
 }
 
@@ -157,7 +162,15 @@ private final class LogStore: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.i7t5.edmund.log")
 
     // Lock-guarded configuration.
-    private var _enabled = false
+    //
+    // Logging is opt-out, and the choice is a user default the app writes. A
+    // process that never calls `configure` — the Quick Look extension, started by
+    // the system rather than by the app — still has to honour it, or a failed
+    // preview leaves nothing behind to diagnose. Hence a `lazy` default read from
+    // the same key the app reads: resolved on first use, and overwritten by
+    // `configure` like any other value.
+    private lazy var _enabled: Bool =
+        (UserDefaults.standard.object(forKey: "settings.general.diagnosticLogging") as? Bool) ?? true
     private var _verbose = false
     private var directory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".edmund/logs", isDirectory: true)
@@ -168,6 +181,8 @@ private final class LogStore: @unchecked Sendable {
     private let dayFormatter = LogStore.makeFormatter("yyyy-MM-dd")
     private let timeFormatter = LogStore.makeFormatter("yyyy-MM-dd HH:mm:ss.SSS")
 
+    /// Touching this resolves the `lazy` default above, which is why every emit
+    /// path checks it (see `Log.shouldLog`).
     var isEnabled: Bool { lock.withLock { _enabled } }
     var isVerbose: Bool { lock.withLock { _verbose } }
 

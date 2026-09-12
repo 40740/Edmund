@@ -2,6 +2,7 @@
 // folder → file → version, and clear them (by selection or older than a date),
 // with filename/path search. See EdmundCore/Model/VersionHistory.swift for the model.
 
+import EdmundMarkdown
 import SwiftUI
 import AppKit
 import EdmundCore

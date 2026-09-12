@@ -1,5 +1,7 @@
 import Testing
 import Foundation
+import EdmundRender
+import EdmundMarkdown
 @testable import EdmundCore
 
 // String-assertion tests for the HTML renderer: parse markdown → render → assert

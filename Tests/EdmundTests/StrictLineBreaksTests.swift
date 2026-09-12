@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import EdmundRender
 @testable import EdmundCore
 
 // Strict line breaks (Edit ▸ Lines). On (Markdown default): a single source

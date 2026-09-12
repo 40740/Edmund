@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import AppKit
+import EdmundMarkdown
 @testable import EdmundCore
 
 // Backslash escapes: `\*`, `\$`, etc. The backslash is hidden when the caret is

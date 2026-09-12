@@ -1,4 +1,5 @@
 import AppKit
+import EdmundMarkdown
 
 nonisolated(unsafe) private let reusableCalloutHeaderOverlayCache: NSCache<
     NSString,

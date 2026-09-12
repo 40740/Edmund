@@ -1,5 +1,6 @@
 import AppKit
 import EdmundCore
+import EdmundMarkdown
 
 // MARK: - Status Bar View
 

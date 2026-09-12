@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import CryptoKit
 import AppKit
+import EdmundRender
 @testable import EdmundCore
 
 // `.serialized`: a couple of tests manipulate the shared real install

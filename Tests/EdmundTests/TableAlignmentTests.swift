@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import AppKit
+import EdmundMarkdown
 @testable import EdmundCore
 
 // GFM table column alignment (`:--`/`:-:`/`--:`) applied in the live editor.

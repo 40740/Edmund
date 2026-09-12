@@ -1,5 +1,7 @@
 import Testing
 import AppKit
+import EdmundRender
+import EdmundMarkdown
 @testable import EdmundCore
 
 /// Obsidian `#tag` and `^blockid` (Phase 2, inline pair). Style-only: a pill /

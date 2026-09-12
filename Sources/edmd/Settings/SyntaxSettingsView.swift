@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 import EdmundCore
+import EdmundMarkdown
 
 /// The "Syntax" pane: a master switch for non-GFM syntax with the individual
 /// extension toggles in a 2-column grid beneath it. The master is centered over

@@ -1,6 +1,8 @@
 import AppKit
 import UniformTypeIdentifiers
 import EdmundCore
+import EdmundRender
+import EdmundMarkdown
 
 /// NSDocument subclass that provides standard macOS document lifecycle:
 /// file open/save, dirty-dot indicator, click-to-rename in the titlebar,
@@ -215,21 +217,14 @@ class Document: NSDocument, HeadingNavigable {
 
     /// True when this process is the Quick Look extension rather than the app.
     ///
-    /// The `.appex` links the same `Document` class (it shares `EdmundCore`) and
-    /// `NSDocumentController` opens the previewed file through the ordinary
-    /// document machinery — so a Space-bar preview in Finder was building a full
-    /// Edmund window: `800×520`, a toolbar, the sidebar, `isRestorable = true`,
-    /// `window.center()`. `NSDocumentController` orders a window whose controller
-    /// it holds front on open, so the extension came up owning a real window and
-    /// taking activation for it, while the preview pane it was actually supposed
-    /// to fill was still waiting.
-    ///
-    /// The bundle identifier is the reliable signal: the app is com.i7t5.edmd,
-    /// the extension com.i7t5.edmund.quicklook (`Resources/QuickLookInfo.plist`).
-    /// Everything the preview needs — parsing, rendering, `DocumentHTML` — comes
-    /// out of `EdmundCore` and touches none of this. The window is built but left
-    /// uncentered and out of the restorable set, so nothing in the host is
-    /// disturbed.
+    /// This class isn't compiled into the appex any more — the preview links only
+    /// `EdmundRender`, so the extension cannot start the app's document
+    /// machinery at all (see Package.swift). What remains is the *other*
+    /// direction: the same `NSDocumentController.openDocument` path is used by
+    /// the app, and it is worth knowing in one place whether the window it builds
+    /// belongs to a user looking at it. The bundle identifier is the signal: the
+    /// app is com.i7t5.edmd, the extension com.i7t5.edmund.quicklook
+    /// (`Resources/QuickLookInfo.plist`).
     static let isQuickLookExtension: Bool = {
         Bundle.main.bundleIdentifier?.hasSuffix(".quicklook") == true
     }()

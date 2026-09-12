@@ -1,5 +1,6 @@
 import Foundation
 import Markdown
+import EdmundMarkdown
 
 // MARK: - HTMLRenderer
 //
@@ -23,18 +24,18 @@ struct HTMLRenderer: MarkupVisitor {
     /// Private URL scheme for `[[wikilink]]` hrefs. The read view's navigation
     /// policy intercepts this scheme and routes the (percent-decoded) target
     /// through the app's document graph instead of navigating the webview.
-    static let wikiScheme = "x-edmund-wiki"
+    public static let wikiScheme = "x-edmund-wiki"
 
     /// Private URL scheme for relative/internal regular markdown links
     /// (`[text](other.md)`). Routed like wikilinks; external links (http/https/
     /// mailto) and in-page `#fragment` anchors keep their real hrefs.
-    static let linkScheme = "x-edmund-link"
+    public static let linkScheme = "x-edmund-link"
 
     /// Private URL scheme for a code block's copy button — the base64-encoded
     /// code is the whole payload (survives URL encoding untouched; the code
     /// can contain `#`, `%`, embedded newlines, anything). Intercepted the
     /// same way as the schemes above, and never actually navigated to.
-    static let copyScheme = "x-edmund-copy"
+    public static let copyScheme = "x-edmund-copy"
 
     /// The markdown this instance is rendering. Held so block-level constructs
     /// (callouts) can recover their *raw* source text by range, the way the
@@ -60,7 +61,7 @@ struct HTMLRenderer: MarkupVisitor {
 
     /// Parses `markdown` and returns the rendered HTML body (no `<html>`/`<head>`
     /// wrapper — `DocumentHTML` adds that).
-    static func render(markdown: String, options: ReadRenderOptions = .default) -> String {
+    public static func render(markdown: String, options: ReadRenderOptions = .default) -> String {
         // Strip block constructs swift-markdown can't hide for us before it
         // parses (front matter, block-spanning `%%…%%`). `source` and `doc`
         // must see the same text so range-based raw-text recovery stays aligned.
@@ -589,7 +590,7 @@ struct HTMLRenderer: MarkupVisitor {
 
     /// GFM raw-HTML output filter: tagfilter + Edmund's hardening. Defense-in-depth
     /// on top of the read webview's JS-off + CSP script-src 'none' + baseURL nil.
-    static func filterRawHTML(_ raw: String) -> String {
+    public static func filterRawHTML(_ raw: String) -> String {
         func sub(_ s: String, _ rx: NSRegularExpression, _ template: String) -> String {
             rx.stringByReplacingMatches(in: s, range: NSRange(location: 0, length: (s as NSString).length),
                                         withTemplate: template)
@@ -890,7 +891,7 @@ struct HTMLRenderer: MarkupVisitor {
     // MARK: - Escaping
 
     /// Escapes text content for HTML.
-    static func escape(_ s: String) -> String {
+    public static func escape(_ s: String) -> String {
         var out = ""
         out.reserveCapacity(s.count)
         for ch in s {
@@ -905,7 +906,7 @@ struct HTMLRenderer: MarkupVisitor {
     }
 
     /// Escapes a string for use inside a double-quoted HTML attribute.
-    static func attr(_ s: String) -> String {
+    public static func attr(_ s: String) -> String {
         var out = ""
         out.reserveCapacity(s.count)
         for ch in s {
