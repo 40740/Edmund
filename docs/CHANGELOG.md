@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [5.24.0] - 2026-09-12
 
-> 复核：应用 0017 时复查了新增的 `fileURL` 钩子——`fileURL` 是在**读取（打开文件）阶段**就被赋值的，那时 `makeWindowControllers` 还没建出视图树，`fileSidebar` / `refreshRevealInFinderButton` 会踩到隐式解包 nil。已加 `hasWindow` 守卫（`fileURL.didSet` 与 `refreshSidebar()` 都提前返回），保证打开路径依旧不碰任何视图；读盘后的首次刷新由窗口创建与 `showWindows()` 负责。同时把 `scripts/build-app.sh` 的 `swift build ... | tail -3` 改成失败时打印完整日志。
+> 复核（第一版发布构建失败后修订）：应用 0017 时复读了新增的 `fileURL` 钩子——`fileURL` 是在**读取（打开文件）阶段**就被赋值的，那时 `makeWindowControllers` 还没建出视图树，`fileSidebar` 仍是 nil，直接刷新会踩隐式解包。现改为**用 setter 把赋值本身也挡住**（`get { super.fileURL }` + 在 `set` 里先写 `super` 再判断 `windowControllers.first?.window`），`refreshSidebar()` 同样加守卫（句柄没建出来时 `windowControllers.first?.window` 本身是 nil，没有 IB 隐式解包风险）。打开路径依旧不碰任何视图，读盘后的首次刷新由窗口创建与 `showWindows()` 负责。另把 `scripts/build-app.sh` 的 `swift build ... | tail -3` 改成构建失败时打印完整日志——第一版正是因为它只留 `exit code 1`、看不到编译错误才多绕了一圈。
 
 ### Fixed
 - **访达按空格预览 `.md` 必然崩溃（QuickLook 扩展）**：Quick Look 扩展里随包分发的资源包 `Edmund_EdmundCore.bundle`（`.copy("Resources/Syntaxes")` 的产物）**只有 `Syntaxes/` 文件夹、没有 `Contents/Info.plist`**，因此不是合法 bundle。Foundation 生成的 `Bundle.module` 访问器在 macOS 上遇到无标识符的 bundle 会**直接 trap**（`fatalError` → EXC_BREAKPOINT / SIGTRAP，不是可捕获的错误）。扩展第一次进入 `SyntaxDefinitionStore.reload()` → `Bundle.module` 就命中该断言：预览显示不出来（退回通用图标）、写一份崩溃报告、quicklookd 重启一次；连续浏览一批 md 就表现为崩溃成簇（issue #8，17 次）。修复分两层：

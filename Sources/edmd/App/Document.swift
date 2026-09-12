@@ -585,7 +585,7 @@ class Document: NSDocument, HeadingNavigable {
         // `makeWindowControllers` builds the view tree, and `fileURL` can change
         // before that (see the `fileURL` override), so this has to be a no-op
         // until the window — and with it the sidebar — exists.
-        guard hasWindow, let fileSidebar else { return }
+        guard windowControllers.first?.window != nil, let fileSidebar else { return }
         guard !fileSidebar.isHidden else { return }
         fileSidebar.showDirectory(documentDirectory)
     }
@@ -669,25 +669,29 @@ class Document: NSDocument, HeadingNavigable {
     //         are disabled without Info.plist / .app bundle)
 
     /// The document's on-disk location changed (first save, Save As, or the
-    /// manual rename/move below). One hook covers them all, because every path
-    /// — `read(from:ofType:)` setting the URL, AppKit's own save, and the two
-    /// overrides here — funnels through `fileURL` (`Hooks.fileURLDidChange` is
-    /// on the NSDocument Swift overlay).
+    /// manual rename/move below). One hook covers them all: `read(from:ofType:)`
+    /// setting the URL, AppKit's own save, and the two overrides below all
+    /// funnel through `fileURL` (`Hooks.fileURLDidChange` is on the NSDocument
+    /// Swift overlay).
     ///
     /// Two things depend on it: the toolbar's reveal button is meaningless until
     /// there is a file, and the sidebar lists *this file's* directory, so a
     /// Save-As has to re-list it (previously only `showWindows` refreshed the
     /// sidebar, so a Save-As left it pointing at the old folder).
+    ///
+    /// Stated as a setter so the *assignments* can be guarded, not just the
+    /// observation: `fileURL` is assigned while the document is being **read**,
+    /// i.e. before `makeWindowControllers` has built the view tree (fileSidebar
+    /// is still nil then), so the writes AppKit performs during a read must not
+    /// reach any refresh. The guard also keeps the whole hook off the open path
+    /// — reading a file touches no view; the initial refresh is done by the
+    /// window setup and `showWindows()`.
     override var fileURL: URL? {
-        didSet {
-            guard fileURL != oldValue else { return }
-            // The URL is assigned while the document is being *read*, before
-            // `makeWindowControllers` has run — `editor`/`fileSidebar` don't
-            // exist yet at that point, so there is nothing to refresh. Bail out
-            // (the window setup and `showWindows()` do the initial refresh).
-            // Also keeps the didSet off the instant-open path: reading a file
-            // must not touch any view.
-            guard hasWindow else { return }
+        get { super.fileURL }
+        set {
+            let changed = newValue != super.fileURL
+            super.fileURL = newValue
+            guard changed, windowControllers.first?.window != nil else { return }
             refreshRevealInFinderButton()
             refreshSidebar()
         }
