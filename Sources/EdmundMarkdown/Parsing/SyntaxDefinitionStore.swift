@@ -18,7 +18,7 @@ public final class SyntaxDefinitionStore {
     nonisolated(unsafe) public static let shared = SyntaxDefinitionStore()
 
     /// The outcome of resolving a fence's language against the loaded defs.
-    enum Resolution: Equatable {
+    public enum Resolution: Equatable {
         case plain                              // explicitly no highlighting
         case definition(LanguageDefinition)     // a known language
         case unknown                            // tagged, but no def → C-family fallback
@@ -36,7 +36,7 @@ public final class SyntaxDefinitionStore {
     private static let plainAliases: Set<String> =
         ["", "plain", "plaintext", "text", "none", "txt"]
 
-    init() { reload() }
+    public init() { reload() }
 
     // MARK: Loading
 
@@ -67,7 +67,7 @@ public final class SyntaxDefinitionStore {
 
     // MARK: Resolution
 
-    func resolve(_ language: String?) -> Resolution {
+    public func resolve(_ language: String?) -> Resolution {
         let key = (language ?? "").trimmingCharacters(in: .whitespaces).lowercased()
         if Self.plainAliases.contains(key) { return .plain }
         if let def = byName[key] { return .definition(def) }

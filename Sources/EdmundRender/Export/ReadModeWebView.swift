@@ -398,7 +398,7 @@ public final class ReadModeWebView: WKWebView {
 
     /// Parses the `"<line>,<fraction>"` string produced by `readScrollPosition`'s
     /// JS. Extracted as a pure helper so it's unit-testable without a webview.
-    internal static func parseScrollPosition(_ s: String) -> (line: Int, fraction: Double)? {
+    public static func parseScrollPosition(_ s: String) -> (line: Int, fraction: Double)? {
         guard !s.isEmpty else { return nil }
         let parts = s.split(separator: ",", maxSplits: 1)
         guard parts.count == 2, let line = Int(parts[0]), let fraction = Double(parts[1]) else {
@@ -482,11 +482,11 @@ private final class ReadModeNavigationCoordinator: NSObject, WKNavigationDelegat
 
 // MARK: - Navigation classifier
 
-enum ReadModeNavigationPolicy {
+public enum ReadModeNavigationPolicy {
 
-    static let trustedBaseURL = URL(string: "about:blank")!
+    public static let trustedBaseURL = URL(string: "about:blank")!
 
-    enum Decision: Equatable {
+    public enum Decision: Equatable {
         case allow
         case reload
         case openWiki(String)
@@ -500,7 +500,7 @@ enum ReadModeNavigationPolicy {
     /// generated document is self-contained and loaded against `about:blank`, so
     /// only in-document anchors, Edmund's private schemes, and browser handoffs are
     /// expected. `file:` and other explicit schemes stay out of the webview.
-    static func decision(for url: URL?, navigationType: WKNavigationType) -> Decision {
+    public static func decision(for url: URL?, navigationType: WKNavigationType) -> Decision {
         if navigationType == .reload { return .reload }
         guard let url else { return .allow }
         let scheme = url.scheme?.lowercased()
