@@ -11,19 +11,19 @@ import Foundation
 // (numbers, identifiers, Uppercase→type, `ident(`→function). A def only has to
 // name its comment style, string delimiters, and keyword/type words.
 
-struct LanguageDefinition: Codable, Equatable {
+public struct LanguageDefinition: Codable, Equatable, Sendable {
     /// Canonical lowercase id, e.g. "python". Matched against a fence's info string.
-    let name: String
+    public let name: String
     /// Human label for the settings list; defaults to a capitalized `name`.
-    let displayName: String?
+    public let displayName: String?
     /// Extra info-string spellings that resolve to this def, e.g. ["py"].
-    let aliases: [String]
+    public let aliases: [String]
     /// Line-comment lead, e.g. "//", "#", "--". `nil` = language has none.
-    let lineComment: String?
+    public let lineComment: String?
     /// `[open, close]` block-comment delimiters, e.g. ["/*", "*/"]. `nil` = none.
-    let blockComment: [String]?
+    public let blockComment: [String]?
     /// Single-character string delimiters. Defaults to `"` and `'`.
-    let strings: [String]
+    public let strings: [String]
     // Word-lists, one per themeable color scope (matching CotEditor's
     // Keywords / Commands / Types / Attributes / Variables / Values). A word
     // listed in more than one wins the most specific — see the scanner. All
@@ -31,24 +31,24 @@ struct LanguageDefinition: Codable, Equatable {
     // users fill the extra scopes to control coloring for Settings › Themes.
 
     /// Keyword words (control flow, declarations, operators-as-words).
-    let keywords: [String]
+    public let keywords: [String]
     /// Builtin functions / commands (also the color for `ident(` call sites).
-    let commands: [String]
+    public let commands: [String]
     /// Type / builtin words colored as types regardless of case.
-    let types: [String]
+    public let types: [String]
     /// Attribute / annotation words (e.g. decorators, HTML attributes).
-    let attributes: [String]
+    public let attributes: [String]
     /// Variable words (globals, special names).
-    let variables: [String]
+    public let variables: [String]
     /// Constant values (e.g. true, false, nil).
-    let values: [String]
+    public let values: [String]
 
-    enum CodingKeys: String, CodingKey {
+    public enum CodingKeys: String, CodingKey {
         case name, displayName, aliases, lineComment, blockComment, strings
         case keywords, commands, types, attributes, variables, values
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name).lowercased()
         displayName = try c.decodeIfPresent(String.self, forKey: .displayName)
@@ -85,13 +85,13 @@ struct LanguageDefinition: Codable, Equatable {
     }
 
     /// The label shown in the settings list.
-    var label: String { displayName ?? name.capitalized }
+    public var label: String { displayName ?? name.capitalized }
 
     /// The generic C-family def used for a tagged fence whose language has no
     /// definition — preserves the pre-refactor "unknown language still gets the
     /// shared highlighter" behavior. `#`-comment languages have their own defs,
     /// so the fallback only needs the `//` + `/* */` family.
-    static let cFamilyFallback = LanguageDefinition(
+    public static let cFamilyFallback = LanguageDefinition(
         name: "", displayName: "", lineComment: "//", blockComment: ["/*", "*/"],
         keywords: [
             "func", "function", "fn", "def", "let", "var", "val", "const", "static",
