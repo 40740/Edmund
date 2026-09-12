@@ -68,20 +68,21 @@ enum DocumentHTML {
         var out = replaceMatches(html, pattern: displayMathPattern) { groups in
             let id = groups[1]
             let tex = unescapeAttr(groups[2])
-            guard let png = mathPNG(latex: tex, displayMode: true,
-                                    pointSize: theme.fontSize, color: color) else {
+            guard let (image, _) = mathPNG(latex: tex, displayMode: true,
+                                           pointSize: theme.fontSize, color: color) else {
                 return "<div\(id) class=\"math-display\"><code>\(HTMLRenderer.escape(tex))</code></div>"
             }
-            let uri = "data:image/png;base64,\(png.data.base64EncodedString())"
-            return "<div\(id) class=\"math-display\"><img class=\"math\" style=\"width:\(fmt(png.cssWidth))px; height:\(fmt(png.cssHeight))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\"></div>"
+            let uri = "data:image/png;base64,\(image.data.base64EncodedString())"
+            return "<div\(id) class=\"math-display\"><img class=\"math\" style=\"width:\(fmt(image.cssWidth))px; height:\(fmt(image.cssHeight))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\"></div>"
         }
         out = replaceMatches(out, pattern: inlineMathPattern) { groups in
             let tex = unescapeAttr(groups[1])
-            guard let png = mathPNG(latex: tex, displayMode: false,
-                                    pointSize: theme.fontSize, color: color) else {
+            guard let (image, descent) = mathPNG(latex: tex, displayMode: false,
+                                                 pointSize: theme.fontSize,
+                                                 color: color) else {
                 return "<code>\(HTMLRenderer.escape(tex))</code>"
             }
-            let uri = "data:image/png;base64,\(png.data.base64EncodedString())"
+            let uri = "data:image/png;base64,\(image.data.base64EncodedString())"
             // Explicit width AND height, derived from the PNG's own pixel
             // dimensions (not independently rounded from the NSImage's point
             // size) — guarantees an exact native-pixel-to-CSS-pixel ratio, so
@@ -94,7 +95,7 @@ enum DocumentHTML {
             // size, so rounding it to a whole pixel (separately) still avoids
             // the sub-pixel compositing blur that caused — same reasoning,
             // different axis.
-            return "<img class=\"math math-inline\" style=\"width:\(fmt(png.cssWidth))px; height:\(fmt(png.cssHeight))px; vertical-align:\(fmt(-r.descent.rounded()))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\">"
+            return "<img class=\"math math-inline\" style=\"width:\(fmt(image.cssWidth))px; height:\(fmt(image.cssHeight))px; vertical-align:\(fmt(-descent.rounded()))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\">"
         }
         out = replaceMatches(out, pattern: displayInlineMathPattern) { groups in
             let tex = unescapeAttr(groups[1])
@@ -102,12 +103,12 @@ enum DocumentHTML {
             // block (a `<span>` promoted to display:block, since the placeholder
             // sits inside a `<p>` where a `<div>` would be invalid). The
             // paragraph's text keeps flowing above and below it.
-            guard let png = mathPNG(latex: tex, displayMode: true,
-                                    pointSize: theme.fontSize, color: color) else {
+            guard let (image, _) = mathPNG(latex: tex, displayMode: true,
+                                           pointSize: theme.fontSize, color: color) else {
                 return "<span class=\"math-display-block\"><code>\(HTMLRenderer.escape(tex))</code></span>"
             }
-            let uri = "data:image/png;base64,\(png.data.base64EncodedString())"
-            return "<span class=\"math-display-block\"><img class=\"math\" style=\"width:\(fmt(png.cssWidth))px; height:\(fmt(png.cssHeight))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\"></span>"
+            let uri = "data:image/png;base64,\(image.data.base64EncodedString())"
+            return "<span class=\"math-display-block\"><img class=\"math\" style=\"width:\(fmt(image.cssWidth))px; height:\(fmt(image.cssHeight))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\"></span>"
         }
         return out
     }
@@ -117,7 +118,7 @@ enum DocumentHTML {
     /// `<code>`, never to an empty hole — a page missing an equation with no sign
     /// anything is absent is a partial copy of the document, not a rendering of it.
     private static func mathPNG(latex: String, displayMode: Bool,
-                                pointSize: CGFloat, color: NSColor) -> PNGResult? {
+                                pointSize: CGFloat, color: NSColor) -> (image: PNGResult, descent: CGFloat)? {
         guard let rendered = MathRendering.shared.render(latex: latex, displayMode: displayMode,
                                                          pointSize: pointSize, color: color) else {
             Log.error("math engine produced nothing for \(latex.prefix(60))", category: .render)
@@ -129,7 +130,7 @@ enum DocumentHTML {
             lastPassDegraded = true
             return nil
         }
-        return png
+        return (png, rendered.descent)
     }
 
     // MARK: Images (local → inlined data URI; remote → off by default)
