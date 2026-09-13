@@ -16,6 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
   - **视图从来没被真正布局过。** 上一版返回一个容器，靠 `autoresizingMask` 把尺寸「传」给里面隐藏的 web view —— 但 autoresizing 只在**父视图自身 frame 变化**时触发；宿主如果用 Auto Layout 约束安装这个视图，就永远不会发生。结果容器停在 0×0，web view 也是 0×0，预览没有任何尺寸可画。现在由 `viewDidLayout` / `viewWillAppear` 按宿主实际给的尺寸摆放 web view，并保底一个最小尺寸（宿主给了 0 尺寸时也还能渲染）。
   - **appex 没有 bundle 身份。** 它由 `cp` 拼出来，进程里没有 `CFBundle`，`NSApp.effectiveAppearance` 取的是未绑定进程的默认值 —— 深色模式无从解析。现在构建出的 appex 带 `Info.plist`，预览按 App 自己的规则解析明暗（ColaMD 预设优先，其次浅色/深色选择器，再否则系统），并且扩展二进制用 application-extension 标记链接，让系统真正把它当扩展看待。
   - **扩展跑起了 App 的文档机制。** appex 链接了 App target 的 `Document`，`NSDocumentController` 会用完整文档流程打开被预览的文件 —— 800×520 的窗口、工具栏、侧边栏，全都在预览进程里建出来。现在扩展完全不链接 App target，这套机制根本不存在。
+  - **appex 被沙盒化了，而它用的是 WKWebView。** 扩展此前带着 `com.apple.security.app-sandbox` 签名，却只声明了 `files.user-selected.read-only`：在沙盒里 WebKit 自己的 XPC 服务（WebContent / Networking）拿不到需要的授权，页面加载根本起不来，Finder 就报「扩展在预览此文稿期间失败」。宿主 App 本来就没开沙盒（ad-hoc 签名分发），所以扩展也不再沙盒化——它只读 Quick Look 交给它的那一个文件加自身资源，JavaScript 关闭，所有素材内联，本来就不需要网络。
 
 ### Changed
 - 模块拆分：`EdmundMarkdown`（解析/模型/HTML，无 AppKit）/ `EdmundRender`（主题/数学/图片内联/整页 HTML）/ `EdmundCore`（编辑器）。App 用全部三个，Quick Look 扩展只用前两个。

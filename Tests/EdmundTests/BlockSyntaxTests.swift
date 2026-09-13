@@ -14,7 +14,7 @@ struct BlockSyntaxTests {
         BlockParser.parse(src, features: features).map(\.kind)
     }
     private func html(_ src: String, _ features: MarkdownFeatures) -> String {
-        HTMLRenderer.render(markdown: src, options: ReadRenderOptions(features: features))
+        MarkdownHTMLBody.render(markdown: src, options: ReadRenderOptions(features: features))
     }
 
     // MARK: - Front matter

@@ -955,8 +955,9 @@ struct HTMLRenderer: MarkupVisitor {
 /// rendered HTML. Used to map editor viewport lines to read-mode anchors.
 ///
 /// A public wrapper: `HTMLRenderer` itself stays internal (a public struct
-/// would leak its `MarkupVisitor` conformance and rendering internals to
-/// other targets), but callers outside EdmundCore need this line mapping.
+/// would leak its `MarkupVisitor` conformance and every visitor witness to
+/// other targets), but the app's tests — and any future consumer — need the
+/// markdown→HTML body mapping without assembling a whole page.
 public enum ReadModeAnchors {
 
     /// Parses `markdown` with the same options `HTMLRenderer.render` uses, so
@@ -967,5 +968,22 @@ public enum ReadModeAnchors {
             guard let range = child.range else { return nil }
             return (startLine: range.lowerBound.line, endLine: range.upperBound.line)
         }
+    }
+}
+
+/// The markdown → HTML **body** pipeline, with no page around it.
+///
+/// `DocumentHTML.full` is what the app and the Quick Look preview ship: CSS,
+/// math rasterization and image inlining on top of this body. Tests (and a
+/// future consumer that wants to embed the body somewhere else) need the body
+/// alone, and they live in other modules — so this is the public seam onto the
+/// internal `HTMLRenderer`, kept as a bare forwarder rather than by making the
+/// renderer and all 22 of its `MarkupVisitor` witnesses public just to be
+/// reachable from a test target.
+public enum MarkdownHTMLBody {
+    /// The HTML body for `markdown`, matching what Read mode renders.
+    public static func render(markdown: String,
+                              options: ReadRenderOptions = .default) -> String {
+        HTMLRenderer.render(markdown: markdown, options: options)
     }
 }

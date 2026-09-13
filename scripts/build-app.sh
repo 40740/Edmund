@@ -199,14 +199,23 @@ done
 # kSecCSCheckAllArchitectures), which tolerates it. Verified end-to-end.
 echo "Code signing..."
 # Sign inside-out, then seal the app WITHOUT --deep. --deep on the outer .app
-# would re-sign every nested item with default flags — stripping the appex's
-# sandbox entitlements and resetting its identifier to the app's. Instead we
-# sign each nested item explicitly (Sparkle deep so its own XPC helpers are
-# covered; the appex with its entitlements) and let the non-deep app sign just
-# seal the container over the already-signed contents.
+# would re-sign every nested item with default flags and reset the appex's
+# identifier to the app's. Instead we sign each nested item explicitly (Sparkle
+# deep so its own XPC helpers are covered; the appex on its own) and let the
+# non-deep app sign just seal the container over the already-signed contents.
+#
+# The appex is signed WITHOUT entitlements, i.e. unsandboxed — on purpose.
+# A Quick Look preview extension that renders in a WKWebView cannot be
+# App-Sandboxed without also giving WebKit's own XPC services the entitlements
+# they need; sandboxed with nothing else, WebKit's helper processes are refused,
+# the load never completes, and Finder reports
+# "扩展 com.i7t5.edmund.quicklook 在预览此文稿期间失败" with no other detail
+# (issue #8). The host app is not sandboxed either, so the extension matches it:
+# it reads only the file Quick Look hands it plus its own resources, has
+# JavaScript disabled, and inlines every asset, so it never needs the network —
+# which is enforced in code, not by a sandbox.
 codesign --force --deep --sign - "${BUNDLE}/Contents/Frameworks/Sparkle.framework"
-codesign --force --sign - --entitlements Resources/QuickLook.entitlements \
-    --identifier "com.i7t5.edmund.quicklook" "$APPEX"
+codesign --force --sign - --identifier "com.i7t5.edmund.quicklook" "$APPEX"
 codesign --force --sign - --identifier "com.i7t5.edmd" "$BUNDLE"
 
 # SwiftPM dependencies that ship resources (SwiftMath's math fonts) emit a

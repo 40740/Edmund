@@ -21,7 +21,7 @@ Finder preview renders identically to Read mode with no second renderer.
 | **AppleScript code-fence syntax** | `EdmundCore/Resources/Syntaxes/applescript.json` | Works. Fully tested. |
 | **Services menu** | `edmd/App/ServicesProvider.swift`, `NSServices` in `Info.plist`, registered in `main.swift` `applicationDidFinishLaunching` | Built & registered; live menu-click not yet exercised. |
 | **App Intents** | `edmd/App/Intents.swift` (+ `DocumentController.newDocument(withContent:)`) | Code correct; **Shortcuts discovery blocked** — see §3. |
-| **Quick Look preview** | `EdmundQuickLook` target, `Resources/QuickLookInfo.plist`, `Resources/QuickLook.entitlements`, assembled by `scripts/build-app.sh` | Code + packaging + signing done; **live launch blocked** — see §4. |
+| **Quick Look preview** | `EdmundQuickLook` target, `Resources/QuickLookInfo.plist` (signed without entitlements — unsandboxed, see `build-app.sh`), assembled by `scripts/build-app.sh` | Code + packaging + signing done; **live launch blocked** — see §4. |
 
 Shared plumbing:
 

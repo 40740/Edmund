@@ -25,7 +25,9 @@ public struct BuiltinSyntaxBackend: CodeSyntaxBackend {
 
     // MARK: Scanner
 
-    static func scan(_ code: String, _ def: LanguageDefinition) -> [CodeHighlighter.Token] {
+    /// The raw scanner, exposed for the token-level tests: given a resolved
+    /// definition it returns the tokens the built-in highlighter would emit.
+    public static func scan(_ code: String, _ def: LanguageDefinition) -> [CodeHighlighter.Token] {
         let ns = code as NSString
         let n = ns.length
         guard n > 0 else { return [] }

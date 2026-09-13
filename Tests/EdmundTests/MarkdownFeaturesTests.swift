@@ -172,13 +172,13 @@ struct MarkdownFeaturesTests {
 
     @Test("Read: Obsidian callout type falls back to a plain quote without extended types")
     func readCalloutTypeSplit() {
-        let gfmOnly = HTMLRenderer.render(markdown: "> [!info]\n> b",
+        let gfmOnly = MarkdownHTMLBody.render(markdown: "> [!info]\n> b",
                                           options: ReadRenderOptions(features: [.callout]))
         #expect(!gfmOnly.contains("callout") && gfmOnly.contains("<blockquote"))
-        let note = HTMLRenderer.render(markdown: "> [!note]\n> b",
+        let note = MarkdownHTMLBody.render(markdown: "> [!note]\n> b",
                                        options: ReadRenderOptions(features: [.callout]))
         #expect(note.contains("callout"))   // GFM alert survives GFM-only
-        let ext = HTMLRenderer.render(markdown: "> [!info]\n> b",
+        let ext = MarkdownHTMLBody.render(markdown: "> [!info]\n> b",
                                       options: ReadRenderOptions(features: [.callout, .calloutExtendedTypes]))
         #expect(ext.contains("callout"))
     }
@@ -216,7 +216,7 @@ struct MarkdownFeaturesTests {
     // MARK: - Read-mode HTML gating
 
     private func html(_ src: String, _ features: MarkdownFeatures) -> String {
-        HTMLRenderer.render(markdown: src, options: ReadRenderOptions(features: features))
+        MarkdownHTMLBody.render(markdown: src, options: ReadRenderOptions(features: features))
     }
 
     @Test("Read: callout div only when callouts are on")

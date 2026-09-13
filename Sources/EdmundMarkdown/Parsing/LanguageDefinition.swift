@@ -65,7 +65,7 @@ public struct LanguageDefinition: Codable, Equatable, Sendable {
     }
 
     /// Direct init for the built-in fallback def (no JSON round-trip).
-    init(name: String, displayName: String? = nil, aliases: [String] = [],
+    public init(name: String, displayName: String? = nil, aliases: [String] = [],
          lineComment: String? = nil, blockComment: [String]? = nil,
          strings: [String] = ["\"", "'"], keywords: [String] = [],
          commands: [String] = [], types: [String] = [], attributes: [String] = [],

@@ -137,7 +137,7 @@ struct QuickLookSyntaxPackagingTests {
             .appendingPathComponent("scripts/build-app.sh")
         let text = try String(contentsOf: script, encoding: .utf8)
         guard let appex = text.range(of: "APPEX="),
-              let sign = text.range(of: "codesign --force --sign - --entitlements")
+              let sign = text.range(of: "codesign --force --sign - --identifier \"com.i7t5.edmund.quicklook\"")
         else {
             Issue.record("could not locate the appex assembly or the signing step")
             return
