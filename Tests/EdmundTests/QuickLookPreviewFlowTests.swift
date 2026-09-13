@@ -50,6 +50,38 @@ private func code(_ source: String) -> String {
 
 private func previewCode() throws -> String { code(try previewSource()) }
 
+/// The `Package.swift` text of one target, from its `name:` to the line that
+/// closes its argument list.
+///
+/// Deliberately not a "find the next closing paren line" search: the targets'
+/// closing lines differ (`.target(` blocks end with `]),`, `resources: …]),`,
+/// etc.), so a single fixed pattern is absent from the manifest and every lookup
+/// using it threw. The block ends at the first line that closes a paren at the
+/// target's own indentation.
+private func targetBlock(_ name: String, in manifest: String) throws -> String {
+    guard let start = manifest.range(of: "name: \"\(name)\""),
+          let end = statementEnd(in: manifest, from: start.upperBound)
+    else { throw CocoaError(.fileReadCorruptFile) }
+    return String(manifest[start.lowerBound..<end])
+}
+
+/// The index just past the line that closes the target's argument list — the
+/// first line whose code ends in `),`. Every `.target(…)` here is written as one
+/// statement whose last line is the closing `)]),` (there is no bare `        ),`
+/// line to search for, which is what an earlier version of this test assumed and
+/// why it threw).
+private func statementEnd(in manifest: String, from index: String.Index) -> String.Index? {
+    var cursor = index
+    while let newline = manifest[cursor...].firstIndex(of: "\n") {
+        let line = manifest[cursor..<newline].trimmingCharacters(in: .whitespaces)
+        cursor = manifest.index(after: newline)
+        if line.hasSuffix("),") && !line.hasPrefix("//") && !line.hasPrefix(".product") {
+            return cursor
+        }
+    }
+    return nil
+}
+
 private func previewSource() throws -> String {
     try repoFile("Sources/EdmundQuickLook/PreviewViewController.swift")
 }
@@ -67,13 +99,13 @@ struct QuickLookDependencyTests {
     @Test("The extension target depends on the rendering pipeline only")
     func extensionDependsOnRenderOnly() throws {
         let manifest = try repoFile("Package.swift")
-        guard let target = manifest.range(of: "name: \"EdmundQuickLook\""),
-              let end = manifest.range(of: "\n        ),", range: target.upperBound..<manifest.endIndex)
-        else {
+        let block: String
+        do {
+            block = try targetBlock("EdmundQuickLook", in: manifest)
+        } catch {
             Issue.record("could not locate the EdmundQuickLook target in Package.swift")
             return
         }
-        let block = String(manifest[target.lowerBound..<end.upperBound])
         #expect(block.contains("\"EdmundRender\""),
                 "the preview needs the HTML pipeline")
         #expect(!block.contains("\"EdmundCore\""),
@@ -91,10 +123,7 @@ struct QuickLookDependencyTests {
     func sharedModulesAreALowerLayer() throws {
         let manifest = try repoFile("Package.swift")
         func deps(of name: String) throws -> String {
-            guard let target = manifest.range(of: "name: \"\(name)\""),
-                  let end = manifest.range(of: "\n        ),", range: target.upperBound..<manifest.endIndex)
-            else { throw CocoaError(.fileReadCorruptFile) }
-            return String(manifest[target.lowerBound..<end.upperBound])
+            try targetBlock(name, in: manifest)
         }
         #expect(!(try deps(of: "EdmundMarkdown")).contains("EdmundRender"),
                 "EdmundMarkdown is the lowest layer — it cannot import the render pipeline")
@@ -187,8 +216,12 @@ struct QuickLookLayoutTests {
         let source = try repoFile("Sources/EdmundRender/Export/ReadModeWebView.swift")
         #expect(source.contains("private func prepareConfiguration()"),
                 "the configuration must be built on demand, not in init")
-        #expect(source.contains("guard configuration == nil else { return }"),
-                "building it must be idempotent — the view outlives one preview")
+        #expect(source.contains("guard renderConfiguration == nil else { return }"),
+                """
+                building it must be idempotent — the view outlives one preview \
+                (the stored property is `renderConfiguration`, since a WKWebView \
+                already has a `configuration`)
+                """)
     }
 }
 
