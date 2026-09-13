@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import EdmundRender
 import EdmundCore
 import WebKit
 

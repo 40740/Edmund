@@ -1,5 +1,6 @@
 import Testing
 import AppKit
+import EdmundMarkdown
 @testable import EdmundCore
 
 /// After ANY edit or cursor move, the text storage must be attribute-equivalent

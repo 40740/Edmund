@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import EdmundRender
 @testable import EdmundCore
 
 // Strict line breaks (Edit ▸ Lines). On (Markdown default): a single source
@@ -9,7 +10,7 @@ import Foundation
 struct StrictLineBreaksTests {
 
     private func html(_ md: String, strict: Bool) -> String {
-        HTMLRenderer.render(markdown: md, options: ReadRenderOptions(strictLineBreaks: strict))
+        MarkdownHTMLBody.render(markdown: md, options: ReadRenderOptions(strictLineBreaks: strict))
     }
 
     @Test("Soft break collapses when strict (Markdown default)")

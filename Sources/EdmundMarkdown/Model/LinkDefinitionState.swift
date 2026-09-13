@@ -14,19 +14,23 @@ import Foundation
 /// CommonMark's "first definition wins" itself, and `defsText` is sorted so the
 /// incremental state and a from-scratch rebuild always produce the identical
 /// string (the full-recompose oracle depends on that determinism).
-struct LinkDefinitionState: Equatable {
+public struct LinkDefinitionState: Equatable {
     /// Unique `[label]: url` source lines → occurrence count, so per-block
     /// add/remove stays exact when the same line appears more than once.
     private var lines: [String: Int] = [:]
 
+    /// The editor holds one of these per document, so the (implicit) memberwise
+    /// init has to be reachable from `EdmundCore`.
+    public init() {}
+
     /// The collected definition lines, sorted and newline-joined. Empty when the
     /// document defines no references (then parsing skips the append entirely).
-    var defsText: String { lines.keys.sorted().joined(separator: "\n") }
+    public var defsText: String { lines.keys.sorted().joined(separator: "\n") }
 
-    mutating func add(_ content: String) { scan(content, sign: 1) }
-    mutating func remove(_ content: String) { scan(content, sign: -1) }
+    public mutating func add(_ content: String) { scan(content, sign: 1) }
+    public mutating func remove(_ content: String) { scan(content, sign: -1) }
 
-    static func build(from source: String) -> LinkDefinitionState {
+    public static func build(from source: String) -> LinkDefinitionState {
         var state = LinkDefinitionState()
         state.add(source)
         return state
@@ -49,7 +53,7 @@ struct LinkDefinitionState: Equatable {
     private static let listMarkerRegex = try! NSRegularExpression(
         pattern: #"^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+"#)
 
-    static func isDefinitionLine(_ line: String) -> Bool {
+    public static func isDefinitionLine(_ line: String) -> Bool {
         canonicalDefinition(from: line) != nil
     }
 
@@ -60,7 +64,7 @@ struct LinkDefinitionState: Equatable {
     /// what gets appended and re-parsed, so it must be container-free. The strip
     /// only consumes whitespace that belongs to a marker — a bare `    [x]: u`
     /// (4-space indent) is still rejected as code by `defRegex`.
-    static func canonicalDefinition(from line: String) -> String? {
+    public static func canonicalDefinition(from line: String) -> String? {
         var s = Substring(line)
         var stripped = false
 

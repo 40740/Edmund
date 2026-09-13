@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import AppKit
+import EdmundMarkdown
 @testable import EdmundCore
 
 // MARK: - Reference link resolution (edit-mode parse)

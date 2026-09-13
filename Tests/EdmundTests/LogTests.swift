@@ -1,5 +1,7 @@
 import Testing
 import Foundation
+import EdmundMarkdown
+import EdmundRender
 @testable import EdmundCore
 
 /// The diagnostic logger: writes lines to a daily file, honors the on/off switch,

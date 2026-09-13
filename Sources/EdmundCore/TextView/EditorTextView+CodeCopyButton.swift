@@ -1,4 +1,5 @@
 import AppKit
+import EdmundMarkdown
 
 // MARK: - Edit-mode code-block copy button
 //

@@ -13,6 +13,6 @@ import Foundation
 // with the user's default). A backend returns tokens with ranges relative to
 // `code`.
 
-protocol CodeSyntaxBackend {
+public protocol CodeSyntaxBackend {
     func tokenize(_ code: String, language: String) -> [CodeHighlighter.Token]
 }

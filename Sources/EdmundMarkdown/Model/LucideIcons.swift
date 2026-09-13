@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 
 // MARK: - LucideIcons
 //
@@ -9,15 +9,19 @@ import AppKit
 // ISC-licensed (a few icons MIT, via Feather) — both permit redistribution; the
 // notices live in `LICENSES/lucide.txt`.
 //
-// Only each icon's inner geometry is stored; `inlineSVG`/`image` wrap it in a
-// 24×24, stroke-based `<svg>` matching Lucide's canonical form. One source feeds
-// both back-ends: Read mode inlines the SVG (vector, CSS-tinted via
-// `currentColor`); Edit mode rasterizes it to a tinted `NSImage` overlay.
-enum LucideIcons {
+// Only each icon's inner geometry is stored; `inlineSVG` wraps it in a 24×24,
+// stroke-based `<svg>` matching Lucide's canonical form. One source feeds both
+// back-ends: this module inlines the SVG (vector, CSS-tinted via `currentColor`,
+// which is all the HTML renderer needs), and the AppKit halves — the tinted
+// `NSImage` overlay for Edit mode and the `CGPath` shape for fragment overlays —
+// live in `EdmundCore/Model/LucideIcons+AppKit.swift`. Keeping them out of this
+// module is what lets the Quick Look preview use the icon geometry without
+// linking AppKit's drawing stack.
+public enum LucideIcons {
 
     /// Lucide icon id → inner SVG geometry, verbatim from lucide.dev (v ISC).
     /// Keys match `CalloutStyle.iconName` plus the checkbox primitives.
-    static let geometry: [String: String] = [
+    public static let geometry: [String: String] = [
         "pencil": #"<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>"#,
         "flame": #"<path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"/>"#,
         "message-square-warning": #"<path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M12 15h.01"/><path d="M12 7v4"/>"#,
@@ -41,55 +45,16 @@ enum LucideIcons {
 
     /// Raw `<svg>…</svg>` with `stroke="currentColor"` for inlining into HTML;
     /// the host CSS supplies the color. Returns `nil` for an unknown id.
-    static func inlineSVG(_ name: String) -> String? {
+    public static func inlineSVG(_ name: String) -> String? {
         guard let g = geometry[name] else { return nil }
         return strokeSVG(geometry: g, stroke: "currentColor")
-    }
-
-    /// An `NSImage` of the icon stroked in `color`, sized to a `pointSize`
-    /// square. Renders the SVG (in black) then tints with `.sourceIn` so the
-    /// glyph matches `color` exactly regardless of the SVG decoder's color space
-    /// — the same technique the PDF icon path used. `sourceIn` (not
-    /// `sourceAtop`) matters when `color` is itself translucent (e.g. a dynamic
-    /// system color like `.secondaryLabelColor`): `sourceIn`'s result alpha is
-    /// `color.alpha * baseGlyphAlpha`, so the tint's own translucency survives;
-    /// `sourceAtop` keeps only the base glyph's alpha, silently discarding the
-    /// tint's alpha — invisible with the opaque theme colors this was first
-    /// used with, but it flattens a translucent tint to solid opaque. `nil` for
-    /// an unknown id or if the platform SVG decoder can't build the image.
-    static func image(_ name: String, color: NSColor, pointSize: CGFloat) -> NSImage? {
-        guard let g = geometry[name],
-              let data = strokeSVG(geometry: g, stroke: "#000000").data(using: .utf8),
-              let base = NSImage(data: data) else { return nil }
-        base.cacheMode = .never   // re-rasterize the SVG at each draw scale (crisp on Retina)
-        let box = NSSize(width: pointSize, height: pointSize)
-        let image = NSImage(size: box, flipped: false) { rect in
-            base.draw(in: rect)
-            color.setFill()
-            NSGraphicsContext.current?.cgContext.setBlendMode(.sourceIn)
-            rect.fill()
-            return true
-        }
-        image.cacheMode = .never
-        return image
-    }
-
-    /// The icon's stroke geometry as a CGPath in Lucide's canonical 24×24,
-    /// y-down viewBox space (stroke it with width 2, round caps/joins, to
-    /// match the rendered SVG). Used where the icon must be drawn as a
-    /// *shape*, not an image — an image on a wrapping TextKit 2 fragment
-    /// wedges its layout to one line (see FragmentOverlay). `nil` for an
-    /// unknown id.
-    static func path(_ name: String) -> CGPath? {
-        guard let g = geometry[name] else { return nil }
-        return SVGPath.path(fromGeometry: g)
     }
 
     /// Read-mode checkbox markup mirroring the editor's look. Unchecked: a
     /// stroked `circle`. Checked: a disc filled in `currentColor` (CSS supplies
     /// the accent) with a white check on top. The themeable part uses
     /// `currentColor`; the check is a literal white so it reads on the disc.
-    static func checkboxSVG(checked: Bool) -> String {
+    public static func checkboxSVG(checked: Bool) -> String {
         if checked {
             return ##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="m7.5 12.5 3 3 6-7" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>"##
         }
@@ -97,7 +62,11 @@ enum LucideIcons {
     }
 
     /// Wraps inner `geometry` in Lucide's canonical stroke-based `<svg>`.
-    private static func strokeSVG(geometry: String, stroke: String) -> String {
+    ///
+    /// `public` because the AppKit halves in
+    /// `EdmundRender/Theme/LucideIcons+AppKit.swift` rasterize this exact markup —
+    /// one builder is what keeps the editor's icon and the HTML icon identical.
+    public static func strokeSVG(geometry: String, stroke: String) -> String {
         #"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke=""#
             + stroke
             + #"" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">"#

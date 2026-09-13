@@ -2,6 +2,8 @@
 // The rest of the app reads these accessors; the SwiftUI panes bind to the
 // same keys via @AppStorage.
 
+import EdmundRender
+import EdmundMarkdown
 import AppKit
 import EdmundCore
 

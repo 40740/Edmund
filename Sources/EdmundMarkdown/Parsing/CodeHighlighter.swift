@@ -11,7 +11,7 @@ import Foundation
 // scopes onto these six `TokenType` cases, Edit mode and Read mode stay identical
 // (both consumers call `tokenize` and color from the shared palette).
 
-enum CodeHighlighter {
+public enum CodeHighlighter {
 
     /// The themeable color scopes, aligned with CotEditor's Appearance palette
     /// (Keywords, Commands, Types, Attributes, Variables, Values, Numbers,
@@ -20,14 +20,14 @@ enum CodeHighlighter {
     /// from a def's word-lists and number/string/comment lexically; function
     /// calls fold into `command` and character literals into `string` (the
     /// lightweight scanner can't separate them — a full backend can).
-    enum TokenType: Equatable {
+    public enum TokenType: Equatable {
         case keyword, command, type, attribute, variable, value
         case number, string, comment
     }
 
-    struct Token: Equatable {
-        let range: NSRange
-        let type: TokenType
+    public struct Token: Equatable {
+        public let range: NSRange
+        public let type: TokenType
     }
 
     /// The backend that turns code into tokens. Defaults to the built-in scanner;
@@ -38,7 +38,7 @@ enum CodeHighlighter {
     /// Tokenize a code block. An empty/absent `language` (an untagged fence) is
     /// resolved to the user's configured default language before dispatch, so a
     /// bare ``` block highlights as whatever "Default code syntax" is set to.
-    static func tokenize(_ code: String, language: String?) -> [Token] {
+    public static func tokenize(_ code: String, language: String?) -> [Token] {
         let raw = language?.trimmingCharacters(in: .whitespaces) ?? ""
         let lang = raw.isEmpty ? SyntaxDefinitionStore.shared.defaultLanguage : raw
         return activeBackend.tokenize(code, language: lang)

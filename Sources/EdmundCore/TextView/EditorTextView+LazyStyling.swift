@@ -1,4 +1,5 @@
 import AppKit
+import EdmundRender
 
 // MARK: - Lazy Styling: idle drain + scroll promotion
 //

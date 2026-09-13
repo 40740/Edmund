@@ -1,4 +1,5 @@
 import AppKit
+import EdmundMarkdown
 
 /// Table styling: the largest single case of the `styleBlock` switch. When the
 /// caret is inside, the table shows as dimmed monospace; otherwise it's laid out

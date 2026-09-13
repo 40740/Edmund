@@ -1,4 +1,5 @@
 import AppKit
+import EdmundMarkdown
 
 // MARK: - Custom Undo/Redo
 //

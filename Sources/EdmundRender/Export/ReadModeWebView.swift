@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import EdmundMarkdown
 
 // MARK: - ReadModeWebView
 //
@@ -19,8 +20,25 @@ import WebKit
 public final class ReadModeWebView: WKWebView {
 
     private let coordinator = ReadModeNavigationCoordinator()
+    /// Built on the first `render(...)`, not in `init`.
+    ///
+    /// A `WKWebViewConfiguration` is not just a settings object: constructing it
+    /// starts WebKit's per-process machinery (the WebContent XPC connection
+    /// among other things). A Quick Look extension builds one of these per
+    /// preview and is judged on how fast it answers, so nothing here may run
+    /// until there is a page to show.
+    private var renderConfiguration: WKWebViewConfiguration?
 
     public init() {
+        super.init(frame: .zero, configuration: WKWebViewConfiguration())
+        coordinator.owner = self
+        navigationDelegate = coordinator
+    }
+
+    /// Called by `render(...)` right before the first load, so the configuration
+    /// is in place before WebKit is asked to draw.
+    private func prepareConfiguration() {
+        guard renderConfiguration == nil else { return }
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences.allowsContentJavaScript = false
         // QUIRK: `isInspectable` (macOS 13.3+) marks the webview as inspectable
@@ -29,9 +47,7 @@ public final class ReadModeWebView: WKWebView {
         // the menu item. Both must be set for right-click → Inspect Element to
         // work; the developer tools must also be enabled in Safari's settings.
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
-        super.init(frame: .zero, configuration: config)
-        coordinator.owner = self
-        navigationDelegate = coordinator
+        renderConfiguration = config
         if #available(macOS 13.3, *) { isInspectable = true }
     }
 
@@ -53,6 +69,9 @@ public final class ReadModeWebView: WKWebView {
     /// extension awaits this to tell Quick Look the preview is ready, so a
     /// dropped failure here is an eternal loading state.
     public var onLoadFinished: (() -> Void)?
+
+    /// The description of the most recent failed navigation, for the owner to log.
+    public private(set) var lastLoadFailureReason: String?
 
     /// The error from the most recent failed navigation, when there was one.
     /// `onLoadFinished` fires for a failure too, so a caller that has to decide
@@ -99,12 +118,6 @@ public final class ReadModeWebView: WKWebView {
         evaluateJavaScript(js, completionHandler: nil)
     }
 
-    /// The most recent render inputs, so the view can re-render itself when the
-    /// system appearance flips (light ↔ dark) without the document re-driving it.
-    private var pending: (markdown: String, theme: EditorTheme,
-                          callouts: [String: CalloutStyle], baseURL: URL?,
-                          options: ReadRenderOptions)?
-
     /// A scroll position (source line + fraction into that block) to apply once
     /// the *next* load finishes. Set either by `reloadHTML()` itself (to carry
     /// the current scroll position across an appearance-driven re-render) or
@@ -125,14 +138,52 @@ public final class ReadModeWebView: WKWebView {
     /// Renders `markdown` with the given theme; appearance is resolved from the
     /// view itself. `baseURL` is the document's directory (for resolving relative
     /// image paths to inline).
+    ///
+    /// This is a convenience for callers that *also* want the web view to be able
+    /// to re-render itself (appearance flips, a mode switch back into Read). It
+    /// goes through the same `DocumentHTML` pipeline as `render(html:…)`.
     public func render(markdown: String,
                        theme: EditorTheme,
                        callouts: [String: CalloutStyle],
                        baseURL: URL? = nil,
                        options: ReadRenderOptions = .default) {
-        pending = (markdown, theme, callouts, baseURL, options)
+        // Held so `reloadHTML()` can rebuild the page for the same inputs.
+        self.markdownInputs = (markdown, theme, callouts, baseURL, options)
         reloadHTML()
     }
+
+    /// Renders an **already-built** complete HTML document — the output of
+    /// `DocumentHTML.full(...)`.
+    ///
+    /// This is what the Quick Look extension uses: the page is assembled once,
+    /// up front, and handed over as a finished string. The preview therefore
+    /// never depends on a render pass happening later (or on a callback landing
+    /// before Quick Look gives up waiting), which is precisely what made
+    /// "still loading" possible before.
+    ///
+    /// An appearance flip still works: the inputs are recomputed and the new page
+    /// handed back through this same entry point by the preview's own
+    /// `viewDidChangeEffectiveAppearance`.
+    ///
+    /// `dark` must be the same value `DocumentHTML.full(...)` was given, so a
+    /// re-render after a flip produces the other palette.
+    public func render(html: String, theme: EditorTheme, dark: Bool) {
+        self.markdownInputs = nil
+        underPageBackgroundColor = HTMLTheme.backgroundColor(theme, dark: dark)
+        lastLoadFailed = false
+        lastLoadedHTML = html
+        hasLoadedOnce = true
+        prepareConfiguration()
+        loadHTMLString(html, baseURL: ReadModeNavigationPolicy.trustedBaseURL)
+    }
+
+    /// Only set by `render(markdown:…)`; the appearance flip re-render rebuilds
+    /// the page from these, which is why the markdown path keeps them. `nil`
+    /// means the page was handed over pre-built (`render(html:…)`) and its owner
+    /// is the one that rebuilds it.
+    private var markdownInputs: (markdown: String, theme: EditorTheme,
+                                callouts: [String: CalloutStyle], baseURL: URL?,
+                                options: ReadRenderOptions)?
 
     /// Sets the scroll position to restore on the *next* load, for callers that
     /// need to drive where a fresh Read-mode render lands (e.g. entering Read
@@ -147,7 +198,14 @@ public final class ReadModeWebView: WKWebView {
     private var lastLoadedHTML: String?
 
     func reloadHTML() {
-        guard let p = pending else { return }
+        guard let p = markdownInputs else {
+            // A page that was handed to us already built (`render(html:…)`).
+            // The only thing that re-renders it is an appearance flip, and the
+            // caller that built it owns that decision (it is the one that knows
+            // how to rebuild the page), so there is nothing to do here: the
+            // caller re-renders through the same entry point.
+            return
+        }
         guard hasLoadedOnce else {
             hasLoadedOnce = true
             performLoad(p)
@@ -176,6 +234,7 @@ public final class ReadModeWebView: WKWebView {
     private func performLoad(_ p: (markdown: String, theme: EditorTheme,
                                    callouts: [String: CalloutStyle], baseURL: URL?,
                                    options: ReadRenderOptions)) {
+        prepareConfiguration()
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         // Kills the white flash between `loadHTMLString` and first paint (most
         // visible in dark mode): the page background shows immediately instead
@@ -249,7 +308,9 @@ public final class ReadModeWebView: WKWebView {
 
     /// Forwarded from the coordinator's `didFail`/`didFailProvisionalNavigation`.
     fileprivate func handleDidFailLoad(_ error: Error) {
-        Log.error("read-mode load failed: \(error.localizedDescription)", category: .render)
+        // Recorded rather than logged so the owner reports it alongside its own
+        // context; `lastLoadFailed` is the signal every caller already reads.
+        lastLoadFailureReason = error.localizedDescription
         lastLoadFailed = true
         applyPendingScrollRestoreAndNotify()
     }
@@ -337,7 +398,7 @@ public final class ReadModeWebView: WKWebView {
 
     /// Parses the `"<line>,<fraction>"` string produced by `readScrollPosition`'s
     /// JS. Extracted as a pure helper so it's unit-testable without a webview.
-    internal static func parseScrollPosition(_ s: String) -> (line: Int, fraction: Double)? {
+    public static func parseScrollPosition(_ s: String) -> (line: Int, fraction: Double)? {
         guard !s.isEmpty else { return nil }
         let parts = s.split(separator: ",", maxSplits: 1)
         guard parts.count == 2, let line = Int(parts[0]), let fraction = Double(parts[1]) else {
@@ -421,11 +482,11 @@ private final class ReadModeNavigationCoordinator: NSObject, WKNavigationDelegat
 
 // MARK: - Navigation classifier
 
-enum ReadModeNavigationPolicy {
+public enum ReadModeNavigationPolicy {
 
-    static let trustedBaseURL = URL(string: "about:blank")!
+    public static let trustedBaseURL = URL(string: "about:blank")!
 
-    enum Decision: Equatable {
+    public enum Decision: Equatable {
         case allow
         case reload
         case openWiki(String)
@@ -439,7 +500,7 @@ enum ReadModeNavigationPolicy {
     /// generated document is self-contained and loaded against `about:blank`, so
     /// only in-document anchors, Edmund's private schemes, and browser handoffs are
     /// expected. `file:` and other explicit schemes stay out of the webview.
-    static func decision(for url: URL?, navigationType: WKNavigationType) -> Decision {
+    public static func decision(for url: URL?, navigationType: WKNavigationType) -> Decision {
         if navigationType == .reload { return .reload }
         guard let url else { return .allow }
         let scheme = url.scheme?.lowercased()

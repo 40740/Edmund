@@ -1,4 +1,6 @@
 import AppKit
+import EdmundRender
+import EdmundMarkdown
 
 /// The edit pipeline: how keystrokes flow from NSTextView into `rawSource`,
 /// reparse, and an attribute-only restyle of exactly the affected blocks.

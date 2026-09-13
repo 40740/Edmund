@@ -6,6 +6,7 @@
 
 import SwiftUI
 import AppKit
+import EdmundMarkdown
 import EdmundCore
 
 /// One outline row. NSOutlineView identifies items by object identity, so the

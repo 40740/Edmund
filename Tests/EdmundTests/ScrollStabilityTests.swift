@@ -1,5 +1,6 @@
 import Testing
 import AppKit
+import EdmundMarkdown
 @testable import EdmundCore
 
 /// Activating/deactivating a block ABOVE the viewport changes its height

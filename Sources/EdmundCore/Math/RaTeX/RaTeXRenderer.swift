@@ -1,4 +1,5 @@
 import AppKit
+import EdmundRender
 
 /// Wraps RaTeX (KaTeX-compatible, MIT), run as sandboxed WASM in
 /// JavaScriptCore — the "Advanced Math" extension's engine. Not ready until

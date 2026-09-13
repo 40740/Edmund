@@ -1,4 +1,5 @@
 import AppKit
+import EdmundMarkdown
 
 // MARK: - Formatting primitives & helpers
 //

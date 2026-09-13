@@ -9,6 +9,7 @@
 // Tab/Shift-Tab indentation takes, with the same caller obligations (undo
 // snapshot, re-parse, viewport stabilization).
 
+import EdmundMarkdown
 import AppKit
 
 extension EditorTextView {

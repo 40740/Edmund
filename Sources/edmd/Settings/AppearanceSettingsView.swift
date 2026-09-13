@@ -2,6 +2,7 @@
 // The app accent comes from the AccentColor asset (see Resources/Assets.xcassets),
 // so there is no in-app accent picker — native controls follow the asset / system.
 
+import EdmundMarkdown
 import SwiftUI
 import AppKit
 import EdmundCore

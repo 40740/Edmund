@@ -1,5 +1,6 @@
 import Testing
 import AppKit
+import EdmundMarkdown
 @testable import EdmundCore
 
 // Nested block styling: containers decide whether their nested *blocks* render.

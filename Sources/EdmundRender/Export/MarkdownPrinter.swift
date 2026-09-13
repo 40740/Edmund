@@ -1,6 +1,7 @@
 import AppKit
 import WebKit
 import UniformTypeIdentifiers
+import EdmundMarkdown
 
 // MARK: - MarkdownPrinter
 //

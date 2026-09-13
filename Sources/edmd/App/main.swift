@@ -1,5 +1,6 @@
 import AppKit
 import EdmundCore
+import EdmundRender
 import Sparkle
 
 // Entry point for the app the user knows as "Edmund" (CFBundleName). The
@@ -455,6 +456,14 @@ extension AppDelegate: NSMenuDelegate {
 }
 
 // --- Launch -----------------------------------------------------------------
+
+// A Quick Look preview extension is not a windowless *app*, and must not run the
+// app's startup. That code paths lives in the extension's own process: Quick
+// Look loads the appex' principal class with `_NSExtensionMain`, and this binary
+// (and so this file) is never started there. See Package.swift for the one thing
+// that did cross the boundary — the appex's dependency on the editor — and why
+// it no longer exists.
+
 let app = NSApplication.shared
 
 // Must be created before NSDocumentController.shared is first accessed.

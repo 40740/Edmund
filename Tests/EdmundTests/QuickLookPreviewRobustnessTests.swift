@@ -1,5 +1,7 @@
 import Testing
 import AppKit
+import EdmundRender
+import EdmundMarkdown
 @testable import EdmundCore
 
 // MARK: - Quick Look preview robustness (issue #8, second round)

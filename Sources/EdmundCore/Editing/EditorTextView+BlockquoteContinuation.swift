@@ -1,4 +1,5 @@
 import AppKit
+import EdmundMarkdown
 
 // MARK: - Block-quote / Callout Continuation on Enter
 //

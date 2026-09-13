@@ -1,6 +1,8 @@
 import Testing
 import Foundation
 import AppKit
+import EdmundRender
+import EdmundMarkdown
 @testable import EdmundCore
 
 // HTML tags in edit mode: every recognized tag is colored source (name red,
@@ -276,7 +278,7 @@ struct HTMLTagRenderingTests {
 @Suite("HTMLRenderer — whitelisted HTML passes through")
 struct HTMLTagExportTests {
 
-    private func html(_ md: String) -> String { HTMLRenderer.render(markdown: md) }
+    private func html(_ md: String) -> String { MarkdownHTMLBody.render(markdown: md) }
 
     @Test("Whitelisted tags render as real tags")
     func passesThrough() {

@@ -1,5 +1,7 @@
 import Testing
 import AppKit
+import EdmundRender
+import EdmundMarkdown
 @testable import EdmundCore
 
 @Suite("HTMLTheme — CSS emission")

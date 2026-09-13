@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import Markdown
+import EdmundMarkdown
 @testable import EdmundCore
 
 // CommonMark blockquote lazy continuation in edit-mode segmentation: a bare

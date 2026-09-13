@@ -1,4 +1,5 @@
 import AppKit
+import EdmundMarkdown
 
 /// List-item marker styling: maps a list item's leading whitespace to a nesting
 /// depth, indents the content by one marker "slot" per level (Apple Notes

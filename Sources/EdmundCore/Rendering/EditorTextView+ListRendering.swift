@@ -1,4 +1,5 @@
 import AppKit
+import EdmundMarkdown
 
 // Marker overlays are immutable and depend only on their cache key. Keeping a
 // bounded process-wide cache lets successive document views reuse the same

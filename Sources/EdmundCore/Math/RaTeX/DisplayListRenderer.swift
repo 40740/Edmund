@@ -1,4 +1,5 @@
 import AppKit
+import EdmundRender
 import CoreText
 
 // MARK: - RaTeX DisplayList → NSImage

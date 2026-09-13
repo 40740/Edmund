@@ -3,6 +3,32 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.27.0] - 2026-09-12
+
+### Fixed
+- **访达按空格预览仍然失败——这次是「扩展根本没跑起来」，不是「渲染慢」（第四次修复）**。前三次都在修渲染链路（不崩、不无限加载、永远给一个完整视图），但 Finder 报的是**另一句话**：
+
+  > 扩展"com.i7t5.edmund.quicklook"在预览此文稿期间失败。
+
+  这句是 Quick Look 说**这个扩展本身没能提供可用预览**，不是「还在加载」。根因有四个，全都出在「扩展是什么」而不是「扩展渲染了什么」：
+
+  - **appex 链接了整个编辑器。** 扩展 target 依赖整个 `EdmundCore` —— TextKit 2 编辑器、扩展宿主、语法高亮、WebKit Read 视图、RaTeX/WASM 数学引擎、SwiftMath 字体 —— 这些预览一个都不用。而扩展是在**按空格的那一刻**被启动的，这些全都要在 appex 进程里 import + 初始化完，第一帧才可能画出来。现在把共享渲染链路拆成两个小模块：`EdmundMarkdown`（解析 + 模型 + HTML 正文，无 AppKit）和 `EdmundRender`（主题 CSS + 数学栅格化 + 图片内联 + 整页组装），扩展只链接这两个，`EdmundCore` 反而依赖它们。数学引擎/字体/编辑器栈不再进入预览进程。
+  - **视图从来没被真正布局过。** 上一版返回一个容器，靠 `autoresizingMask` 把尺寸「传」给里面隐藏的 web view —— 但 autoresizing 只在**父视图自身 frame 变化**时触发；宿主如果用 Auto Layout 约束安装这个视图，就永远不会发生。结果容器停在 0×0，web view 也是 0×0，预览没有任何尺寸可画。现在由 `viewDidLayout` / `viewWillAppear` 按宿主实际给的尺寸摆放 web view，并保底一个最小尺寸（宿主给了 0 尺寸时也还能渲染）。
+  - **appex 没有 bundle 身份。** 它由 `cp` 拼出来，进程里没有 `CFBundle`，`NSApp.effectiveAppearance` 取的是未绑定进程的默认值 —— 深色模式无从解析。现在构建出的 appex 带 `Info.plist`，预览按 App 自己的规则解析明暗（ColaMD 预设优先，其次浅色/深色选择器，再否则系统），并且扩展二进制用 application-extension 标记链接，让系统真正把它当扩展看待。
+  - **扩展跑起了 App 的文档机制。** appex 链接了 App target 的 `Document`，`NSDocumentController` 会用完整文档流程打开被预览的文件 —— 800×520 的窗口、工具栏、侧边栏，全都在预览进程里建出来。现在扩展完全不链接 App target，这套机制根本不存在。
+  - **appex 被沙盒化了，而它用的是 WKWebView。** 扩展此前带着 `com.apple.security.app-sandbox` 签名，却只声明了 `files.user-selected.read-only`：在沙盒里 WebKit 自己的 XPC 服务（WebContent / Networking）拿不到需要的授权，页面加载根本起不来，Finder 就报「扩展在预览此文稿期间失败」。宿主 App 本来就没开沙盒（ad-hoc 签名分发），所以扩展也不再沙盒化——它只读 Quick Look 交给它的那一个文件加自身资源，JavaScript 关闭，所有素材内联，本来就不需要网络。
+
+### Changed
+- 模块拆分：`EdmundMarkdown`（解析/模型/HTML，无 AppKit）/ `EdmundRender`（主题/数学/图片内联/整页 HTML）/ `EdmundCore`（编辑器）。App 用全部三个，Quick Look 扩展只用前两个。
+- Quick Look 扩展版本 `0.4.0` → `0.5.0`（`CFBundleVersion` 11）。
+- WKWebView 的 `WKWebViewConfiguration` 改为**首次渲染时**构建（构造它会拉起 WebKit 的 per-process 机制，预览要按空格才启动，不该提前付费）。
+- 日志：appex 进程不再需要 App 来配置日志，`Log` 在首次使用时读取与 App 相同的开关（`settings.general.diagnosticLogging`，默认开）。
+- 语法定义查找的 bundle 名匹配从 `*EdmundCore.bundle` 放宽到 `*Edmund.bundle`（模块拆分后资源包改名为 `Edmund_EdmundMarkdown.bundle`）。
+
+### 测试
+- 新增 `QuickLookPreviewFlowTests`：锁定「扩展只依赖渲染链路、不依赖编辑器」「共享模块不反向依赖」「appex 入口只 import Foundation」「`preparePreviewOfFile` 不 await 任何东西」「web view 按容器真实 bounds 摆放且有最小尺寸」「不经过 `NSDocument`」「appex 标识符 / 扩展点 / principal class 三处一致」「外观翻转会重建页面」。
+- `QuickLookPackagingTests` 新增：appex 在签名前拿到 `Info.plist`；扩展二进制带 application-extension 标记与 `_NSExtensionMain` 入口。
+
 ## [5.26.0] - 2026-09-12
 
 ### Fixed

@@ -10,12 +10,12 @@ import Foundation
 //   - Read mode / PDF export (`HTMLTheme`) emits CSS `color` rules,
 // so Edit mode and Read mode color identical tokens identically.
 
-enum CodeSyntaxPalette {
+public enum CodeSyntaxPalette {
 
     /// The hex color for a token kind (`nil` = plain, un-tokenized code text) in
     /// the given appearance. Only foregrounds are themed; the block keeps its
     /// background, so each palette is paired with the appearance it's legible on.
-    static func hex(_ type: CodeHighlighter.TokenType?, dark: Bool) -> String {
+    public static func hex(_ type: CodeHighlighter.TokenType?, dark: Bool) -> String {
         dark ? oneDark(type) : tomorrow(type)
     }
 

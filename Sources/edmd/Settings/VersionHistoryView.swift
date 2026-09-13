@@ -1,7 +1,11 @@
 // The Manage Version History popup: browse macOS Auto Save versions grouped by
 // folder → file → version, and clear them (by selection or older than a date),
-// with filename/path search. See EdmundCore/Model/VersionHistory.swift for the model.
+// with filename/path search. The model (`VersionInfo`, `VersionHistoryStore.scanFolder`)
+// lives in `EdmundMarkdown`; the `NSFileVersion` queries are added to the store by
+// `EdmundCore/Model/VersionHistory+FileVersions.swift`.
 
+import EdmundMarkdown
+import EdmundCore
 import SwiftUI
 import AppKit
 import EdmundCore

@@ -1,6 +1,7 @@
 import Testing
 import AppKit
 import Foundation
+import EdmundRender
 @testable import EdmundCore
 
 /// Covers the verbose editor-tracing facility and the model invariants it guards.

@@ -1,12 +1,14 @@
 import Testing
 import Foundation
+import EdmundMarkdown
 @testable import EdmundCore
 
 // MARK: - Quick Look packaging regression tests (issue #8)
 //
-// The Quick Look appex ships its own copy of the `Edmund_EdmundCore.bundle`
-// resource bundle so the bundled `Syntaxes/*.json` defs are available to
-// `SyntaxDefinitionStore`. That bundle is what `.copy("Resources/Syntaxes")`
+// The Quick Look appex ships its own copy of the resource bundle the syntax
+// definitions live in (`Edmund_EdmundMarkdown.bundle`, formerly
+// `Edmund_EdmundCore.bundle`) so the bundled `Syntaxes/*.json` defs are
+// available to `SyntaxDefinitionStore`. That bundle is what `.copy("Resources/Syntaxes")`
 // produces — a bundle that, unless the packaging step writes one, has **no**
 // `Contents/Info.plist`.
 //
@@ -121,6 +123,53 @@ struct QuickLookSyntaxPackagingTests {
                 copying first ships the identifier-less bundle that Bundle.module \
                 traps on (this is the bug that survived v5.24.0)
                 """)
+    }
+
+    /// The appex has to be a *bundle*, not a folder with a binary in it: no
+    /// `Info.plist` means Quick Look has nothing to route a Space-bar press to,
+    /// which is what "扩展在预览此文稿期间失败" says. The script must ship one.
+    @Test("The appex gets an Info.plist before it is signed")
+    func appexGetsItsInfoPlist() throws {
+        let script = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("scripts/build-app.sh")
+        let text = try String(contentsOf: script, encoding: .utf8)
+        guard let appex = text.range(of: "APPEX="),
+              let sign = text.range(of: "codesign --force --sign - --identifier \"com.i7t5.edmund.quicklook\"")
+        else {
+            Issue.record("could not locate the appex assembly or the signing step")
+            return
+        }
+        let assembly = String(text[appex.lowerBound..<sign.lowerBound])
+        #expect(assembly.contains("cp Resources/QuickLookInfo.plist"),
+                "the appex needs its Info.plist, or it is not an extension at all")
+        #expect(assembly.contains("${APPEX}/Contents/MacOS/"),
+                "the extension binary belongs in Contents/MacOS")
+    }
+
+    /// The extension binary is linked with the application-extension marker, so
+    /// anything that inspects it sees a real app extension rather than a plain
+    /// executable in an .appex-shaped folder.
+    @Test("The extension binary is linked as an application extension")
+    func extensionBinaryIsMarked() throws {
+        let manifest = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Package.swift")
+        let text = try String(contentsOf: manifest, encoding: .utf8)
+        // `-fapplication-extension` is a *frontend* flag: it has to reach the
+        // compiler through `-Xcc`. Passing it to `ld` fails outright
+        // ("unknown options"), which is exactly what a bare `-Xlinker` entry
+        // did. The distinction is the whole content of this test.
+        #expect(text.contains("\"-Xcc\", \"-fapplication-extension\""),
+                "the extension marker must reach the compiler, not the linker")
+        #expect(!text.contains("\"-Xlinker\", \"-fapplication-extension\""),
+                "the linker rejects -fapplication-extension: it is a frontend flag")
+        #expect(text.contains("_NSExtensionMain"),
+                "its entry point is NSExtensionMain, not the target's main.swift")
     }
 
     @Test("The packaging script writes an Info.plist into every copied resource bundle")

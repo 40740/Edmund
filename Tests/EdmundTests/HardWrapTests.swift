@@ -1,5 +1,6 @@
 import Testing
 import AppKit
+import EdmundMarkdown
 @testable import EdmundCore
 
 // Hard wrap / unwrap (Settings ▸ Edit ▸ Document ▸ "Detect hard wrap pattern

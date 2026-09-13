@@ -1,4 +1,6 @@
 import Foundation
+import EdmundRender
+import EdmundMarkdown
 
 // MARK: - EdmundExtension
 //

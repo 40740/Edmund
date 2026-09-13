@@ -1,6 +1,8 @@
 import AppKit
 import UniformTypeIdentifiers
 import EdmundCore
+import EdmundRender
+import EdmundMarkdown
 
 /// NSDocument subclass that provides standard macOS document lifecycle:
 /// file open/save, dirty-dot indicator, click-to-rename in the titlebar,
@@ -215,21 +217,14 @@ class Document: NSDocument, HeadingNavigable {
 
     /// True when this process is the Quick Look extension rather than the app.
     ///
-    /// The `.appex` links the same `Document` class (it shares `EdmundCore`) and
-    /// `NSDocumentController` opens the previewed file through the ordinary
-    /// document machinery — so a Space-bar preview in Finder was building a full
-    /// Edmund window: `800×520`, a toolbar, the sidebar, `isRestorable = true`,
-    /// `window.center()`. `NSDocumentController` orders a window whose controller
-    /// it holds front on open, so the extension came up owning a real window and
-    /// taking activation for it, while the preview pane it was actually supposed
-    /// to fill was still waiting.
-    ///
-    /// The bundle identifier is the reliable signal: the app is com.i7t5.edmd,
-    /// the extension com.i7t5.edmund.quicklook (`Resources/QuickLookInfo.plist`).
-    /// Everything the preview needs — parsing, rendering, `DocumentHTML` — comes
-    /// out of `EdmundCore` and touches none of this. The window is built but left
-    /// uncentered and out of the restorable set, so nothing in the host is
-    /// disturbed.
+    /// This class isn't compiled into the appex any more — the preview links only
+    /// `EdmundRender`, so the extension cannot start the app's document
+    /// machinery at all (see Package.swift). What remains is the *other*
+    /// direction: the same `NSDocumentController.openDocument` path is used by
+    /// the app, and it is worth knowing in one place whether the window it builds
+    /// belongs to a user looking at it. The bundle identifier is the signal: the
+    /// app is com.i7t5.edmd, the extension com.i7t5.edmund.quicklook
+    /// (`Resources/QuickLookInfo.plist`).
     static let isQuickLookExtension: Bool = {
         Bundle.main.bundleIdentifier?.hasSuffix(".quicklook") == true
     }()
@@ -595,6 +590,22 @@ class Document: NSDocument, HeadingNavigable {
         editor?.scrollToHeading(heading)
     }
 
+    /// Writes the render pipeline's *recorded* diagnostics to the log.
+    ///
+    /// `EdmundRender` sits below `EdmundCore` and has no logger (see
+    /// Package.swift), so `DocumentHTML` collects the assets it had to substitute
+    /// and `ReadModeWebView` records why a load failed. The layer that does have a
+    /// logger reports them — otherwise Read mode's degraded renders would be
+    /// silent, and "the page isn't quite the document" would be unfalsifiable.
+    private func reportRenderDiagnostics(for webView: ReadModeWebView?) {
+        for reason in RenderOutcome.lastRunReasons {
+            Log.error(reason.message, category: .render)
+        }
+        if let why = webView?.lastLoadFailureReason {
+            Log.error("read-mode load failed: \(why)", category: .render)
+        }
+    }
+
     // MARK: - Sidebar & Outline
 
     /// Points the sidebar at this document's directory and refreshes the outline
@@ -875,8 +886,9 @@ class Document: NSDocument, HeadingNavigable {
                 // document is actually ready, so there's never a blank gap.
                 // Set once, at creation — every later render (re-entry, live
                 // re-render) reuses this same webview and callback.
-                v.onLoadFinished = { [weak self] in
+                v.onLoadFinished = { [weak self, weak v] in
                     guard let self, self.editor.viewMode == .reading, let read = self.readView else { return }
+                    self.reportRenderDiagnostics(for: v)
                     read.isHidden = false
                     self.scrollView.isHidden = true
                     self.editor.window?.makeFirstResponder(read)
@@ -895,6 +907,7 @@ class Document: NSDocument, HeadingNavigable {
                         callouts: mergedCallouts,
                         baseURL: documentDirectory,
                         options: renderOptions)
+            reportRenderDiagnostics(for: read)
         } else {
             if let read = readView, !read.isHidden {
                 // While the webview is still alive, capture where the user

@@ -1,5 +1,7 @@
 import Testing
 import Foundation
+import EdmundRender
+import EdmundMarkdown
 @testable import EdmundCore
 
 // String-assertion tests for the HTML renderer: parse markdown → render → assert
@@ -8,7 +10,7 @@ import Foundation
 @Suite("HTMLRenderer — core GFM")
 struct HTMLRendererCoreTests {
 
-    private func html(_ md: String) -> String { HTMLRenderer.render(markdown: md) }
+    private func html(_ md: String) -> String { MarkdownHTMLBody.render(markdown: md) }
 
     @Test("Headings render h1…h6")
     func headings() {
@@ -184,7 +186,7 @@ struct HTMLRendererCoreTests {
 @Suite("HTMLRenderer — escaping & security")
 struct HTMLRendererEscapingTests {
 
-    private func html(_ md: String) -> String { HTMLRenderer.render(markdown: md) }
+    private func html(_ md: String) -> String { MarkdownHTMLBody.render(markdown: md) }
 
     @Test("Inline <script> is tagfiltered (no script injection)")
     func escapesText() {
@@ -205,7 +207,7 @@ struct HTMLRendererEscapingTests {
 @Suite("HTMLRenderer — GFM raw HTML, tagfilter & hardening")
 struct HTMLRendererRawHTMLTests {
 
-    private func html(_ md: String) -> String { HTMLRenderer.render(markdown: md) }
+    private func html(_ md: String) -> String { MarkdownHTMLBody.render(markdown: md) }
 
     // GFM §6.11 spec example: only the leading `<` of a disallowed tag becomes
     // `&lt;` (the `>` stays literal); everything else passes through raw.
@@ -270,7 +272,7 @@ struct HTMLRendererRawHTMLTests {
 @Suite("HTMLRenderer — non-GFM inline")
 struct HTMLRendererInlineTests {
 
-    private func html(_ md: String) -> String { HTMLRenderer.render(markdown: md) }
+    private func html(_ md: String) -> String { MarkdownHTMLBody.render(markdown: md) }
 
     @Test("==highlight== → <mark>")
     func highlight() {
@@ -445,7 +447,7 @@ struct HTMLRendererInlineTests {
 @Suite("HTMLRenderer — footnotes")
 struct HTMLRendererFootnoteTests {
 
-    private func html(_ md: String) -> String { HTMLRenderer.render(markdown: md) }
+    private func html(_ md: String) -> String { MarkdownHTMLBody.render(markdown: md) }
 
     @Test("Reference becomes a superscript link; raw [^id] doesn't leak into the page")
     func reference() {
@@ -491,7 +493,7 @@ struct HTMLRendererFootnoteTests {
 @Suite("HTMLRenderer — callouts")
 struct HTMLRendererCalloutTests {
 
-    private func html(_ md: String) -> String { HTMLRenderer.render(markdown: md) }
+    private func html(_ md: String) -> String { MarkdownHTMLBody.render(markdown: md) }
 
     @Test("Known callout type → callout div with title and body")
     func basicCallout() {
@@ -555,7 +557,7 @@ struct HTMLRendererCalloutTests {
 struct HTMLRendererAnchorTests {
 
     private func html(_ md: String, preserveBlankLines: Bool) -> String {
-        HTMLRenderer.render(markdown: md, options: ReadRenderOptions(preserveBlankLines: preserveBlankLines))
+        MarkdownHTMLBody.render(markdown: md, options: ReadRenderOptions(preserveBlankLines: preserveBlankLines))
     }
 
     @Test("Each top-level block gets an id anchored to its starting source line")

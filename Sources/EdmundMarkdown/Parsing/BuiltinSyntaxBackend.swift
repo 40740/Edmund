@@ -10,10 +10,12 @@ import Foundation
 // def; numbers, identifiers, the Uppercase→type and `ident(`→function heuristics
 // are universal and stay in code.
 
-struct BuiltinSyntaxBackend: CodeSyntaxBackend {
-    let store: SyntaxDefinitionStore
+public struct BuiltinSyntaxBackend: CodeSyntaxBackend {
+    public let store: SyntaxDefinitionStore
 
-    func tokenize(_ code: String, language: String) -> [CodeHighlighter.Token] {
+    public init(store: SyntaxDefinitionStore = .shared) { self.store = store }
+
+    public func tokenize(_ code: String, language: String) -> [CodeHighlighter.Token] {
         switch store.resolve(language) {
         case .plain:              return []
         case .definition(let d):  return Self.scan(code, d)
@@ -23,7 +25,9 @@ struct BuiltinSyntaxBackend: CodeSyntaxBackend {
 
     // MARK: Scanner
 
-    static func scan(_ code: String, _ def: LanguageDefinition) -> [CodeHighlighter.Token] {
+    /// The raw scanner, exposed for the token-level tests: given a resolved
+    /// definition it returns the tokens the built-in highlighter would emit.
+    public static func scan(_ code: String, _ def: LanguageDefinition) -> [CodeHighlighter.Token] {
         let ns = code as NSString
         let n = ns.length
         guard n > 0 else { return [] }

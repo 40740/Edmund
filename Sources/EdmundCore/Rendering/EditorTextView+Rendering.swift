@@ -1,5 +1,7 @@
 import AppKit
 import CoreText
+import EdmundRender
+import EdmundMarkdown
 
 extension NSAttributedString.Key {
     /// Stores a link's destination (URL string) on its visible text so a

@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import EdmundMarkdown
 @testable import EdmundCore
 
 /// The pure grouping/filtering logic behind the Clear Version History popup.

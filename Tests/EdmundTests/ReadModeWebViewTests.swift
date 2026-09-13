@@ -1,5 +1,6 @@
 import Testing
 import WebKit
+import EdmundRender
 @testable import EdmundCore
 
 @Suite("ReadModeWebView — navigation delegate")

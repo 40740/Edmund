@@ -1,5 +1,7 @@
 import Testing
 import AppKit
+import EdmundRender
+import EdmundMarkdown
 @testable import EdmundCore
 
 /// Block-level Phase-2 syntax: YAML front matter and multi-block `%%…%%`
@@ -12,7 +14,7 @@ struct BlockSyntaxTests {
         BlockParser.parse(src, features: features).map(\.kind)
     }
     private func html(_ src: String, _ features: MarkdownFeatures) -> String {
-        HTMLRenderer.render(markdown: src, options: ReadRenderOptions(features: features))
+        MarkdownHTMLBody.render(markdown: src, options: ReadRenderOptions(features: features))
     }
 
     // MARK: - Front matter

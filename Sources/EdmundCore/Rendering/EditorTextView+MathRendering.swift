@@ -1,4 +1,5 @@
 import AppKit
+import EdmundRender
 
 /// Built overlays are cached so we don't rebuild one on every keystroke or
 /// recompose. The rendered *image* is already cached by the active engine
