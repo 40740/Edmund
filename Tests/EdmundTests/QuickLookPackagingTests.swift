@@ -111,7 +111,7 @@ struct QuickLookSyntaxPackagingTests {
         }
         let loop = String(text[loopStart.lowerBound..<loopEnd.upperBound])
 
-        guard let copyIntoAppex = loop.range(of: "\"${APPEX}/Contents/Resources/$(basename \"$bundle\")\""),
+        guard let copyIntoAppex = loop.range(of: "cp -R \"$bundle\" \"${APPEX}/Contents/Resources/\""),
               let plistWrite = loop.range(of: "cat > \"$bundle/Contents/Info.plist\"")
         else {
             Issue.record("could not find the appex copy and/or the Info.plist write")
@@ -238,16 +238,6 @@ struct SyntaxPayloadLookupTests {
     }
 }
 
-// MARK: - Math fonts in the shipped bundle (issue #12)
-//
-// Opening a document containing `$…$` crashed the app inside SwiftMath's
-// `MTFont.fontBundle.getter` (`EXC_BREAKPOINT` / `SIGTRAP`) because the accessor
-// that reaches the OpenType math fonts traps when its bundle is missing. The
-// app now degrades instead of crashing (`MathFonts` / `UnicodeMathRenderer`),
-// but "degrades silently in every release" is its own bug — so the packaging
-// step is asserted to ship the fonts to both places the app looks, and to the
-// Quick Look appex as well.
-
 // MARK: - Math fonts are packaged where SwiftMath looks
 
 @Suite("Packaging — SwiftMath math fonts")
@@ -320,15 +310,40 @@ struct MathFontPackagingTests {
         // fonts are, using ordinary Foundation APIs, and never calls the
         // accessor that traps. If this ever regresses, the crash comes back the
         // moment a document opens — so the rule is asserted at the source level.
+        //
+        // Comments are stripped first: the files deliberately *describe*
+        // `Bundle.module` (that is the bug being documented), and matching that
+        // prose would make the assertion about the comments rather than the code.
         let dir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/EdmundRender/Math")
         let files = try FileManager.default.contentsOfDirectory(at: dir,
                                                                 includingPropertiesForKeys: nil)
         for file in files where file.pathExtension == "swift" {
-            let text = try String(contentsOf: file, encoding: .utf8)
-            #expect(!text.contains("Bundle.module"),
-                    "\(file.lastPathComponent) must not reach for Bundle.module")
+            let code = stripComments(try String(contentsOf: file, encoding: .utf8))
+            #expect(!code.contains("Bundle.module"),
+                    "\(file.lastPathComponent) must not reach for Bundle.module outside a comment")
         }
+    }
+
+    /// Drops `//` and `///` line comments, and `/* … */` blocks, so an
+    /// assertion about code isn't satisfied or defeated by prose.
+    private func stripComments(_ source: String) -> String {
+        var out = ""
+        var rest = Substring(source)
+        while let start = rest.range(of: "/*") {
+            out += rest[rest.startIndex..<start.lowerBound]
+            if let end = rest.range(of: "*/", range: start.upperBound..<rest.endIndex) {
+                rest = rest[end.upperBound...]
+            } else { rest = "" }
+        }
+        out += rest
+        return out
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                guard let idx = line.range(of: "//") else { return String(line) }
+                return String(line[line.startIndex..<idx.lowerBound])
+            }
+            .joined(separator: "\n")
     }
 }
