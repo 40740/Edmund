@@ -35,6 +35,9 @@ struct MathFontAvailabilityTests {
         // into this process's `Bundle.main` before the suite runs. If resolution
         // regresses, math silently degrades everywhere (that is the design),
         // which is exactly why it needs a test that notices.
+        print("DIAG bundleURL=\(Bundle.main.bundleURL.path)")
+        print("DIAG resourceURL=\(Bundle.main.resourceURL?.path ?? "nil")")
+        for c in MathFonts.candidates() { print("DIAG candidate=\(c.path) exists=\(FileManager.default.fileExists(atPath: c.path))") }
         #expect(MathFonts.isAvailable, "SwiftMath fonts must resolve in the test process")
         if let directory = MathFonts.directory {
             var isDir: ObjCBool = false
