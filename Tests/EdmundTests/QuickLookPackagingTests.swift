@@ -330,11 +330,14 @@ struct MathFontPackagingTests {
         // every math test silently grades the Unicode *fallback* while the app
         // ships SwiftMath — the suite would be green about the wrong engine.
         let text = try packagingScript()
-        guard let mirror = text.range(of: "Mirroring resource bundles into") else {
-            Issue.record("the packaging script never hands the resource bundles to the test bundle")
+        // Anchor on the `TEST_BUNDLE` lookup, not on the echo below it: the line
+        // that *finds* the .xctest is the part under test, and it comes first.
+        guard let lookup = text.range(of: "TEST_BUNDLE=\"$(find"),
+              text.range(of: "Mirroring resource bundles into") != nil else {
+            Issue.record("the packaging script never locates the test bundle")
             return
         }
-        let step = String(text[mirror.lowerBound...])
+        let step = String(text[lookup.lowerBound..<text.endIndex])
         // Assert on the pieces, not the whole shell line: the glob is quoted and
         // passed through `$( … )`, and locking that down would make the test fail
         // on a harmless requote.
