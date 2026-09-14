@@ -230,7 +230,7 @@ public enum DocumentHTML {
         /// alt text instead: the author's own words in the image's place.
         func placeholder(_ src: String, alt: String, reason: ImageLoadFailure) -> String {
             lastPassDegraded = true
-            lastPassReasons.append(.imageSubstituted(source: src, reason: reason.message))
+            lastPassReasons.append(.imageSubstituted(source: src, reason: reason.label))
             if plainTextFallback {
                 let label = unescapeAttr(alt).trimmingCharacters(in: .whitespacesAndNewlines)
                 return "<span class=\"md-image-omitted\">\(HTMLRenderer.escape(label.isEmpty ? src : label))</span>"
