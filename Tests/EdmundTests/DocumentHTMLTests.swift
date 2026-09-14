@@ -70,10 +70,21 @@ struct DocumentHTMLTests {
         #expect(out.contains(".math-display-block { display: block;"))   // CSS shipped
     }
 
-    @Test("Unparseable math falls back to showing the source")
+    @Test("Unparseable math still renders — a document never shows a hole")
     func mathFallback() {
+        // `renderingErrors: true` for documents: no typesetter can parse
+        // `\frac{`, so the Unicode approximation renders the flattened text
+        // instead. The alternative — dropping to the raw `<code>` source — would
+        // mean a mathematically-flawed file renders *less* than it intends, and
+        // with no typesetter available the whole document would come out as
+        // source. Either way the equation is present in the page.
         let out = doc("bad $\\frac{$ math")
-        #expect(out.contains("<code>\\frac{</code>"))
+        #expect(out.contains("class=\"math math-inline\""),
+                "the equation is still rendered, not blanked")
+        #expect(!out.contains("<code>"),
+                "the raw-source fallback is no longer the answer to a parse error")
+        #expect(out.contains("bad ") && out.contains(" math"),
+                "the prose around it is untouched")
     }
 
     // End-to-end regression for the read-mode environment bug: with intact `\\`

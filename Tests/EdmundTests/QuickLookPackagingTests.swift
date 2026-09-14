@@ -335,12 +335,11 @@ struct MathFontPackagingTests {
             return
         }
         let step = String(text[mirror.lowerBound...])
-        // The shell quotes the `.xctest` glob with a double quote, not the
-        // single quotes a reader might expect — assert on the glob itself so the
-        // test does not lock down the quoting.
-        #expect(step.contains("find .build -name"),
+        // Assert on the pieces, not the whole shell line: the glob is quoted and
+        // passed through `$( … )`, and locking that down would make the test fail
+        // on a harmless requote.
+        #expect(step.contains(".build") && step.contains("*.xctest"),
                 "the test bundle is located in the build directory")
-        #expect(step.contains("*.xctest"), "the glob is what finds the test bundle")
         #expect(step.contains("cp -R \"$bundle\" \"${TEST_BUNDLE}/\""),
                 "beside the .xctest, like next to the app executable")
         #expect(step.contains("cp -R \"$bundle\" \"${TEST_BUNDLE}/Contents/Resources/\""),
