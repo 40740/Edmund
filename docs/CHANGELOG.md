@@ -3,6 +3,52 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.28.0] - 2026-09-14
+
+### Fixed
+- **打开含 `$…$` 的 md 文件直接闪退（EXC_BREAKPOINT / SIGTRAP）**。崩溃栈是确定性的，一路指向数学字体：
+
+  ```
+  specialized static MTFont.fontBundle.getter
+    ← MTFont.__allocating_init(fontWithName:size:)
+    ← MTFontManager.font(withName:size:)
+    ← MTMathImage.init(latex:fontSize:textColor:labelMode:)
+    ← SwiftMathRenderer.render(latex:displayMode:pointSize:color:)
+    ← MathRendering.render(…)
+    ← EditorTextView.mathOverlay(latex:display:fontSize:)
+    ← EditorTextView.styleBlock(_:cursorPosition:hideComments:)
+    ← EditorTextView.restyleBlock(_:cursorInBlock:)   ← 主线程渐进式重排
+  ```
+
+  也就是说：只要文档里出现一个行内公式，重排到那一个 block 时进程就没了——而且是在主线程的 `com.apple.main-thread` 上，没有任何可捕获的机会。
+
+  **根因**：SwiftMath 用 Foundation 自动生成的 `Bundle.module` 访问器去取随包的 OpenType 数学字体：
+
+  ```swift
+  static var fontBundle: Bundle {
+      Bundle(url: Bundle.module.url(forResource: "mathFonts", withExtension: "bundle")!)!
+  }
+  ```
+
+  `Bundle.module` 生成的访问器在**找不到**编进二进制的那个资源包、或者那个包不是合法 bundle（没有 `Info.plist`，`bundleIdentifier == nil`）时，走的是一条 **assert 路径** —— `EXC_BREAKPOINT` / `SIGTRAP`，不是可捕获的错误。SwiftMath 在这条链路上每一层都是强制解包或 `fatalError`（`MTFont.fontBundle` 的双重 `!`、`BundleManager.onDemandRegistration` 的 `fatalError("…ondemand loading failed")`），所以从调用方**无法**把它变安全。而 app 侧一直以来的"保障"只是"`build-app.sh` 把 `*.bundle` 拷到 `.app` 根目录"——这对正规安装成立，对 Quick Look 扩展进程、测试进程、被移动/重打包的安装都不成立。
+
+  **修复**：不再依赖那套访问器，把"字体够不够"变成一个**可恢复条件**：
+
+  - 新增 `MathFonts`（`Sources/EdmundRender/Math/MathFonts.swift`）：自己解析字体目录——`Bundle.main.resourceURL` → `Bundle.main.bundleURL` → **可执行文件所在目录**（`swift run` / `swift test` 把资源包建在这里）→ `CNB_BUILD_PATH`；不使用 `Bundle.module`，没有任何强制解包，两种布局（SwiftPM `.copy` 的扁平布局、合法 bundle 的 `Contents/Resources`）都探。找不到就是 `nil`，不 trap。
+  - `SwiftMathRenderer`：`isReady` 从恒 `true` 改为 `MathFonts.isAvailable`，`render` 在**碰任何 SwiftMath 类型之前**先 `guard MathFonts.isAvailable else { return nil }`。
+  - `MathRendering`：新增 `UnicodeMathRenderer` 作为最后一级兜底，并把 `render` 改成按质量顺序遍历引擎（alternate → SwiftMath → Unicode，跳过未就绪的）。`UnicodeMathRenderer` 不做排版，只把 LaTeX 压成可读文本（`lpha`→`α`、`rac{a}{b}`→`(a)/(b)`、`\sqrt{x}`→`√x`），用 Asana Math（同为 OpenType MATH 字体）以系统字体绘制，并按字体自身度量给出 ascent/descent。**非空输入永不返回 `nil`** ——文档里的公式要么是排版好的、要么是可读的，不会是空洞，更不会是崩溃。
+  - 打包（`build-app.sh`）：资源包在 `Contents/Resources`（app 的签名覆盖范围内，也是 appex 的 `Bundle.main.resourceURL`）和 `.app` 根目录（SwiftMath 自己访问器的历史布局）**都**放一份；Quick Look appex 也拿到 SwiftMath 字体；并且**校验 `latinmodern-math.otf` 真的在里面**——只检查"bundle 目录存在"会被语法定义包满足，这正是"看起来生效、其实一个数学字体都没发"的那类问题。
+  - 新增 `MathRendering.isDegraded`，供 UI 在"公式是近似显示、不是排版"时提示一次。
+
+### 测试
+- 新增 `MathFontAvailabilityTests`：字体目录在本进程可解析、解析结果里确实有 `.otf` + 数学表 `.plist`、`isReady` 跟随可用性、`UnicodeMathRenderer` 的符号替换 / 结构命令 / 未知命令兜底 / 度量自洽（`ascent + descent == 图片高度`）、引擎回退链在"alternate 失败 + SwiftMath 失败"时仍给出图像、`isDegraded` 一致。
+- 新增 `MathCrashRegressionTests`：一个只有载荷、没有 `Info.plist` 的 `mathFonts.bundle` 目录**没有 `bundleIdentifier`**（`Bundle.module` trap 的正是这个前置条件），以及 `EdmundRender` 全目录**不得出现 `Bundle.module`**——把崩溃的形态本身锁进测试，而不只是锁"我们没再调用它"。
+- `QuickLookPackagingTests` 新增 `MathFontPackagingTests`：字体同时进 `Contents/Resources` 与 `.app` 根、打包脚本校验 `.otf` 并能在缺失时出警告、appex 也拿到字体、字体解析不走 `Bundle.module`。
+
+### Changed
+- 版本 `5.27.0` → `5.28.0`（`CFBundleVersion` `5270` → `5280`）。
+- 数学渲染链路的注释统一改用 doxygen 风格（`///`），`render` 的返回语义、`MathFonts` 的候选顺序与降级策略都写进代码注释。
+
 ## [5.27.0] - 2026-09-12
 
 ### Fixed

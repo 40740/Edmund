@@ -59,7 +59,14 @@ public protocol MathRenderer: AnyObject {
 @MainActor
 public final class SwiftMathRenderer: MathRenderer {
     public let id = "swiftmath"
-    public var isReady: Bool { true }
+
+    /// SwiftMath resolves its fonts through `Bundle.module` and force-unwraps
+    /// the result — there is no throwing path, and a missing (or malformed)
+    /// resource bundle traps the process instead of failing the render (issue
+    /// #12). `MathFonts` resolves the same directory without `Bundle.module`, so
+    /// `isReady` is false — and `render` returns `nil` — when the fonts can't be
+    /// reached, letting `MathRendering` fall back instead of crashing.
+    public var isReady: Bool { MathFonts.isAvailable }
 
     private final class Cached {
         let image: NSImage
@@ -92,6 +99,10 @@ public final class SwiftMathRenderer: MathRenderer {
         if let cached = cache.object(forKey: key) {
             return RenderedMath(image: cached.image, ascent: cached.ascent, descent: cached.descent)
         }
+
+        // The engine's fonts are resolved before any SwiftMath type is touched,
+        // so an unreachable bundle degrades the equation instead of the process.
+        guard MathFonts.isAvailable else { return nil }
 
         let mode: MTMathUILabelMode = displayMode ? .display : .text
         let math = MTMathImage(latex: latex, fontSize: pointSize, textColor: color, labelMode: mode)

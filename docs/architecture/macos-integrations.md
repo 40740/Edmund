@@ -107,6 +107,13 @@ appex's resource bundles go in `Contents/Resources` *before* signing (an appex's
 `Bundle.module` resolves via `Bundle.main.resourceURL`), unlike the app's
 SwiftMath bundle which must sit at the `.app` root *after* the seal.
 
+Note (issue #12) that the app no longer *depends* on any of that: `MathFonts`
+probes Bundle.main's Resources, the executable's directory and the SwiftPM build
+path, and an unresolved font set degrades maths to a readable Unicode
+approximation instead of trapping inside SwiftMath's `Bundle.module`. The
+packaging rules above keep the good path good; they are no longer what stands
+between the user and a crash.
+
 ## 5. Not built (candidates)
 
 - **App `.sdef` scripting dictionary** — real `tell application "Edmund" to …`

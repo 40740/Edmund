@@ -426,9 +426,20 @@ Notable subsystems:
   `env -u TOOLCHAINS xcrun swift test --build-path .build-xcode`
   (separate build path so it can't poison the normal `.build`; delete it after —
   it is not gitignored).
-- **SwiftMath fonts**: `build-app.sh` must copy `*.bundle` into the `.app`
-  root (it does). Without it the app **crashes the instant it renders any
-  LaTeX**.
+- **SwiftMath fonts are a recoverable dependency, not a crash**: SwiftMath
+  reaches its OpenType math fonts through Foundation's generated `Bundle.module`
+  accessor, which **traps** (`EXC_BREAKPOINT` / `SIGTRAP`, not a throw) when the
+  bundle it was compiled against is missing or identifier-less — and SwiftMath
+  force-unwraps or `fatalError`s at every funnel (`MTFont.fontBundle`,
+  `BundleManager.onDemandRegistration`). Shipping the bundle in the right place
+  is not enough to make that safe: previews, tests and any relocated install can
+  lack it. **`MathFonts`** resolves the directory explicitly (no `Bundle.module`,
+  no force-unwraps: Bundle.main's Resources, the executable's directory, the
+  SwiftPM build path) and "fonts unavailable" makes `SwiftMathRenderer.isReady`
+  false, so `MathRendering` falls back to `UnicodeMathRenderer` instead of
+  trapping. `build-app.sh` copies `*.bundle` to **both** `.app/Contents/Resources`
+  and the `.app` root, and into the Quick Look appex, and verifies
+  `latinmodern-math.otf` actually made it. See issue #12.
 - **Sparkle codesign — must seal the whole bundle**: Sparkle re-validates
   the downloaded update's Apple code signature (`SUUpdateValidator`); a
   bundle that reports as signed but fails `SecStaticCodeCheckValidity` is

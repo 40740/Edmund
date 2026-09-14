@@ -237,3 +237,82 @@ struct SyntaxPayloadLookupTests {
         #expect(store.availableLanguages().map(\.id).contains("python"))
     }
 }
+
+// MARK: - Math fonts in the shipped bundle (issue #12)
+//
+// Opening a document containing `$…$` crashed the app inside SwiftMath's
+// `MTFont.fontBundle.getter` (`EXC_BREAKPOINT` / `SIGTRAP`) because the accessor
+// that reaches the OpenType math fonts traps when its bundle is missing. The
+// app now degrades instead of crashing (`MathFonts` / `UnicodeMathRenderer`),
+// but "degrades silently in every release" is its own bug — so the packaging
+// step is asserted to ship the fonts to both places the app looks, and to the
+// Quick Look appex as well.
+
+@Suite("Packaging — SwiftMath math fonts")
+struct MathFontPackagingTests {
+
+    private func packagingScript() throws -> String {
+        let script = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("scripts/build-app.sh")
+        return try String(contentsOf: script, encoding: .utf8)
+    }
+
+    @Test("Math fonts are copied into the app bundle's Resources as well as its root")
+    func fontsShipToBothLocations() throws {
+        let text = try packagingScript()
+        guard let copy = text.range(of: "Copying SwiftPM resource bundles") else {
+            Issue.record("could not locate the resource-bundle copy step")
+            return
+        }
+        let step = String(text[copy.lowerBound...])
+        #expect(step.contains("cp -R \"$bundle\" \"${BUNDLE}/\""),
+                "Bundle.main.bundleURL is where SwiftMath's own accessor has always looked")
+        #expect(step.contains("cp -R \"$bundle\" \"${BUNDLE}/Contents/Resources/\""),
+                "Bundle.main.resourceURL is the documented location and what an appex reads")
+    }
+
+    @Test("The copy step verifies the font file actually shipped")
+    func fontsAreVerified() throws {
+        let text = try packagingScript()
+        // "The bundle exists" was satisfied by the syntax bundle alone — the step
+        // looked like it worked while shipping no maths at all. Only the .otf
+        // itself proves the fonts are there.
+        #expect(text.contains("latinmodern-math.otf"),
+                "the step must confirm the OpenType font file, not just the bundle directory")
+        #expect(text.contains("no SwiftMath resource bundle in .build/release"),
+                "a release that ships no math fonts must say so")
+    }
+
+    @Test("The Quick Look appex gets the math fonts too")
+    func appexShipsFonts() throws {
+        let text = try packagingScript()
+        guard let appexStart = text.range(of: "Assembling Quick Look extension"),
+              let fontsInAppex = text.range(of: "*SwiftMath*) cp -R \"$bundle\" \"${APPEX}/Contents/Resources/\"")
+        else {
+            Issue.record("the appex does not receive the SwiftMath bundle")
+            return
+        }
+        #expect(appexStart.lowerBound < fontsInAppex.lowerBound,
+                "fonts must be staged into the appex during its assembly, before signing")
+    }
+
+    @Test("Font resolution never relies on Bundle.module in the render layer")
+    func renderLayerAvoidsBundleModule() throws {
+        // Same trap as the syntax definitions in issue #8, one bundle over: an
+        // appex (or a relocated install) that lacks the bundle makes
+        // `Bundle.module` trap — the app's own crash, issue #12.
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/EdmundRender/Math/MathFonts.swift")
+        // Comments in that file explain the trap at length; only code counts.
+        let code = String(try String(contentsOf: root, encoding: .utf8)
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.split(separator: "//", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? "" }
+            .joined(separator: "\n"))
+        #expect(!code.contains("Bundle.module"),
+                "font resolution must not use the generated accessor — it traps")
+        #expect(text.contains("Bundle.main.resourceURL"),
+                "resolution is explicit: Bundle.main's Resources first")
+    }
+}
