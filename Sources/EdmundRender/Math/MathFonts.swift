@@ -149,7 +149,7 @@ public enum MathFonts {
 
     /// A file inside the resolved directory, tolerating both the flat
     /// (`.copy`) and `Contents/Resources` layouts.
-    static func url(forResource name: String, withExtension ext: String) -> URL? {
+    public static func url(forResource name: String, withExtension ext: String) -> URL? {
         guard let directory else { return nil }
         let flat = directory.appendingPathComponent("\(name).\(ext)")
         if FileManager.default.fileExists(atPath: flat.path) { return flat }

@@ -312,7 +312,7 @@ struct MathFontPackagingTests {
             .joined(separator: "\n"))
         #expect(!code.contains("Bundle.module"),
                 "font resolution must not use the generated accessor — it traps")
-        #expect(text.contains("Bundle.main.resourceURL"),
+        #expect(code.contains("Bundle.main.resourceURL"),
                 "resolution is explicit: Bundle.main's Resources first")
     }
 }

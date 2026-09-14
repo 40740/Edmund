@@ -117,7 +117,7 @@ public final class UnicodeMathRenderer: MathRenderer {
     /// Flattens LaTeX to readable plain text. Deliberately forgiving: unknown
     /// commands lose their backslash and braces are dropped, so nothing in the
     /// source can produce an empty or failing render.
-    static func plainText(from latex: String) -> String {
+    public static func plainText(from latex: String) -> String {
         var out = ""
         var index = latex.startIndex
         var fracPending: [String] = []
