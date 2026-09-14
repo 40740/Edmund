@@ -10,7 +10,7 @@ import EdmundMarkdown
 // `Edmund_EdmundCore.bundle`) so the bundled `Syntaxes/*.json` defs are
 // available to `SyntaxDefinitionStore`. That bundle is what `.copy("Resources/Syntaxes")`
 // produces — a bundle that, unless the packaging step writes one, has **no**
-// `Contents/Info.plist`.
+// `Info.plist` at all.
 //
 // Foundation's generated `Bundle.module` accessor *traps* (EXC_BREAKPOINT /
 // SIGTRAP — not a throwable error) the first time it's touched when its bundle
@@ -85,8 +85,8 @@ struct QuickLookSyntaxPackagingTests {
         let text = try String(contentsOf: script, encoding: .utf8)
         #expect(!text.contains("mv \"$bundle/Syntaxes\""),
                 "the payload must be copied, not moved — the flat layout is load-bearing")
-        #expect(text.contains("cp -R \"$bundle/Syntaxes\""),
-                "the flat payload must be copied into Contents/Resources")
+        #expect(text.contains("cat > \"$bundle/Info.plist\""),
+                "the identifier goes into a *root* Info.plist, keeping the bundle flat")
     }
 
     /// The ordering bug behind "the preview still doesn't work" after v5.24.0:
@@ -111,8 +111,8 @@ struct QuickLookSyntaxPackagingTests {
         }
         let loop = String(text[loopStart.lowerBound..<loopEnd.upperBound])
 
-        guard let copyIntoAppex = loop.range(of: "\"${APPEX}/Contents/Resources/$(basename \"$bundle\")\""),
-              let plistWrite = loop.range(of: "cat > \"$bundle/Contents/Info.plist\"")
+        guard let copyIntoAppex = loop.range(of: "ditto \"$bundle\" \"${APPEX}/Contents/Resources/$(basename \"$bundle\")\""),
+              let plistWrite = loop.range(of: "cat > \"$bundle/Info.plist\"")
         else {
             Issue.record("could not find the appex copy and/or the Info.plist write")
             return
@@ -183,12 +183,20 @@ struct QuickLookSyntaxPackagingTests {
             .deletingLastPathComponent()   // repo root
             .appendingPathComponent("scripts/build-app.sh")
         let text = try String(contentsOf: script, encoding: .utf8)
-        #expect(text.contains("Contents/Info.plist"),
+        #expect(text.contains("cat > \"$bundle/Info.plist\""),
                 "build-app.sh must write an Info.plist into each resource bundle")
         #expect(text.contains("CFBundlePackageType"),
                 "the generated plist must declare a package type")
-        #expect(text.contains("Contents/Resources/Syntaxes"),
-                "the payload must be *also* laid out under Contents/Resources")
+        // The identifier goes in a *root* Info.plist, not under `Contents/`. A
+        // `Contents/` directory makes Foundation classify the bundle as a
+        // version-2 Contents bundle and search `Contents/Resources`, away from
+        // where `.copy` put the payload — `url(forResource:)` then returns nil
+        // and `MTFont.fontBundle` force-unwraps it (issue #14). The flat layout
+        // is the one shape where the identifier and the payload agree.
+        #expect(!text.contains("cat > \"$bundle/Contents/Info.plist\""),
+                "a Contents/Info.plist would hide the root payload (issue #14)")
+        #expect(text.contains("has a Contents/ directory, which makes"),
+                "the script must refuse a bundle that would hide its own payload")
     }
 }
 
@@ -267,9 +275,9 @@ struct MathFontPackagingTests {
         }
         let step = String(text[copy.lowerBound...])
         #expect(step.contains("cp -R \"$bundle\" \"${BUNDLE}/\""),
-                "Bundle.main.bundleURL is where SwiftMath's own accessor has always looked")
+                "the .app root is where SwiftMath's own accessor looks (Bundle.main.bundleURL)")
         #expect(step.contains("cp -R \"$bundle\" \"${BUNDLE}/Contents/Resources/\""),
-                "Bundle.main.resourceURL is the documented location and what an appex reads")
+                "Contents/Resources is Bundle.main.resourceURL, what the appex reads")
     }
 
     @Test("The copy step verifies the font file actually shipped")
@@ -297,10 +305,90 @@ struct MathFontPackagingTests {
                 "bundles must be staged into the appex during its assembly, before signing")
         // A second copy of the same bundle nests it inside itself (BSD `cp -R`
         // does not merge) and then fails on every nested file — the shape that
-        // broke the first build of this fix.
-        let copies = text.components(separatedBy: "${APPEX}/Contents/Resources/").count - 1
+        // broke the first build of this fix. `ditto` is used for the appex
+        // because it *does* merge, but the staging must still happen once.
+        let copies = text.components(separatedBy: "\"${APPEX}/Contents/Resources/$(basename \"$bundle\")\"").count - 1
         #expect(copies == 1,
-                "the appex staging must copy the bundles once, not once per concern: \(copies)")
+                "the appex staging must copy each bundle into Contents/Resources once: \(copies)")
+    }
+
+    @Test("Nothing is staged at the appex root")
+    func nothingAtTheAppexRoot() throws {
+        // An `.appex`'s root may hold only `Contents/`. A loose resource-bundle
+        // directory there is "unsealed contents present in the bundle root",
+        // which `codesign` refuses outright — and the accessor never looks there
+        // anyway: inside an `.appex`, `Bundle.main` resolves resources from
+        // `Contents/Resources`, which is where the copy goes.
+        let text = try packagingScript()
+        #expect(!text.contains("cp -R -c \"$bundle\" \"${APPEX}/\""),
+                "the appex root must stay free of loose items")
+        #expect(text.contains("\"${APPEX}/Contents/Resources/$(basename \"$bundle\")\""),
+                "the appex reads its resources from Contents/Resources")
+    }
+
+    @Test("The appex's resource bundles are signed before the appex container")
+    func appexBundlesAreSealedFirst() throws {
+        // Nested bundles the appex's own seal does not describe make
+        // `codesign --verify --strict` fail — which Gatekeeper reports as
+        // "damaged", with no crash report because the app never starts.
+        let text = try packagingScript()
+        guard let sign = text.range(of: "Code signing...") else {
+            Issue.record("could not locate the signing step")
+            return
+        }
+        let step = String(text[sign.lowerBound...])
+        guard let appexSign = step.range(of: "codesign --force --sign - --identifier \"com.i7t5.edmund.quicklook\"") else {
+            Issue.record("the appex is not signed")
+            return
+        }
+        let beforeAppex = String(step[step.startIndex..<appexSign.lowerBound])
+        #expect(beforeAppex.contains("${APPEX}/Contents/Resources/${name}"),
+                "the appex's nested bundles must be signed before the appex container")
+    }
+
+    @Test("Nothing is staged inside the sealed subtree after it is sealed")
+    func nothingIsStagedInsideSealedContents() throws {
+        // The v5.29.0 "damaged" report: the SwiftMath copy landed in
+        // `Contents/Resources` *after* the app was signed, so the seal described
+        // bytes that were no longer where it said. Gatekeeper refuses to launch
+        // such a bundle before any of the app's code runs, which is why there is
+        // no crash report to read.
+        //
+        // The `.app` **root** is different, and deliberately so: `codesign`
+        // refuses to seal *any* loose item there, so the root copy necessarily
+        // follows the seal and is simply not described by it. Items outside the
+        // sealed `Contents/` subtree are tolerated by the non-strict check
+        // Gatekeeper uses to launch; changes *inside* it are not.
+        let text = try packagingScript()
+        guard let appSign = text.range(of: "codesign --force --sign - --identifier \"com.i7t5.edmd\"") else {
+            Issue.record("the app is not signed")
+            return
+        }
+        let afterSeal = String(text[appSign.upperBound...])
+        #expect(!afterSeal.contains("cp -R \"$bundle\" \"${BUNDLE}/Contents/Resources/\""),
+                "writing into Contents/Resources after sealing invalidates the seal")
+        #expect(!afterSeal.contains("mv \"$payload\""),
+                "moving a payload inside a sealed bundle invalidates its seal")
+    }
+
+    @Test("The app-root bundle is staged after the seal")
+    func appRootBundleComesAfterTheSeal() throws {
+        // SwiftPM's generated accessor resolves SwiftMath's bundle as
+        // `Bundle.main.bundleURL.appendingPathComponent("SwiftMath_SwiftMath.bundle")`
+        // — the `.app` root. `codesign` will not seal a loose item there, so the
+        // copy has to follow the seal; that is the shape v5.28.1 shipped and the
+        // user confirms it launches. Assert the order so a later tidy-up cannot
+        // move it back inside the sealed tree (which produced "damaged") or drop
+        // it (which produced the SIGTRAP).
+        let text = try packagingScript()
+        guard let appSign = text.range(of: "codesign --force --sign - --identifier \"com.i7t5.edmd\""),
+              let rootCopy = text.range(of: "cp -R \"$bundle\" \"${BUNDLE}/\"")
+        else {
+            Issue.record("the app is not signed, or the root copy is missing")
+            return
+        }
+        #expect(appSign.upperBound < rootCopy.lowerBound,
+                "the .app root copy must follow the seal — codesign cannot seal it")
     }
 
     @Test("Font resolution never relies on Bundle.module in the render layer")
@@ -318,8 +406,10 @@ struct MathFontPackagingTests {
             .joined(separator: "\n"))
         #expect(!code.contains("Bundle.module"),
                 "font resolution must not use the generated accessor — it traps")
+        #expect(code.contains("Bundle.main.bundleURL"),
+                "resolution must ask Bundle.main.bundleURL — that is where SwiftMath looks")
         #expect(code.contains("Bundle.main.resourceURL"),
-                "resolution is explicit: Bundle.main's Resources first")
+                "resolution also covers Bundle.main.resourceURL, the appex's staged shape")
     }
 
     @Test("The test bundle is given the same resource bundles the app ships")

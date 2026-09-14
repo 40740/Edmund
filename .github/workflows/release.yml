@@ -63,6 +63,102 @@ jobs:
           fi
           mv "$DMG_SRC" "build/Edmund-${VERSION}.dmg"
 
+      # Gate: mount the *shipped* DMG and verify the app inside it. Nothing
+      # earlier in this pipeline can catch the failures that matter here — the
+      # build succeeds, the release publishes, and the app refuses to launch
+      # because Gatekeeper calls it "damaged" (a seal that does not match the
+      # bytes) or crashes on the first equation (a resource bundle no lookup
+      # reads). v5.29.0 passed every previous step and did both (issue #14).
+      - name: Verify the shipped app (signature + math payloads)
+        run: |
+          set -euo pipefail
+          DMG="build/Edmund-${VERSION}.dmg"
+          MOUNT="$(mktemp -d)"
+          # `|| true` + explicit detach: a failed mount must be reported by the
+          # checks below, not masked into a confusing mount error.
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT" >/dev/null
+
+          APP="$MOUNT/Edmund.app"
+          if [ ! -d "$APP" ]; then
+              echo "No Edmund.app in the shipped DMG." >&2
+              hdiutil detach "$MOUNT" >/dev/null || true
+              exit 1
+          fi
+
+          # 1. The app must satisfy the check that decides whether it launches.
+          #
+          #    `codesign --verify --strict` on the whole app is the strongest
+          #    form, but it will always fail *here* for one known and accepted
+          #    reason: the SwiftMath resource bundle staged at the `.app` root is
+          #    not described by the seal, because `codesign` refuses to seal any
+          #    loose item at a bundle root. That is the shape v5.28.1 shipped and
+          #    that the user confirms launches, so what must hold is:
+          #
+          #      * everything the seal does describe matches the bytes on disk —
+          #        a change *inside* `Contents/` after signing is exactly the
+          #        v5.29.0 "damaged" failure — and
+          #      * the only thing the strict check reports is that one root item.
+          #
+          #    So assert both: the non-strict check (what Gatekeeper uses to
+          #    launch) must pass, and the strict check's complaints must be
+          #    limited to the app root.
+          if ! codesign --verify --verbose=2 "$APP"; then
+              echo "codesign --verify FAILED on the shipped app." >&2
+              hdiutil detach "$MOUNT" >/dev/null || true
+              exit 1
+          fi
+          echo "codesign --verify: OK"
+
+          STRICT_OUT="$(codesign --verify --strict --verbose=2 "$APP" 2>&1 || true)"
+          # The accepted complaint names the app bundle itself (the loose root
+          # item); anything inside Contents/ is a real seal mismatch.
+          UNEXPECTED="$(printf '%s\n' "$STRICT_OUT" | grep -E 'Contents/' || true)"
+          if [ -n "$UNEXPECTED" ]; then
+              echo "codesign --verify --strict reports problems inside Contents/:" >&2
+              printf '%s\n' "$UNEXPECTED" >&2
+              echo "A resource written after the seal is the usual cause; Gatekeeper" >&2
+              echo "reports that to users as 'Edmund.app is damaged'." >&2
+              hdiutil detach "$MOUNT" >/dev/null || true
+              exit 1
+          fi
+          echo "codesign --verify --strict: only the known root item is unsealed"
+
+          # 2. Every location a math-font lookup reads must hold the payload.
+          #    A missing one is either a SIGTRAP on the first `$…$` document or a
+          #    silent degrade to Unicode in Quick Look.
+          FONT_BUNDLE="SwiftMath_SwiftMath.bundle"
+          PAYLOAD="mathFonts.bundle/latinmodern-math.otf"
+          for location in \
+              "$APP/$FONT_BUNDLE/$PAYLOAD" \
+              "$APP/Contents/Resources/$FONT_BUNDLE/$PAYLOAD" \
+              "$APP/Contents/PlugIns/EdmundQuickLook.appex/Contents/Resources/$FONT_BUNDLE/$PAYLOAD"; do
+              if [ ! -f "$location" ]; then
+                  echo "math payload missing from the shipped app:" >&2
+                  echo "  ${location#$MOUNT/}" >&2
+                  hdiutil detach "$MOUNT" >/dev/null || true
+                  exit 1
+              fi
+          done
+          echo "math payloads: present at .app root, Contents/Resources and appex Contents/Resources"
+
+          # 3. The bundle must stay *flat*. A `Contents/` directory next to the
+          #    root payload makes Foundation search `Contents/Resources` and
+          #    miss it — the configuration that resolves to nil and traps.
+          for bundle in \
+              "$APP/$FONT_BUNDLE" \
+              "$APP/Contents/Resources/$FONT_BUNDLE" \
+              "$APP/Contents/PlugIns/EdmundQuickLook.appex/Contents/Resources/$FONT_BUNDLE"; do
+              if [ -d "$bundle/Contents" ]; then
+                  echo "resource bundle carries a Contents/ directory, which hides its root payload:" >&2
+                  echo "  ${bundle#$MOUNT/}" >&2
+                  hdiutil detach "$MOUNT" >/dev/null || true
+                  exit 1
+              fi
+          done
+          echo "resource bundles are flat: no Contents/ to hide the payload"
+
+          hdiutil detach "$MOUNT" >/dev/null
+
       # EdDSA signing needs a Sparkle key the fork may not have — skip both the
       # signature and the appcast update when it isn't configured (checked in
       # the script: the `secrets` context cannot appear in `if:` conditions).

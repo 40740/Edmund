@@ -156,23 +156,28 @@ check and every update dies with "The update is improperly signed and could
 not be validated" — which is exactly what broke the v0.1.0 → 0.1.1 update
 when the old script signed only the bare binary.
 
-`build-app.sh` therefore signs inside-out and in a very deliberate order:
+`build-app.sh` therefore stages **everything first**, then signs inside-out:
 
-1. `codesign --force --deep --sign - Sparkle.framework` (nested XPC helpers
+1. stage every `.bundle` — app root, `Contents/Resources`, appex root and the
+   appex's `Contents/Resources` (SwiftMath's `Bundle.module` looks at
+   `Bundle.main.bundleURL`, which is the app root for the app and the appex
+   root for the extension; without them the app crashes on the first LaTeX
+   render and Quick Look degrades silently). Each bundle is **flat** — a root
+   `Info.plist`, no `Contents/` — because a `Contents/` directory makes
+   Foundation search `Contents/Resources` and hide the root payload,
+2. `codesign --force --deep --sign - Sparkle.framework` (nested XPC helpers
    must be signed before macOS will launch them),
-2. `codesign --force --deep --sign - --identifier "com.i7t5.edmd"` on the
-   whole `.app` **while its root holds only `Contents/`** — codesign refuses
-   to seal a bundle with extra items at the root,
-3. copy the SwiftMath resource bundle to the `.app` root **after** sealing
-   (its generated `Bundle.module` looks at `Bundle.main.bundleURL`; without it
-   the app crashes on the first LaTeX render).
+3. each nested resource bundle, then the appex, then the whole `.app`.
 
-Consequence: `codesign --verify` (CLI) and `--strict` **will complain** about
-that one unsealed root item. That is expected and fine — Sparkle's actual
-check is non-strict (`SecStaticCodeCheckValidityWithErrors` with
-`kSecCSCheckAllArchitectures`) and tolerates it; verified end-to-end against
-that API. Do not "fix" the verify warning by moving the SwiftMath bundle or
-re-signing after the copy.
+**Consequence: `codesign --verify --strict` must PASS, and `release.yml` gates
+the release on it against the mounted DMG.** Do not stage anything into the
+app after signing it: a file added to a sealed bundle leaves
+`_CodeSignature/CodeResources` describing bytes that are no longer there, and
+Gatekeeper refuses to **launch** it — *"Edmund.app is damaged and can't be
+opened"*, with no crash report because nothing ran (v5.29.0, issue #14). An
+earlier version of this note claimed a post-seal root copy was "expected and
+fine because Sparkle's check is non-strict" — that advice caused the release
+that could not be opened.
 
 ### 3.3 Keypair discipline
 

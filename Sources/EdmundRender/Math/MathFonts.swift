@@ -91,14 +91,23 @@ public enum MathFonts {
     ///
     /// The `buildPath` fallback is an absolute path fixed when *SwiftMath* was
     /// compiled, which is the CI machine's `.build` directory — never present
-    /// on a user's Mac — so it is not offered here. `Bundle.main.resourceURL`
-    /// comes first because that is where an `.appex` (whose `Bundle.main` is
-    /// the appex itself) legitimately keeps staged resources, and where the app
-    /// copies its own; then the bundle root.
+    /// on a user's Mac — so it is not offered here.
+    ///
+    /// ORDER IS THE WHOLE POINT, and it is `bundleURL` first. SwiftMath's
+    /// accessor appends the bundle name to `Bundle.main.bundleURL` — the *root*
+    /// of the .app, or of the .appex — and only that. `resourceURL` is offered
+    /// as a second candidate because an `.appex`'s `Bundle.main.bundleURL` is
+    /// the appex while its staged resources live under `Contents/Resources`, so
+    /// there the two coincide in effect. But `bundleURL` must be tried first:
+    /// if it is not, a layout that satisfies this file through `resourceURL`
+    /// while SwiftMath's lookup misses at `bundleURL` is exactly the
+    /// "available here, traps there" disagreement that survived v5.28.1 and
+    /// re-appeared in v5.29.0 (issue #14).
     static func candidates() -> [URL] {
-        var roots: [URL] = []
-        if let resources = Bundle.main.resourceURL { roots.append(resources) }
-        roots.append(Bundle.main.bundleURL)
+        var roots: [URL] = [Bundle.main.bundleURL]
+        if let resources = Bundle.main.resourceURL, resources != Bundle.main.bundleURL {
+            roots.append(resources)
+        }
         return roots.map { $0.appendingPathComponent(resourceBundleName) }
     }
 
