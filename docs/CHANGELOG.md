@@ -3,6 +3,45 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.30.0] - 2026-09-14
+
+### Fixed
+- **打开任何含 `$…$` / `$$…$$` 的文档立刻闪退（EXC_BREAKPOINT / SIGTRAP，主线程）**。崩溃点是 SwiftMath 的 `MTFont.fontBundle`：
+
+  ```swift
+  Bundle(url: Bundle.module.url(forResource: "mathFonts", withExtension: "bundle")!)!
+  ```
+
+  两个强制解包，没有可抛出的路径。但根因不在渲染逻辑里，而在**打包层把资源包做成了 Foundation 读不到自己载荷的形状**：
+
+  - `build-app.sh` 为了修 issue #8（appex 的语法资源包没有标识符），给 `.build/release/` 下**每一个** `*.bundle` 都写了 `Contents/Info.plist`——包括 SwiftMath 的字体包。
+  - 而 `Contents/` 一旦存在，Foundation 就把它判为 **v2 bundle**：资源根变成 `Contents/Resources`，而 SwiftPM 的 `.copy("mathFonts.bundle")` 是把载荷**平铺在 bundle 根**的。于是 `Bundle(path: …/SwiftMath_SwiftMath.bundle).url(forResource: "mathFonts", withExtension: "bundle")` 返回 `nil`，第一个 `!` 直接 trap。
+  - 实测对照（同一台机器，只差一个 `Contents/`）：
+
+    | 资源包布局 | `resourceURL` | `url(forResource: "mathFonts", withExtension: "bundle")` |
+    |---|---|---|
+    | 平铺、无 `Contents/`（`swift build` 的原样） | bundle 根 | 命中 |
+    | 平铺 + `Contents/Info.plist`（v5.27.0 出厂） | `…/Contents/Resources` | **nil → 崩** |
+    | 载荷放 `Contents/Resources` + `Contents/Info.plist` | `…/Contents/Resources` | 命中 |
+
+  修法只动 `scripts/build-app.sh`，维持 **0 运行时开销**：不碰渲染/解析逻辑、不加依赖、不在渲染路径做文件系统探测、不引入 fallback 渲染引擎。
+
+  - 每个暂存的资源包都保持**平铺**（不写 `Contents/`，并主动清掉上一次构建遗留在 `.build` 里的），SwiftMath 的字体包因此恢复「能被它自己的 accessor 找到」。
+  - 语法资源包（issue #8）仍然需要标识符，但改成写**根目录**的 `Info.plist`：flat bundle 的根 `Info.plist` 在 macOS 上确实会被 Foundation 读取（实测 `Bundle(path:).bundleIdentifier` 非 nil，且 `resourceURL` 仍是 bundle 根），两个需求同时成立。顺带查清了「`.build` 里那份字体包明明有根 `Info.plist`、`bundleIdentifier` 却是 nil」：SwiftPM 自己写的那份只有 `CFBundleDevelopmentRegion`，**没有** `CFBundleIdentifier`——与布局无关，不是「macOS 不读根 plist」。
+  - **Quick Look 一并修**：appex 进程里 `Bundle.main` 是 `.appex`，它的 accessor 找的是 **`.appex` 根**（用放在 `.appex` 路径下的探针二进制实测：`Bundle.main.bundleURL` = `.appex` 根，`resourceURL` 才是 `Contents/Resources`），而不是 `Contents/Resources`。v5.27.0 把资源包放在 `Contents/Resources`——那个位置 accessor 根本不看；**出厂二进制里烘死的兜底路径是 `/Users/runner/work/Edmund/Edmund/.build/…`（CI runner 的路径）**，任何用户机器上都不存在，所以预览对含公式的文档必然以 SwiftMath 的 `fatalError("could not load resource bundle")` 挂掉，而不是「碰巧能看」。何况 `Contents/Resources` 里那份 `SwiftMath_SwiftMath.bundle` 也是同一个畸形（带 `Contents/`、载荷平铺），即使被找到也取不到字体。现在两份资源包都就位于两个产物根；因为 `codesign` 拒绝密封根目录里有额外条目的 bundle（实测：目录或符号链接都会让 `codesign` 以 1 退出），拷贝放在**签名之后**，与 `.app` 一直以来的做法一致。
+
+### Added
+- `scripts/verify-app-bundle.{sh,swift}`：**构建时断言**，直接复刻 accessor 的语义，而不是看目录像不像——崩溃与修好后的两种布局，文件列表完全一样。检查内容：`Bundle(path: <根>/SwiftMath_SwiftMath.bundle)` → `url(forResource: "mathFonts", withExtension: "bundle")` → `Bundle(url:)` → 默认字体 `latinmodern-math` 的 `.otf` 与 `.plist` 都能取到；bundle 内**不得**有 `Contents/`；语法包必须有 `bundleIdentifier` 且 `Syntaxes/` 平铺存在。`.app` 根与 `.appex` 根各查一遍，失败即构建失败。
+- `scripts/build-app.sh` 末尾调用该断言（本地构建与 CI 是同一条路径，release.yml 不需要额外步骤）。
+
+### 测试
+- `QuickLookPackagingTests`：原先锁定「给每个资源包写 `Contents/Info.plist`」「载荷再复制一份到 `Contents/Resources`」的断言，正是本次的根因，已改为锁定新规则——资源包保持平铺、标识符写在根 `Info.plist`、脚本必须清理历史遗留的 `Contents/`、appex 在签名之后才拿到资源包、构建必须运行布局断言且断言必须问 Foundation 要答案（含 `.appex` 根）。
+- 用新断言跑 v5.27.0 的出厂 `/Applications/Edmund.app`：**失败 8 条**——app 根 3 条（`Contents/` + 两次字体查询）、语法包 1 条（`Contents/`）、appex 根 4 条（`SwiftMath_SwiftMath.bundle` 与 `Edmund_EdmundMarkdown.bundle` 都不在该在的位置）。同一断言对按新规则布局的同一份 app 通过，说明它对本次崩溃是可证伪的，而不是「无论如何都绿」。
+- 运行时 A/B（同一份出厂二进制，只改资源包布局，隔离 `HOME`）：出厂布局启动含公式的 md → 进程在数秒内死亡，退出码 **133 = SIGTRAP**，并产生与用户报告**同栈**的崩溃报告（`MTFont.fontBundle` → `MTFont.init` → `MTFontManager` → `MTMathImage.init` → `SwiftMathRenderer.render` → `MathRendering.render` → `EditorTextView.mathOverlay` → `styleBlock`）；修好布局的同一份 app → 存活、有窗口、无任何新崩溃报告。这就是「为什么原构建会崩、新构建不会」的直接对照。
+
+### Changed
+- 版本 5.27.0 → 5.30.0（`CFBundleVersion` 5300）。
+
 ## [5.27.0] - 2026-09-12
 
 ### Fixed
