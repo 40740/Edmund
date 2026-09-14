@@ -23,7 +23,7 @@ public final class UnicodeMathRenderer: MathRenderer {
     /// relations, operators, arrows, sets and the common Greek letters. Anything
     /// not listed keeps its command name without the backslash (`\alpha` →
     /// "alpha"), which reads better than `\alpha` and never renders as a hole.
-    private static let symbols: [String: String] = [
+    nonisolated private static let symbols: [String: String] = [
         // relations / operators
         "pm": "±", "mp": "∓", "times": "×", "div": "÷", "cdot": "·", "ast": "∗",
         "leq": "≤", "le": "≤", "geq": "≥", "ge": "≥", "neq": "≠", "ne": "≠",
@@ -76,7 +76,7 @@ public final class UnicodeMathRenderer: MathRenderer {
 
     /// Commands that take one braced argument and should keep it (`\frac{a}{b}`
     /// → "a/b", `\sqrt{x}` → "√x"), rather than dropping it.
-    private static let argumentCommands: Set<String> = [
+    nonisolated private static let argumentCommands: Set<String> = [
         "frac", "dfrac", "tfrac", "sqrt", "text", "mathrm", "mathbf", "mathit",
         "mathcal", "mathbb", "operatorname", "vec", "hat", "bar", "tilde",
         "overline", "underline", "boldsymbol",
@@ -117,7 +117,9 @@ public final class UnicodeMathRenderer: MathRenderer {
     /// Flattens LaTeX to readable plain text. Deliberately forgiving: unknown
     /// commands lose their backslash and braces are dropped, so nothing in the
     /// source can produce an empty or failing render.
-    public static func plainText(from latex: String) -> String {
+    /// `nonisolated`: pure string work with no AppKit or instance state, so the
+    /// tests (and any future non-UI caller) can flatten LaTeX off the main actor.
+    public nonisolated static func plainText(from latex: String) -> String {
         var out = ""
         var index = latex.startIndex
         var fracPending: [String] = []
