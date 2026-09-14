@@ -1,10 +1,11 @@
 import AppKit
+import CoreText
 import SwiftMath
 
 // MARK: - MathFonts
 //
-// Where the bundled OpenType math fonts live, and — more importantly — where
-// they are *allowed to be missing*.
+// Where the bundled OpenType math fonts live, and — more importantly — when
+// we are allowed to touch them.
 //
 // SwiftMath ships its fonts in a nested SwiftPM resource bundle
 // (`Sources/SwiftMath/mathFonts.bundle`) and reaches them through two calls that
@@ -18,26 +19,54 @@ import SwiftMath
 //
 // `Bundle.module`'s generated accessor traps (`EXC_BREAKPOINT` / `SIGTRAP`) when
 // the bundle it was compiled against can't be found or isn't a legal bundle —
-// there is no throwing path, and both funnels above are `!`. The app ships the
-// bundle next to the executable and is fine; the Quick Look appex, the tests and
-// any packaged copy are not guaranteed to. That is issue #12: opening a document
-// with any `$…$` in it crashed `edmd` on the main thread, in
-// `MTFont.fontBundle.getter`, while restyling the block that contained the
-// equation.
+// there is no throwing path, and both funnels above are `!`.
 //
-// So the app resolves the font directory itself — explicit candidates, no
-// `Bundle.module`, no force-unwraps — and treats "fonts unavailable" as a normal
-// state: `SwiftMathRenderer` falls back to a Unicode-approximation renderer and
-// the editor keeps working with every other part of the document intact.
+// 5.28.0 tried to make that a recoverable condition by probing the directory
+// ourselves and guarding the render call with `MathFonts.isAvailable`. That is
+// half a fix, and the missing half is *ordering*: `MTMathImage` acquires its
+// font in a stored-property default,
+//
+//   public var font: MTFont? = MTFontManager.fontManager.defaultFont
+//
+// which runs *inside its initialiser* — before the caller gets an object to
+// guard anything on. `SwiftMathRenderer.render`'s
+// `guard MathFonts.isAvailable else { return nil }` therefore evaluated after
+// the trap, and 5.28.0 crashed the same way 5.27.0 did (issue #12).
+//
+// So the fix is not a guard but an acquisition order:
+//
+//   1. This file resolves the *bundle* that contains the fonts through
+//      `Bundle(url:)` — a failable initialiser, no `Bundle.module`, no `!`.
+//      Nothing on this path can trap.
+//   2. `PulseFonts` makes that bundle the process's main bundle: CoreFoundation
+//      derives the main bundle from the process path (`_CFProcessPath()` reads
+//      `$CFProcessPath` on macOS before falling back to the real executable), so
+//      pointing that at the fonts' bundle is enough — and the generated accessor
+//      then resolves through it. Everything involved is an exported symbol.
+//   3. Only once that holds does anything call into SwiftMath at all — and the
+//      first call is `MathRendering.bootstrap()` from `main`, before a document
+//      or even an NSApplication exists.
+//
+// Every step above declines instead of trapping when its precondition is
+// missing, so a build that ships no fonts still opens documents — with the
+// Unicode approximation — rather than dying.
 
 public enum MathFonts {
 
     /// SwiftMath's default font (`MTFontManager.defaultFont` →
-    /// `latinModernFont(withSize: 20)`). Asana Math is the documented substitute
-    /// — also OpenType MATH, also Latin-Modern-metric-compatible — and is what
-    /// `UnicodeMathRenderer` draws with.
+    /// `latinModernFont(withSize: 20)`).
     public static let defaultFontName = "latinmodern-math"
-    public static let substituteFontName = "Asana-Math"
+
+    /// Where `UnicodeMathRenderer` looks for an OpenType MATH font to draw the
+    /// approximation with, *when one is reachable*. It is an optimisation, not a
+    /// dependency: the renderer falls through to a system font whenever this
+    /// can't be loaded — including exactly the case this whole file exists for,
+    /// a build whose `mathFonts.bundle` is missing.
+    public static func substituteFontURL() -> URL? {
+        url(forResource: "Asana-Math", withExtension: "otf")
+    }
+
+    // MARK: Resolution (failable, non-trapping)
 
     /// Directory holding `latinmodern-math.otf` + its `.plist`, resolved on
     /// first use. `nil` means the fonts aren't reachable in this process, which
@@ -46,6 +75,43 @@ public enum MathFonts {
 
     /// Whether SwiftMath can render in this process.
     public static var isAvailable: Bool { directory != nil }
+
+    /// What to hand SwiftMath as its main bundle, or nil when the fonts aren't
+    /// reachable at all — in which case there is nothing to prepare and every
+    /// caller must take the approximation path instead.
+    ///
+    /// Only the bundle that actually *contains* the font is handed over. This
+    /// matters for a `.app`: `Bundle.main.resourceURL` is
+    /// `Edmund.app/Contents/Resources`, so `mathFonts` resolves to
+    /// `…/Contents/Resources/mathFonts.bundle` and a bare
+    /// `appendingPathComponent("mathFonts.bundle")` finds nothing — a miss that
+    /// is silent, because the case it protects against is the exception.
+    public static func containerBundle(for directory: URL) -> Bundle? {
+        let isBundle = { (url: URL) in
+            ["app", "appex", "bundle"].contains(url.pathExtension)
+        }
+        var candidates: [URL] = []
+        // The directory can *be* the bundle: `swift run`/`swift test` build
+        // `mathFonts.bundle`/`SwiftMath_SwiftMath.bundle` right next to the
+        // binary, and the resolver returns that path itself. Checking only the
+        // parent here silently found nothing in the test process — which is the
+        // one place it can't be allowed to, since the suite would then grade the
+        // Unicode fallback while the app ships SwiftMath.
+        if isBundle(directory) {
+            candidates.append(directory)
+        }
+        if directory.path.hasSuffix("/Contents/Resources") {
+            // A legal macOS bundle keeps its payload here; the bundle is two
+            // levels up, not one.
+            candidates.append(directory.deletingLastPathComponent()
+                .deletingLastPathComponent())
+        }
+        candidates.append(directory.deletingLastPathComponent())
+        for candidate in candidates where isBundle(candidate) {
+            if let bundle = Bundle(url: candidate) { return bundle }
+        }
+        return nil
+    }
 
     /// `mathFonts.bundle` is a *resource bundle*: SwiftPM's `.copy` lays its
     /// payload out flat (`<bundle>/latinmodern-math.otf`) and Foundation looks
@@ -180,4 +246,115 @@ public enum MathFonts {
         return nil
     }
 
+    // MARK: Preparation
+
+    /// Resolve the fonts and point SwiftMath at them, exactly once.
+    ///
+    /// `PulseFonts.publish` is what makes SwiftMath's own `Bundle.module`
+    /// accessor succeed where it would otherwise trap — and it is the same
+    /// handshake `MTFont.fontBundle.getter` performs as its first move, so by
+    /// the time SwiftMath is asked, the answer is already in place. Doing it
+    /// here (startup, before a document exists) is the point; doing it per
+    /// equation would put the trap back on the render path.
+    ///
+    /// Idempotent: the second and later calls return the first result.
+    private static let prepared: Bool = {
+        guard isAvailable, let directory else { return false }
+        guard let container = containerBundle(for: directory) else {
+            // The fonts are on disk but not inside anything Foundation calls a
+            // bundle, so SwiftMath would miss and trap. Decline: documents render
+            // through the approximation.
+            return false
+        }
+        // Publishing the bundle this process already *is* would be a no-op at
+        // best. It happens under `swift run` / `swift test` (the fonts' bundle is
+        // a directory in `.build`, and `Bundle.main` is the .xctest or the
+        // binary) and for an appex reading its own `Contents/Resources`. In both
+        // cases the answer is the same as the check's: the fonts are reachable.
+        if container.bundleURL != Bundle.main.bundleURL,
+           container.bundleURL != Bundle.main.resourceURL {
+            _ = PulseFonts.publish(container)
+        }
+        // The precondition is a fact about Foundation, not about the publish
+        // step's return value: would a `Bundle.module`'s `Bundle.main` fallback
+        // find the font bundle it asks for? Ask it. This is what makes the
+        // renderer's `enable` a *verified* state — and it is testable in the
+        // suite, which runs under a `Bundle.main` no publish can move.
+        return mainBundleCanSeeFontBundle()
+    }()
+
+    /// Whether `Bundle.main` — the fallback a generated `Bundle.module` accessor
+    /// consults — can resolve `mathFonts` to the bundle that holds the fonts.
+    ///
+    /// Checked the way the accessor would: by looking for the resource where it
+    /// would look. A `nil` here is a supported state (the approximation takes
+    /// over), never something to assert on.
+    private static func mainBundleCanSeeFontBundle() -> Bool {
+        guard let resource = Bundle.main.resourceURL ?? Bundle.main.bundleURL as URL? else {
+            return false
+        }
+        for name in ["mathFonts.bundle", "SwiftMath_SwiftMath.bundle", "SwiftMath.bundle"] {
+            if hasFont(named: defaultFontName, in: resource.appendingPathComponent(name)) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Whether the fonts were acquired before anything was rendered. A `false`
+    /// here is a normal, supported state — the approximation engine takes over —
+    /// not a failure to report.
+    @discardableResult
+    public static func prepare() -> Bool { prepared }
+
+    /// The one `MTFont` this process resolves, created after the fonts are in
+    /// place — the single place a SwiftMath font object is ever built.
+    ///
+    /// Every font object is a `Bundle.module` lookup, and that lookup is the
+    /// trap, so there is exactly one, made while the bundle is known to be
+    /// findable. Consumers get it *by identity* (`MathFonts.font`), never by
+    /// asking SwiftMath again: `MTMathUILabel.font` is settable, so a freshly
+    /// built label can be handed this and then never consult the bundle.
+    /// Resolved *after* `prepare()` has published the bundle, through SwiftMath's
+    /// own by-name lookup.
+    ///
+    /// That lookup is the `Bundle.module` path — the trap — and it is deliberately
+    /// taken here and nowhere else, because this is the one moment it is known to
+    /// succeed: `prepare()` has just made the fonts' bundle the one Foundation
+    /// treats as the process's, which is exactly what the accessor's fallbacks
+    /// read. Reaching for the font anywhere else would re-open the window
+    /// `MTMathImage.init` used to crash in.
+    ///
+    /// `MTFont(fontWithName:)` is the only entry point available: the
+    /// file-based members it fills in are internal to SwiftMath, so a font cannot
+    /// be built from a URL from out here.
+    @MainActor
+    public static let font: MTFont? = {
+        guard isAvailable else { return nil }
+        // `prepare()` has published the fonts' bundle where SwiftMath's accessor
+        // looks (or found that it already is there — the `.xctest` and appex
+        // cases, where `Bundle.main` is the fonts' own container). Either way the
+        // by-name lookup below is the moment it is safe to make, and it is the
+        // only entry point: the file-based members of `MTFont` are internal to
+        // SwiftMath, so the font cannot be assembled from the path we resolved.
+        _ = prepare()
+        return MTFontManager().defaultFont
+    }()
+
+    /// A typesetting target carrying the resolved font. Fresh per expression, so
+    /// nothing stale can be reused across `.text`/`.display` — a label caches its
+    /// display list and does *not* invalidate it on a `labelMode` change, which
+    /// makes a shared, reconfigured label quietly wrong for the second mode it is
+    /// asked for.
+    @MainActor
+    static func panel(latex: String, mode: MTMathUILabelMode, size: CGFloat) -> MTMathUILabel? {
+        guard let font else { return nil }
+        let label = MTMathUILabel()
+        label.font = font
+        label.latex = latex
+        label.fontSize = size
+        label.labelMode = mode
+        label.layout()
+        return label
+    }
 }

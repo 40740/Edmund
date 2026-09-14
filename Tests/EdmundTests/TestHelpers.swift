@@ -1,6 +1,31 @@
 import Testing
 import AppKit
 @testable import EdmundCore
+import EdmundRender
+
+// MARK: - Math fonts (issue #12)
+
+/// The suite renders equations, so it has to acquire the fonts the way the app
+/// does — *before* the first render.
+///
+/// This is not bookkeeping: `MTMathImage` builds SwiftMath's default font inside
+/// its own initialiser, through `Bundle.module`, which traps rather than failing.
+/// `MathRendering.bootstrap()` is the step that resolves the font bundle and
+/// makes SwiftMath's accessor able to find it; without it the tests would grade
+/// the Unicode approximation while the app shipped typeset maths (and, before
+/// 5.29.0, take the whole process down). `swift test` runs under a `Bundle.main`
+/// the publish step can't move, so the mirror that `build-app.sh` performs is
+/// what makes this resolve here — see `MathFontBundleTrapTests`.
+/// Runs once, lazily, on the first editor or renderer a test builds.
+@MainActor
+enum MathFontTestBootstrap {
+    private static var done = false
+    static func ensure() {
+        guard !done else { return }
+        done = true
+        MathRendering.bootstrap()
+    }
+}
 
 // MARK: - Shared Global-Test Isolation
 
@@ -22,6 +47,7 @@ enum LogTestIsolation {
 /// mirroring the setup in Document.makeWindowControllers().
 @MainActor
 func makeEditor() -> EditorTextView {
+    MathFontTestBootstrap.ensure()
     let editor = EditorTextView.makeTextKit2(
         frame: NSRect(x: 0, y: 0, width: 500, height: 300),
         containerSize: NSSize(width: 500, height: CGFloat.greatestFiniteMagnitude)

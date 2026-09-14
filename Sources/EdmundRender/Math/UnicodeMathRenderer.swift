@@ -1,16 +1,24 @@
 import AppKit
+import CoreText
 
 // MARK: - UnicodeMathRenderer
 //
 // The math engine used when SwiftMath's fonts can't be reached (see
 // `MathFonts`). It typesets nothing: it strips the LaTeX down to something
-// readable, maps the common commands to Unicode, and draws that with a system
-// font that actually has math glyphs.
+// readable, maps the common commands to Unicode, and draws that with the best
+// font this process has.
 //
 // The point is not fidelity — it is that a document containing `$…$` renders as
 // a document containing readable math instead of taking the process down, and
-// that the *reason* is available to the caller (`MathFonts.isAvailable`) so the
-// UI can say so once.
+// that the *reason* is available to the caller (`MathFonts.prepare()`) so the UI
+// can say so once.
+//
+// Nothing here may depend on the bundle that failed. This renderer used to draw
+// with `Asana-Math` by name — a font that, in the shipped app, lives *inside*
+// `mathFonts.bundle`, i.e. inside the very thing whose absence triggers this
+// path. A fallback that needs what just failed is not a fallback. So the
+// OpenType MATH font is used only when it can be *loaded* (`hasMathGlyphs`), and
+// the result is measured with whatever font was actually used.
 
 @MainActor
 public final class UnicodeMathRenderer: MathRenderer {
@@ -82,6 +90,57 @@ public final class UnicodeMathRenderer: MathRenderer {
         "overline", "underline", "boldsymbol",
     ]
 
+    /// The best font reachable *without* the bundle this renderer exists to work
+    /// around.
+    ///
+    /// In order: the bundled OpenType MATH font, but only if it can be brought
+    /// into CoreText (i.e. only if the bundle is there — so it is a bonus, never
+    /// a dependency); then a system font that has mathematical coverage; then the
+    /// monospaced system font, which is always present. The last two are chosen
+    /// by asking the font, not by assuming: `hasMathGlyphs` checks the characters
+    /// this output actually contains.
+    nonisolated private static func bestAvailableFont(size: CGFloat) -> NSFont {
+        if let url = MathFonts.substituteFontURL(),
+           let bundled = font(fromFileURL: url, size: size),
+           hasMathGlyphs(bundled) {
+            return bundled
+        }
+        for candidate in [NSFont.systemFont(ofSize: size),
+                          NSFont.monospacedSystemFont(ofSize: size, weight: .regular)]
+        where hasMathGlyphs(candidate) {
+            return candidate
+        }
+        return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+    }
+
+    /// Loads a font file directly, without going through font installation or
+    /// registration — so a font that happens to sit in the bundle works, and a
+    /// font that doesn't exist yields `nil` instead of a name lookup that
+    /// silently substitutes something else.
+    nonisolated private static func font(fromFileURL url: URL, size: CGFloat) -> NSFont? {
+        guard let provider = CGDataProvider(url: url as CFURL),
+              let cgFont = CGFont(provider) else { return nil }
+        let ctFont = CTFontCreateWithGraphicsFont(cgFont, size, nil, nil)
+        return ctFont as NSFont
+    }
+
+    /// Whether `font` can draw the symbols this renderer emits. Sampled from the
+    /// substitution tables plus the mathematical alphanumerics `plainText` can
+    /// produce, because coverage is the whole question — a font that has none of
+    /// them would render the fallback as boxes, which is the failure this path is
+    /// supposed to be an improvement on.
+    nonisolated private static func hasMathGlyphs(_ font: NSFont) -> Bool {
+        let probe = "\u{2211}\u{221A}\u{2202}\u{2264}\u{2260}\u{221E}\u{03B1}"
+        let scalars = Array(probe.unicodeScalars)
+        // UTF-16 units, as CoreText asks for them; every scalar above is BMP, so
+        // one unit each and the counts match.
+        var characters = scalars.map { UniChar($0.value) }
+        var glyphs = [CGGlyph](repeating: 0, count: characters.count)
+        let ok = CTFontGetGlyphsForCharacters(font as CTFont, &characters, &glyphs,
+                                              characters.count)
+        return ok && !glyphs.contains(0)
+    }
+
     public func render(latex: String, displayMode: Bool,
                        pointSize: CGFloat, color: NSColor) -> RenderedMath? {
         let text = Self.plainText(from: latex)
@@ -89,8 +148,7 @@ public final class UnicodeMathRenderer: MathRenderer {
 
         let size = max(pointSize, 1)
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont(name: MathFonts.substituteFontName, size: size)
-                ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular),
+            .font: Self.bestAvailableFont(size: size),
             .foregroundColor: color,
         ]
         let string = NSAttributedString(string: text, attributes: attributes)

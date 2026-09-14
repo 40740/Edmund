@@ -254,6 +254,20 @@ for bundle in .build/release/*.bundle; do
     cp -R "$bundle" "${BUNDLE}/Contents/Resources/"
 done
 
+# Which bundle carries the fonts, and whether it carries them *legally*.
+#
+# "The .otf is in there" and "SwiftMath can find it" are two different claims,
+# and the gap between them is where this feature breaks: SwiftMath reads its
+# fonts by asking a *Bundle* for a resource, so a font inside a directory that
+# Foundation won't treat as a bundle is a font that doesn't exist — while still
+# being a file that `find` and every existence check agree is present.
+#
+# So the failure is checked here, in the packaging step, with both halves:
+# the SwiftMath bundle must be a legal `BNDL` (an `Info.plist` Foundation can
+# read, with an identifier) *and* contain the font at the nested layout SwiftPM
+# produces. When it doesn't, the app's explicit probe declines and equations
+# render as readable Unicode rather than crashing — but a release that degrades
+# maths silently is a bug in this script, so it says so loudly.
 FONT_BUNDLE=""
 for bundle in "${RESOURCE_BUNDLES[@]}"; do
     case "$(basename "$bundle")" in
@@ -283,6 +297,32 @@ else
         echo "  → math fonts packaged: $(basename "$FONT_BUNDLE") ($(basename "$(dirname "$FONT_FILE")")/latinmodern-math.otf)"
     else
         echo "  ! $(basename "$FONT_BUNDLE") has no latinmodern-math.otf — math will render as plain Unicode" >&2
+    fi
+
+    # The font is there; now check that Foundation would accept the container it
+    # is in. This is the check `MathFonts` cannot make from the code side
+    # (it runs on the user's machine, where the answer is already history) and
+    # the reason 5.28.0 could ship a build whose fonts were all present and
+    # unreachable at the same time.
+    BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' \
+        "$FONT_BUNDLE/Contents/Info.plist" 2>/dev/null || true)"
+    FONT_DEST="${BUNDLE}/Contents/Resources/$(basename "$FONT_BUNDLE")"
+    if [ -z "$BUNDLE_ID" ]; then
+        echo "  ! $(basename "$FONT_BUNDLE")/Contents/Info.plist has no CFBundleIdentifier;" >&2
+        echo "    Foundation will not treat it as a bundle, so SwiftMath cannot find" >&2
+        echo "    the font it contains and maths degrades to plain Unicode." >&2
+    else
+        echo "  → fonts reachable as ${BUNDLE_ID}: $(basename "$(dirname "$FONT_FILE")")/latinmodern-math.otf"
+    fi
+    # Verify against the *copied* bundle too — the one the app will actually
+    # resolve — not just the .build artifact it came from. A copy that dropped
+    # the Info.plist, or landed at the wrong depth under Contents/Resources,
+    # is exactly the shape that reads as "fonts shipped" and behaves as
+    # "fonts missing".
+    if [ ! -f "$FONT_DEST/latinmodern-math.otf" ] \
+       && [ ! -f "$FONT_DEST/mathFonts.bundle/latinmodern-math.otf" ] \
+       && [ ! -f "$FONT_DEST/Contents/Resources/mathFonts.bundle/latinmodern-math.otf" ]; then
+        echo "  ! $(basename "$FONT_BUNDLE") reached the app bundle without its font" >&2
     fi
 fi
 

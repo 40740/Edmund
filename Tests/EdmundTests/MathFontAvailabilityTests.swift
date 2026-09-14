@@ -59,19 +59,27 @@ struct MathFontAvailabilityTests {
         #expect(MathRendering.shared.swiftMath.isReady == MathFonts.isAvailable)
     }
 
-    @Test("Every render path is guarded by the availability probe, not by luck")
+    @Test("Every render path consults the acquired fonts, not a live probe")
     func rendererGuardsOnAvailability() throws {
         // Assert on the source: this is the shape of the bug (an unguarded call
         // into SwiftMath's force-unwrapping accessors), and it cannot be
         // exercised in a process where the fonts *do* resolve.
+        //
+        // The 5.28.0 spelling of this test asserted `guard MathFonts.isAvailable`
+        // — which was in `render`, i.e. *after* `MTMathImage.init` had already
+        // built SwiftMath's default font and hit the trap. The assertion passed
+        // while the app crashed. What matters is that the guard reads the fonts
+        // the process *acquired at startup* (`MathFonts.prepare()`), because that
+        // acquisition is what published the bundle SwiftMath's accessor looks in;
+        // a live probe can be true and still leave the accessor with nothing.
         let source = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/EdmundRender/Math/MathRenderer.swift")
         let text = try String(contentsOf: source, encoding: .utf8)
-        #expect(text.contains("guard MathFonts.isAvailable else { return nil }"),
-                "SwiftMathRenderer.render must bail out before touching MTMathImage")
-        #expect(text.contains("MathFonts.isAvailable"),
-                "isReady is the availability probe, not a constant true")
+        #expect(text.contains("guard MathFonts.prepare()"),
+                "SwiftMathRenderer.render must bail out on the acquired fonts before touching MTMathImage")
+        #expect(text.contains("public var isReady: Bool { MathFonts.isAvailable }"),
+                "isReady is the resolution probe, not a constant true")
     }
 }
 
