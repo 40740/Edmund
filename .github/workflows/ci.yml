@@ -57,8 +57,13 @@ jobs:
       # which discards whatever was staged. Building first and skipping the
       # build at run time leaves the mirrored layout in place, so the suite
       # exercises the same bundle shape the app ships (issue #14).
+      # `-enable-testing` is what `swift test` passes and `swift build
+      # --build-tests` does not: without it every `@testable import` fails with
+      # "module was not compiled for testing". The flag has to match between
+      # this step and the run step or the .xctest is rebuilt and the staged
+      # resources are lost again.
       - name: Build tests
-        run: swift build -c release --build-tests
+        run: swift build -c release --build-tests -Xswiftc -enable-testing
 
       - name: Build app bundle
         run: ./scripts/build-app.sh
@@ -66,7 +71,7 @@ jobs:
       - name: Test
         run: |
           set -o pipefail
-          swift test -c release --skip-build 2>&1 | tee test.log
+          swift test -c release --skip-build -Xswiftc -enable-testing 2>&1 | tee test.log
           exit ${PIPESTATUS[0]}
 
       # Publish the failing-test lines into the check run's output.summary,
