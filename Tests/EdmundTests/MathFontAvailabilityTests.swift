@@ -232,46 +232,66 @@ struct MathCrashRegressionTests {
 
     @Test("A Contents bundle must carry its payload under Contents/Resources")
     func contentsBundleNeedsMirroredPayload() throws {
-        // Issue #14, reduced to a fixture. CoreFoundation classifies a directory
-        // by which of `Contents` / `Resources` it contains, and its branch order
-        // tests `Contents` first (_CFBundleGetBundleVersionForURL). A resource
-        // bundle that has `Contents/Info.plist` is therefore a version-2
-        // Contents bundle, and `url(forResource:)` searches
-        // `<bundle>/Contents/Resources` — *not* the bundle root.
+        // Issue #14, reduced to a fixture. CoreFoundation classifies a
+        // *directory* by which of `Contents` / `Resources` it contains, and its
+        // branch order tests `Contents` first (_CFBundleGetBundleVersionForURL,
+        // whose comment says the order "is important"). A resource bundle that
+        // has `Contents/Info.plist` is therefore a version-2 Contents bundle,
+        // and `url(forResource:)` searches `<bundle>/Contents/Resources` — *not*
+        // the bundle root.
         //
-        // So a bundle shaped like the one v5.28.1 shipped — a legal `Info.plist`
-        // plus a payload at the root, and nothing mirrored into
-        // `Contents/Resources` — makes `Bundle.module.url(forResource:
-        // "mathFonts", withExtension: "bundle")` return nil, which
-        // `MTFont.fontBundle` force-unwraps into SIGTRAP. That is the crash.
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("edmund-contents-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        // So a bundle shaped like the one v5.28.1 shipped — a legal Info.plist,
+        // the payload at the root, nothing mirrored — makes
+        // `Bundle.module.url(forResource:"mathFonts", withExtension:"bundle")`
+        // return nil, which `MTFont.fontBundle` force-unwraps into SIGTRAP.
+        //
+        // Each case gets its own directory: Foundation caches bundles by URL, so
+        // staging a fixture and then adding to the same path would be answered
+        // from the cached bundle rather than re-read.
+        func stagedBundle(named name: String, renderable: Bool) throws -> URL {
+            let root = FileManager.default.temporaryDirectory
+                .appendingPathComponent("edmund-\(name)-\(UUID().uuidString)", isDirectory: true)
+            let bundle = root.appendingPathComponent("SwiftMath_SwiftMath.bundle", isDirectory: true)
+            let contents = bundle.appendingPathComponent("Contents", isDirectory: true)
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            try Data().write(to: contents.appendingPathComponent("Info.plist"))
 
-        let bundle = root.appendingPathComponent("SwiftMath_SwiftMath.bundle", isDirectory: true)
-        let contents = bundle.appendingPathComponent("Contents", isDirectory: true)
-        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
-        try Data().write(to: contents.appendingPathComponent("Info.plist"))
+            // The flat `.copy` layout, exactly as SwiftPM emits it.
+            let payload = bundle.appendingPathComponent("mathFonts.bundle", isDirectory: true)
+            try FileManager.default.createDirectory(at: payload, withIntermediateDirectories: true)
+            try Data().write(to: payload.appendingPathComponent("\(MathFonts.defaultFontName).otf"))
 
-        // The flat `.copy` layout, exactly as SwiftPM emits it…
-        let payload = bundle.appendingPathComponent("mathFonts.bundle", isDirectory: true)
-        try FileManager.default.createDirectory(at: payload, withIntermediateDirectories: true)
-        try Data().write(to: payload.appendingPathComponent("\(MathFonts.defaultFontName).otf"))
+            if renderable {
+                // What `build-app.sh` now stages. Without it, the version-2
+                // classification above makes the root payload invisible.
+                let mirrored = contents.appendingPathComponent("Resources/mathFonts.bundle",
+                                                              isDirectory: true)
+                try FileManager.default.createDirectory(at: mirrored,
+                                                        withIntermediateDirectories: true)
+                try Data().write(to: mirrored.appendingPathComponent("\(MathFonts.defaultFontName).otf"))
+            }
+            return bundle
+        }
 
-        // …is *not* what Foundation looks at once `Contents` exists.
-        #expect(MathFonts.fontDirectory(in: bundle) == nil,
+        let trailing = try stagedBundle(named: "root-payload", renderable: false)
+        let mirrored = try stagedBundle(named: "mirrored-payload", renderable: true)
+        defer {
+            try? FileManager.default.removeItem(at: trailing.deletingLastPathComponent())
+            try? FileManager.default.removeItem(at: mirrored.deletingLastPathComponent())
+        }
+
+        #expect(MathFonts.fontDirectory(in: trailing) == nil,
                 "a Contents bundle searches Contents/Resources — the root payload is invisible")
-
-        // Mirror it the way `build-app.sh` does, and the same lookup resolves.
-        let mirrored = contents.appendingPathComponent("Resources/mathFonts.bundle", isDirectory: true)
-        try FileManager.default.createDirectory(at: mirrored, withIntermediateDirectories: true)
-        try Data().write(to: mirrored.appendingPathComponent("\(MathFonts.defaultFontName).otf"))
-        #expect(MathFonts.fontDirectory(in: bundle) != nil,
+        #expect(MathFonts.fontDirectory(in: mirrored) != nil,
                 "mirroring the payload under Contents/Resources makes the lookup succeed")
 
-        // And a bundle with no `Contents` at all is flat, so the root layout is
-        // what `Bundle.module` finds — the SwiftPM-native shape.
-        let flat = root.appendingPathComponent("flat.bundle", isDirectory: true)
+        // A bundle with no `Contents` at all is flat, and there the bundle root
+        // *is* the resource directory — the SwiftPM-native shape `swift run`
+        // and `swift test` produce.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("edmund-flat-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let flat = root.appendingPathComponent("SwiftMath_SwiftMath.bundle", isDirectory: true)
         let flatPayload = flat.appendingPathComponent("mathFonts.bundle", isDirectory: true)
         try FileManager.default.createDirectory(at: flatPayload, withIntermediateDirectories: true)
         try Data().write(to: flatPayload.appendingPathComponent("\(MathFonts.defaultFontName).otf"))

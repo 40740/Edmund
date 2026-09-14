@@ -48,13 +48,25 @@ jobs:
       # neither its Contents/Resources nor the executable's directory holds them —
       # and without them every math test silently grades the Unicode fallback
       # engine instead of SwiftMath (issue #12).
+      # Build the test bundle FIRST (release, the configuration build-app.sh
+      # packages), then package, then run with --skip-build.
+      #
+      # The order is the point, and it is why this is three steps: the packaging
+      # step mirrors the per-target resource bundles (SwiftMath's math fonts)
+      # into the .xctest, and `swift test` relinks the .xctest when it builds —
+      # which discards whatever was staged. Building first and skipping the
+      # build at run time leaves the mirrored layout in place, so the suite
+      # exercises the same bundle shape the app ships (issue #14).
+      - name: Build tests
+        run: swift build -c release --build-tests
+
       - name: Build app bundle
         run: ./scripts/build-app.sh
 
       - name: Test
         run: |
           set -o pipefail
-          swift test 2>&1 | tee test.log
+          swift test -c release --skip-build 2>&1 | tee test.log
           exit ${PIPESTATUS[0]}
 
       # Publish the failing-test lines into the check run's output.summary,
