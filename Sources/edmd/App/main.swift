@@ -464,6 +464,20 @@ extension AppDelegate: NSMenuDelegate {
 // that did cross the boundary — the appex's dependency on the editor — and why
 // it no longer exists.
 
+// Acquire SwiftMath's math fonts before anything can render an equation.
+//
+// This has to be first: `MTMathImage` builds its font inside its own
+// initialiser, through SwiftMath's `Bundle.module` accessor, which *traps*
+// rather than failing when the resource bundle isn't where the package expects
+// it — so an equation rendered before the fonts are pointed at the right bundle
+// takes the process down, with no error to catch (issue #12, which 5.28.0 did
+// not close because its guard ran after that initialiser). `MathFonts` resolves
+// the bundle itself and publishes it as the main bundle, so the accessor answers.
+//
+// A build that ships no fonts returns `false` and keeps running: equations fall
+// back to the readable Unicode approximation (see `MathRendering.isDegraded`).
+MathRendering.bootstrap()
+
 let app = NSApplication.shared
 
 // Must be created before NSDocumentController.shared is first accessed.

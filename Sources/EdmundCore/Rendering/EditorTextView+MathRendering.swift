@@ -16,6 +16,12 @@ extension EditorTextView {
     /// aligned to the text baseline, or `nil` if the active math engine can't
     /// parse it (the caller then shows the raw source instead).
     func mathOverlay(latex: String, display: Bool, fontSize: CGFloat) -> FragmentOverlay? {
+        // The fonts were acquired at process start (issue #12); this is the
+        // editor's assertion that it is not rendering in a process where that
+        // never happened — a host that builds an editor without the app's `main`
+        // must still be safe. It reads a `static let`, so the styling path —
+        // which runs on every keystroke — pays one boolean.
+        guard MathRendering.bootstrap() else { return nil }
         // Resolve the (dynamic) text color against this view's appearance so the
         // math renders in the right shade for light/dark — and so the render
         // cache (keyed by color) differs between the two.

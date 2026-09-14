@@ -22,6 +22,12 @@ public extension Notification.Name {
 public final class MathRendering {
     public static let shared = MathRendering()
 
+    /// Acquired at `bootstrap()`, before anything could render. The initialiser
+    /// only stores a reference: constructing the *renderer* touches no SwiftMath
+    /// type (`SwiftMathRenderer` builds its cache lazily), which is what lets the
+    /// fonts be acquired before this object exists. Issue #12 stayed open in
+    /// 5.28.0 precisely because that ordering was left to chance — the guard
+    /// inside `render` ran after `MTMathImage.init` had already reached the trap.
     public let swiftMath = SwiftMathRenderer()
     /// Last resort: plain readable Unicode, used when no typesetting engine can
     /// run at all (SwiftMath's fonts unreachable — see `MathFonts`). Never
@@ -41,18 +47,24 @@ public final class MathRendering {
         return swiftMath.isReady ? swiftMath : unicode
     }
 
-    /// True when no engine with real math fonts is available, so LaTeX is being
-    /// *flattened* rather than typeset — rendered with `unicode` even though it
-    /// is invalid. Callers that report LaTeX errors (the editor tints malformed
-    /// source red instead of rendering it) ask for that explicitly, because a
-    /// flattened `\frac{` looks like an equation and reads like one, which turns
-    /// a typo into a silently wrong document.
+    /// Acquire the math fonts, once, before anything is rendered.
+    ///
+    /// This must run before the first document (the app calls it from `main`,
+    /// ahead of `NSApplication`'s launch); the editor's math path calls it too,
+    /// so a host that forgets cannot get a differently-behaved process. Calling
+    /// it per render is deliberate and free — it reads a `static let`, so the
+    /// work happens once and the render path adds no file-system access.
+    ///
+    /// Returns whether SwiftMath can typeset. `false` is a supported state: every
+    /// equation renders through `UnicodeMathRenderer` instead, and `isDegraded`
+    /// reports it once.
+    @discardableResult
+    public static func bootstrap() -> Bool { MathFonts.prepare() }
 
-
-    /// True when LaTeX is being approximated rather than typeset — i.e. no
-    /// engine with real math fonts is available in this process. Callers surface
-    /// this once (a status/banner) instead of per equation.
-    public var isDegraded: Bool { !swiftMath.isReady }
+    /// True when LaTeX is being approximated rather than typeset — i.e. no engine
+    /// with real math fonts is available in this process. Callers surface this
+    /// once (a status/banner) instead of per equation.
+    public var isDegraded: Bool { !MathRendering.bootstrap() }
 
     /// Renders `latex`, falling back through the engines in quality order
     /// (alternate → SwiftMath → Unicode).

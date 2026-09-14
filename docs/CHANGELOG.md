@@ -3,6 +3,59 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.29.0] - 2026-09-14
+
+### Fixed
+- **再次「打开含 `$…$` 的 md 文件直接闪退」（EXC_BREAKPOINT / SIGTRAP）—— 5.28.0 的修复没有生效，因为它的守卫排在陷阱后面**。
+
+  崩溃栈与 5.27.0 完全相同，终点仍是数学字体：
+
+  ```
+  specialized static MTFont.fontBundle.getter
+    ← MTFont.__allocating_init(fontWithName:size:)
+    ← MTFontManager.font(withName:size:)
+    ← MTMathImage.init(latex:fontSize:textColor:labelMode:textAlignment:)
+    ← SwiftMathRenderer.render
+  ```
+
+  5.28.0 已经做了两件正确的事：自己解析字体目录（`MathFonts`，不使用 `Bundle.module`、无强制解包），并把「字体找不到」变成可恢复状态（`UnicodeMathRenderer` 兜底）。**但顺序错了**：
+
+  ```swift
+  // SwiftMath 自己
+  public var font: MTFont? = MTFontManager.fontManager.defaultFont
+  public var defaultFont: MTFont? { latinModernFont(withSize: 20) }
+  public func font(withName:size:) -> MTFont? { MTFont(fontWithName:size:) }
+  static var fontBundle: Bundle { Bundle(url: Bundle.module.url(…)! )! }   // trap
+  ```
+
+  `MTMathImage` 的 `font` 是**存储属性默认值**，在它的 `init` **内部**就求值 —— 也就是说，调用方拿到对象之前，SwiftMath 已经走完了「建默认字体 → 进字体包 → 撞 `Bundle.module`」这一整条链。5.28.0 的守卫写在 `render` 里：
+
+  ```swift
+  guard MathFonts.isAvailable else { return nil }
+  let math = MTMathImage(latex: latex, …)   // ← 这一行才触发 trap，守卫已经过去了
+  ```
+
+  **「守卫住调用」不等于「守卫住陷阱」**：陷阱在被守卫的那一行之前就触发了。所以 5.28.0 下载安装后打开公式文档，与 5.27.0 一样当场死掉。
+
+  **修复——把顺序本身作为修复内容**（issue #12 的标题就是这件事）：
+
+  - 新增 `PulseFonts`：用 CoreFoundation 的 `_CFBundleGetMainBundle(_:)`（接受一个 source path 的那个重载）把我们**自己解析出来的**字体包设为进程的主 bundle。`Bundle.module` 生成的访问器在 Darwin 上取不到依赖包时会依次回退到 `Bundle.main.resourceURL` / `bundleURL` —— 把主 bundle 指到正确的包，访问器就能答上来。返回前**回读** `Bundle.main.bundleURL`，因为「访问器会不会答」是可以直接问的，不必假设。
+  - `MathFonts.prepare()`：一次性的、幂等的启动步骤 —— 解析字体目录 → 找到真正包含字体的那个 bundle（`MathFonts.containerBundle(for:)`，任意深度向上找 `.app` / `.appex` / `.bundle`，覆盖 `.app` 根、`Contents/Resources`、appex 自己的 Resources、SwiftPM 的嵌套 `SwiftMath_SwiftMath.bundle/mathFonts.bundle` 全部布局）→ 发布。三者任一不成立就返回 `false`，**不 trap**。
+  - `main.swift`：在 `NSApplication.shared` **之前**调用 `MathRendering.bootstrap()`。字体获取是启动步骤，不是渲染步骤 —— 这条责任从「谁先渲染谁负责」搬到了「进程开始负责」。
+  - `SwiftMathRenderer.render` 的守卫改为 `guard MathFonts.prepare()`：读的是**已经完成的事实**（`static let`，一次求值），而不是一个每渲染现问、答案还可能变的探针。渲染路径上零文件系统调用、零新增开销；编辑器侧 `mathOverlay` 也做了同样断言，这样即使宿主忘了 bootstrap，也不会得到一个行为不同的进程。
+  - `UnicodeMathRenderer` 不再按名字用 `Asana-Math` —— 那个字体在发行版里**就住在 `mathFonts.bundle` 内**，也就是触发这条兜底路径的那个包。兜底依赖刚失败的东西不叫兜底。现在只有在字体文件能被**加载**（`hasMathGlyphs` 按实际字符集校验覆盖）时才用它，否则退到系统字体；度量取自实际使用的字体，所以「字体包缺失」这条路径现在真的独立于字体包。
+  - `build-app.sh`：发布时校验**字体包是合法 bundle**（`Contents/Info.plist` 里有 `CFBundleIdentifier`）+ `.otf` 在拷贝后的 app bundle 里真的到位，并明确打印 `→ fonts reachable as …`。这正是 5.28.0 能同时做到「字体一个不少」和「一个都找不到」的那道缝：文件存在 ≠ 能被 `Bundle` 当成资源取出来。
+
+### Added
+- `Tests/EdmundTests/MathFontBundleTrapTests.swift`：把陷阱的**形态**锁进测试，而不只是锁「我们没再调用它」——
+  - 从 `.build/checkouts/SwiftMath` 读 SwiftMath 自己的源码，断言 `MTMathImage.font` 的默认值会走 `MTFontManager.fontManager.defaultFont`、`MTFontManager` 的漏斗终点是 `MTFont(fontWithName:)`、而它取包的方式是**双重强解包**的 `Bundle.module`：即「`init` 里就会撞」这个前提本身有测试守着，SwiftMath 升级改掉它就会红。
+  - `render` 里 `MathFonts.prepare()` 的位置必须**早于** `MTMathImage(`：这条断言在 5.28.0 的源码上就是红的，是这次回归本身的判据。
+  - `main.swift` 的 bootstrap 必须早于 `NSApplication.shared`；`EdmundRender` 里除了 `MathFonts.swift` 之外任何文件都不许出现 `MTFont`/`MTFontManager`（否则顺序会被一个个调用点蚕食）。
+  - 发布期行为：`containerBundle(for:)` 必须是字体目录的祖先且确实是 `.app`/`.appex`/`.bundle`；`prepare()` 幂等且 `isReady` / `isDegraded` 与之一致；兜底渲染器在无字体环境下仍出图且 `ascent + descent == 高度`，并断言系统字体真的能画出 `∑ √ ∂ ≤ α`。
+
+### Changed
+- 版本 `5.28.0` → `5.29.0`（`CFBundleVersion` `5280` → `5290`）。
+
 ## [5.28.0] - 2026-09-14
 
 ### Fixed
