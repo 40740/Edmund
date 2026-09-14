@@ -9,13 +9,17 @@ import EdmundMarkdown
 // definitions live in (`Edmund_EdmundMarkdown.bundle`, formerly
 // `Edmund_EdmundCore.bundle`) so the bundled `Syntaxes/*.json` defs are
 // available to `SyntaxDefinitionStore`. That bundle is what `.copy("Resources/Syntaxes")`
-// produces — a bundle that, unless the packaging step writes one, has **no**
-// `Contents/Info.plist`.
+// produces — a bundle with no `Info.plist` of its own.
 //
 // Foundation's generated `Bundle.module` accessor *traps* (EXC_BREAKPOINT /
-// SIGTRAP — not a throwable error) the first time it's touched when its bundle
-// has no identifier, which crashed the extension on the first
-// `SyntaxDefinitionStore.reload()` of every Finder Space-bar preview.
+// SIGTRAP — not a throwable error) the first time it's touched when it cannot
+// resolve its resource bundle, which crashed the extension on the first
+// `SyntaxDefinitionStore.reload()` of every Finder Space-bar preview. The
+// accessor resolves the bundle by path relative to `Bundle.main.bundleURL`, so
+// the bundle has to be at the product root and must not be shaped in a way that
+// hides its payload (see `packagingScriptKeepsResourceBundlesFlat`). The store
+// additionally refuses to touch `Bundle.module` unless the bundle reports an
+// identifier, which is why the packaging gives the syntax bundle one.
 //
 // These tests pin the two halves of the fix:
 //   1. the store still resolves the bundled defs (behaviour unchanged), and
@@ -58,8 +62,9 @@ struct QuickLookSyntaxPackagingTests {
         try? FileManager.default.createDirectory(at: fake, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        // Foundation can build the object, but it has no identifier — the exact
-        // precondition SwiftPM's `Bundle.module` accessor asserts (and traps) on.
+        // Foundation can build the object, but it has no identifier — the state
+        // the store treats as "not safe to reach for Bundle.module" (and the
+        // shape the appex used to ship).
         #expect(Bundle(path: fake.path)?.bundleIdentifier == nil,
                 "probe bundle should be identifier-less (it has no Info.plist)")
 
@@ -71,12 +76,18 @@ struct QuickLookSyntaxPackagingTests {
         #expect(store.availableLanguages().first?.id == "plain")
     }
 
-    @Test("A resource bundle keeps a flat Syntaxes next to the Contents/Resources one")
-    func packagingScriptKeepsBothLayouts() throws {
-        // `SyntaxDefinitionStore` probes the flat and the Contents/Resources
-        // layout, and the bundle's own `Bundle.module` accessor finds the flat
-        // one. The packaging step must therefore leave both in place — a `mv`
-        // here silently breaks whichever reader uses the other.
+    @Test("A resource bundle keeps its payload flat — the packaging adds no Contents/")
+    func packagingScriptKeepsResourceBundlesFlat() throws {
+        // Every SwiftPM resource bundle here holds a `.copy(...)` payload laid
+        // out *flat* (at the bundle's own root). Foundation resolves the
+        // resources of a bundle that has `Contents/` relative to
+        // `Contents/Resources` instead — so giving such a bundle a
+        // `Contents/Info.plist` hides its payload from its own `Bundle.module`
+        // accessor (`url(forResource:withExtension:)` returns nil). SwiftMath's
+        // `MTFont.fontBundle` force-unwraps that lookup, which is how a document
+        // with `$…$` started crashing on open: issues #12/#13. The bundle must
+        // therefore stay flat, and its identity — which the syntax store needs
+        // (issue #8) — goes in a *root* `Info.plist`, which Foundation does read.
         let script = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -84,9 +95,18 @@ struct QuickLookSyntaxPackagingTests {
             .appendingPathComponent("scripts/build-app.sh")
         let text = try String(contentsOf: script, encoding: .utf8)
         #expect(!text.contains("mv \"$bundle/Syntaxes\""),
-                "the payload must be copied, not moved — the flat layout is load-bearing")
-        #expect(text.contains("cp -R \"$bundle/Syntaxes\""),
-                "the flat payload must be copied into Contents/Resources")
+                "the payload must not be moved — the flat layout is load-bearing")
+        #expect(!text.contains("mkdir -p \"$bundle/Contents\""),
+                "no resource bundle may be given a Contents/ (it hides the flat payload)")
+        #expect(!text.contains("cat > \"$bundle/Contents/Info.plist\""),
+                "a resource bundle's identity belongs in a root Info.plist, not Contents/")
+        #expect(text.contains("cat > \"$bundle/Info.plist\""),
+                "the syntax bundle needs a root Info.plist for its identifier (issue #8)")
+        #expect(text.contains("rm -rf \"$bundle/Contents\""),
+                """
+                the script must also repair a bundle an earlier build left with a \
+                Contents/ — `.build` keeps the artifact, so the copy would ship it
+                """)
     }
 
     /// The ordering bug behind "the preview still doesn't work" after v5.24.0:
@@ -94,7 +114,7 @@ struct QuickLookSyntaxPackagingTests {
     /// `cp -R` had already staged that artifact into the appex — so the appex
     /// shipped the original identifier-less directory and `Bundle.module` kept
     /// trapping. The fix is only real if the copy happens last.
-    @Test("The appex copy happens after the bundle is made legal")
+    @Test("The product copies happen after the bundle is given its identity")
     func packagingCopiesAfterMakingBundlesLegal() throws {
         let script = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -103,18 +123,11 @@ struct QuickLookSyntaxPackagingTests {
             .appendingPathComponent("scripts/build-app.sh")
         let text = try String(contentsOf: script, encoding: .utf8)
 
-        guard let loopStart = text.range(of: "for bundle in .build/release/*.bundle; do"),
-              let loopEnd = text.range(of: "\ndone\n", range: loopStart.upperBound..<text.endIndex)
+        guard let copyIntoAppex = text.range(of: "cp -R \"$bundle\" \"${APPEX}/\""),
+              let copyIntoApp = text.range(of: "cp -R \"$bundle\" \"${BUNDLE}/\""),
+              let plistWrite = text.range(of: "cat > \"$bundle/Info.plist\"")
         else {
-            Issue.record("could not locate the resource-bundle loop in build-app.sh")
-            return
-        }
-        let loop = String(text[loopStart.lowerBound..<loopEnd.upperBound])
-
-        guard let copyIntoAppex = loop.range(of: "cp -R \"$bundle\" \"${APPEX}/Contents/Resources/\""),
-              let plistWrite = loop.range(of: "cat > \"$bundle/Contents/Info.plist\"")
-        else {
-            Issue.record("could not find the appex copy and/or the Info.plist write")
+            Issue.record("could not find the product copies and/or the Info.plist write")
             return
         }
         #expect(plistWrite.lowerBound < copyIntoAppex.lowerBound,
@@ -122,6 +135,41 @@ struct QuickLookSyntaxPackagingTests {
                 the appex copy must come *after* the Info.plist is written — \
                 copying first ships the identifier-less bundle that Bundle.module \
                 traps on (this is the bug that survived v5.24.0)
+                """)
+        #expect(plistWrite.lowerBound < copyIntoApp.lowerBound,
+                "the app copy must come after the bundle is given its identity too")
+    }
+
+    /// `codesign` refuses to seal a bundle with extra items at its root
+    /// ("unsealed contents present in the bundle root"), and the generated
+    /// accessor looks for the resource bundles at `Bundle.main.bundleURL` — the
+    /// `.appex` root for a preview process (not `Contents/Resources`, which is
+    /// `resourceURL`). So the copies have to land after the signature. Before
+    /// v5.30.0 they landed inside `Contents/Resources`, where a preview needed
+    /// them to be *both* in the wrong place and the wrong shape: the extension
+    /// reached SwiftMath for any document with math.
+    @Test("The appex receives its resource bundles after it is signed")
+    func appexResourceBundlesArriveAfterSigning() throws {
+        let script = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("scripts/build-app.sh")
+        let text = try String(contentsOf: script, encoding: .utf8)
+        guard let appexSign = text.range(
+                of: "codesign --force --sign - --identifier \"com.i7t5.edmund.quicklook\""),
+              let appexCopy = text.range(of: "cp -R \"$bundle\" \"${APPEX}/\"")
+        else {
+            Issue.record("could not locate the appex signing step and/or its bundle copy")
+            return
+        }
+        #expect(appexSign.lowerBound < appexCopy.lowerBound,
+                "codesign cannot seal a root that already holds the bundles — copy after signing")
+        #expect(!text.contains("\"${APPEX}/Contents/Resources/\"\n"),
+                """
+                the appex's bundles belong at the .appex root: that is where \
+                Bundle.main.bundleURL points for an extension, so Contents/Resources \
+                leaves them unfindable and the preview traps on the first equation
                 """)
     }
 
@@ -172,7 +220,7 @@ struct QuickLookSyntaxPackagingTests {
                 "its entry point is NSExtensionMain, not the target's main.swift")
     }
 
-    @Test("The packaging script writes an Info.plist into every copied resource bundle")
+    @Test("The packaging script gives every resource bundle an identity, flat and root")
     func packagingScriptMakesBundlesLegal() throws {
         // The root-cause half of the fix lives in build-app.sh, which the Linux
         // runner can't execute — assert on its content instead so the rule can't
@@ -183,12 +231,48 @@ struct QuickLookSyntaxPackagingTests {
             .deletingLastPathComponent()   // repo root
             .appendingPathComponent("scripts/build-app.sh")
         let text = try String(contentsOf: script, encoding: .utf8)
-        #expect(text.contains("Contents/Info.plist"),
-                "build-app.sh must write an Info.plist into each resource bundle")
+        #expect(text.contains("CFBundleIdentifier"),
+                "the generated plist must declare an identifier (the store wants one)")
         #expect(text.contains("CFBundlePackageType"),
                 "the generated plist must declare a package type")
-        #expect(text.contains("Contents/Resources/Syntaxes"),
-                "the payload must be *also* laid out under Contents/Resources")
+        #expect(!text.contains("Contents/Resources/Syntaxes"),
+                "the payload is not duplicated under Contents/Resources — that layout is what hid the fonts")
+        #expect(text.contains("SwiftMath_*"),
+                "the font bundle is called out by name: it must not be given a plist at all")
+    }
+
+    /// The assertion that makes the whole rule unignorable: the packaging script
+    /// has to *prove* the layout it produced, and fail the build when it is
+    /// wrong. `.build` artifacts survive between runs (an earlier build of this
+    /// same script left the crashing `Contents/` in them), so "the script writes
+    /// the right thing" is not the same as "the product contains it".
+    @Test("The build verifies the resource-bundle layout it produced")
+    func buildVerifiesResourceBundleLayout() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let text = try String(contentsOf: root.appendingPathComponent("scripts/build-app.sh"),
+                             encoding: .utf8)
+        #expect(text.contains("verify-app-bundle.sh"),
+                "build-app.sh must run the layout verifier, or a regression ships silently")
+
+        // The verifier has to ask Foundation the same question SwiftMath asks,
+        // not merely list directories: both the crashing and the fixed layout
+        // contain the same files.
+        let probe = try String(contentsOf: root.appendingPathComponent("scripts/verify-app-bundle.swift"),
+                               encoding: .utf8)
+        #expect(probe.contains("forResource: \"mathFonts\", withExtension: \"bundle\""),
+                "the probe must replay MTFont.fontBundle's lookup")
+        #expect(probe.contains("Bundle(url: fonts)"),
+                "the probe must replay MTFont.fontBundle's second force-unwrap")
+        #expect(probe.contains("bundleIdentifier != nil"),
+                "the probe must check the syntax bundle's identity too (issue #8)")
+        #expect(probe.contains("EdmundQuickLook.appex"),
+                """
+                the preview runs the same pipeline behind Bundle.main = the .appex, \
+                so its root has to be verified as well
+                """)
     }
 }
 
