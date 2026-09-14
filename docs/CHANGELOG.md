@@ -3,6 +3,47 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.28.1] - 2026-09-14
+
+### Fixed
+- **打开任何含公式（`$…$`）的 md 文件直接闪退（`EXC_BREAKPOINT` / `SIGTRAP`）**。崩溃栈是确定性的：
+
+  ```
+  MTFont.fontBundle.getter                       ← 陷阱在这里
+    ← MTFont.init(fontWithName:size:)
+    ← MTFontManager.font(withName:size:)
+    ← MTFontManager.defaultFont                    ← MTMathImage 的存储属性默认值
+    ← MTMathImage.init(latex:fontSize:textColor:labelMode:)
+    ← SwiftMathRenderer.render
+    ← MathRendering.render
+    ← EditorTextView.mathOverlay
+    ← EditorTextView.restyleBlock                  ← 主线程渐进式重排
+  ```
+
+  根因：SwiftMath 用 `Bundle.module` 找随包的 `mathFonts.bundle`，那个生成访问器在找不到时是 **`fatalError` 直接终止进程**，而 SwiftMath 自己在外面又 `!` 了一层：
+
+  ```swift
+  static var fontBundle: Bundle {
+      Bundle(url: Bundle.module.url(forResource: "mathFonts", withExtension: "bundle")!)!
+  }
+  ```
+
+  没有抛错路径，调用方拦不住。而 `MTMathImage.font` 是一个**带默认值的存储属性**（`MTFontManager.fontManager.defaultFont`），Swift 在 `MTMathImage.init` **内部**就把它求值了 —— 所以「在 `render` 里加 `guard`」这种修法一定无效：守卫跑起来之前陷阱已经触发。
+
+  **修复：不再让 SwiftMath 自己找字体。** `MathFonts` 用普通 Foundation API 把字体目录解析出来（探测 `Bundle.main` 的资源目录与 bundle 根、可执行文件旁边与其上一级、`.build/{release,debug}`，并覆盖 `.copy` 产生的嵌套布局），**把结果作为判断依据**；打包脚本把字体包放在 `Bundle.module` 该查的位置（`SwiftMath_SwiftMath.bundle` 在 `.app` 根；appex 自己的 `Contents/Resources`），于是查找只走命中分支，永远到不了 `fatalError`。找不到字体是**正常状态**，不是终止理由：公式降级成可读的 Unicode 近似，文档其余部分完全正常。
+
+  渲染路径本身**零文件系统访问**：判断在进程启动时算一次，之后只读结果。
+
+- **v5.28.0 会打不开任何文档，连 App 都起不来。** 那一版为了「修」公式闪退改了探测顺序，结果退化成「所有文档都打不开」。本版**不采用那套做法**，只做上面这一件事。
+
+### Changed
+- **包体积回到 5.27.0 的水平。** v5.28.0 的包大了约 **4.4 MB**（13.7 MB → 18.1 MB），因为它在 App 包里额外复制了一份 SwiftMath 字体包（`.app` 根和 `Contents/Resources` 各放一份）。本版只保留一份：`.app` 根那一份（`Bundle.module` 需要的那个位置），appex 需要的另一份放在 appex 自己的 `Contents/Resources`。字体本身一个不少。
+
+### 测试
+- 新增 `MathFontAvailabilityTests`：可用性永远可回答（不触发陷阱）；只有名字没有 `.otf` 的目录**不算**可用；`.copy` 的嵌套布局与平铺布局都能找到；兜底引擎对非空输入永远有可绘制结果；`x^2` → `x²` 这类降级结果**可读**而非原始 LaTeX；`isDegraded` 只由协调器判断。
+- 新增 `MathFontPackagingTests`：字体被复制到 `.app` 根（`Bundle.main.bundleURL`，`Bundle.module` 查的位置）；打包脚本校验的是 `.otf` 文件本身而不只是目录名；缺字体时**出声**而不是静默；appex 也拿得到字体；渲染层**不许出现 `Bundle.module`**（源码级断言，防止回归）。
+- `5.28.0` 新增的数学断言继续满足（本版换了实现，行为不变）。
+
 ## [5.28.0] - 2026-09-14
 
 ### Fixed

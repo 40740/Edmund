@@ -175,15 +175,7 @@ PLIST
     # and its `Contents/Resources/Syntaxes` layout. Copying before that
     # transformation shipped the original, identifier-less directory — the shape
     # `Bundle.module` traps on.
-    #
-    # EXACTLY ONCE: BSD `cp -R` does not merge into an existing directory, it
-    # copies the source *inside* it. A second copy of the same bundle — for
-    # instance a separate loop that only wanted the SwiftMath one — therefore
-    # reproduces the whole resource bundle one level deeper
-    # (`…/SwiftMath_SwiftMath.bundle/mathFonts.bundle/KpMath-Light.plist`), and
-    # `cp` then fails on every nested file as the target re-enters the source.
-    # Everything the appex needs is already in this single pass.
-    ditto "$bundle" "${APPEX}/Contents/Resources/$(basename "$bundle")"
+    cp -R "$bundle" "${APPEX}/Contents/Resources/"
 done
 
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.
@@ -227,23 +219,19 @@ codesign --force --sign - --identifier "com.i7t5.edmund.quicklook" "$APPEX"
 codesign --force --sign - --identifier "com.i7t5.edmd" "$BUNDLE"
 
 # SwiftPM dependencies that ship resources (SwiftMath's math fonts) emit a
-# per-target bundle next to the binary. The app resolves it explicitly —
-# `MathFonts` probes Bundle.main's Resources *and* the executable's directory —
-# because SwiftMath's own accessor (`Bundle.module`) traps the whole process
-# when it can't find the bundle it was compiled against (issue #12). Shipping it
-# in BOTH places means either probe succeeds: `Edmund.app/Contents/Resources`
-# is what a normal install reads (and what the Quick Look appex reads, since its
-# Bundle.main is its own .appex), and `.app/mathFonts.bundle` keeps the layout
-# SwiftMath's generated accessor has always expected, for anything that reaches
-# for it directly.
+# per-target bundle next to the binary. SwiftMath's generated `Bundle.module`
+# accessor searches, in order, `Bundle.main.resourceURL` and then
+# `Bundle.main.bundleURL` for `SwiftMath_SwiftMath.bundle`, and calls
+# `fatalError` when neither has it. So the bundle has to sit at the .app *root*
+# (its bundleURL) — that is what this copy is for, and it is why the copy comes
+# *after* signing: an item at the .app root can't be sealed into the app's own
+# signature (codesign refuses a bundle with unsealed root items), and the
+# bundle's own seal would be invalidated by signing it as part of the app.
 #
-# Copies go in *after* sealing (they can't be sealed at the .app root — see
-# above) for the SwiftMath target bundles, and BEFORE sealing inside
-# Contents/Resources so the app's own signature covers them. Missing fonts are
-# no longer fatal (the editor degrades to a readable Unicode approximation), so
-# this step can no longer take the app down if it under-delivers — but it is
-# still checked, because "fonts silently missing from every release" is exactly
-# the class of bug that used to be invisible until a user opened an equation.
+# `MathFonts` resolves the same directory itself first, so a packaged copy that
+# under-delivers degrades equations to readable Unicode instead of trapping —
+# but "fonts silently missing from the release" is exactly the class of bug that
+# stayed invisible until a user opened an equation, so it is verified below.
 echo "Copying SwiftPM resource bundles..."
 RESOURCE_BUNDLES=()
 for bundle in .build/release/*.bundle; do
@@ -251,7 +239,6 @@ for bundle in .build/release/*.bundle; do
     [ -f "$bundle/Contents/Info.plist" ] || continue
     RESOURCE_BUNDLES+=("$bundle")
     cp -R "$bundle" "${BUNDLE}/"
-    cp -R "$bundle" "${BUNDLE}/Contents/Resources/"
 done
 
 FONT_BUNDLE=""
@@ -263,15 +250,15 @@ done
 if [ -z "$FONT_BUNDLE" ]; then
     echo "  ! no SwiftMath resource bundle in .build/release — math will render as plain Unicode" >&2
 else
-    # The directory must contain the OpenType font itself, not just be a
+    # The directory must contain the OpenType font itself, not merely be a
     # resource bundle with a plist: `MathFonts` reports unavailable when it
     # can't find `latinmodern-math.otf`, and SwiftMath traps if it gets that far.
     #
     # `.copy("mathFonts.bundle")` reproduces that directory verbatim, so the font
     # really lives at `SwiftMath_SwiftMath.bundle/mathFonts.bundle/…` — one level
     # deeper than the bundle name suggests. Checking only the bundle's own root
-    # reported "no fonts" for a release that had every one of them, and the only
-    # visible symptom was maths silently degrading to plain Unicode.
+    # reports "no fonts" for a release that has every one of them, and the only
+    # visible symptom is maths silently degrading to plain Unicode.
     FONT_FILE=""
     for candidate in "$FONT_BUNDLE/latinmodern-math.otf" \
                      "$FONT_BUNDLE/mathFonts.bundle/latinmodern-math.otf" \
@@ -284,38 +271,13 @@ else
     else
         echo "  ! $(basename "$FONT_BUNDLE") has no latinmodern-math.otf — math will render as plain Unicode" >&2
     fi
+    # Where the app must put it for SwiftMath's own accessor to find it.
+    if [ -f "${BUNDLE}/$(basename "$FONT_BUNDLE")/Contents/Info.plist" ] \
+       || [ -f "${BUNDLE}/$(basename "$FONT_BUNDLE")/mathFonts.bundle/latinmodern-math.otf" ]; then
+        echo "  → fonts reachable from the app root: $(basename "$FONT_BUNDLE")"
+    fi
 fi
 
 echo ""
 echo "Done: ${BUNDLE}"
 echo "To install: cp -R ${BUNDLE} /Applications/"
-
-# ── Mirror the SwiftPM resource bundles into the test bundle ─────────────────
-#
-# `swift test` builds `EdmundPackageTests.xctest`, whose Bundle.main is a
-# temporary directory — neither `Contents/Resources` nor the executable's parent
-# holds the per-target resource bundles, so `MathFonts` resolves nothing in the
-# test process. That is the *correct* production behaviour (the editor degrades
-# to readable Unicode rather than trapping, issue #12), but in the suite it makes
-# every math assertion depend on which engine happened to win: the app would
-# render an equation and the test would not. `Bundle.module` isn't an option —
-# it traps on the identifier-less shape it can't find, which is the bug.
-#
-# So the test bundle gets exactly what the .app gets: the bundles beside the
-# .xctest, and under `Contents/Resources` (an .xctest *is* a bundle, so that is
-# its Bundle.main.resourceURL). This mirrors the app rather than papering over
-# it — the tests then exercise the packaged layout, which is what ships.
-TEST_BUNDLE="$(find .build -name '*.xctest' -maxdepth 4 2>/dev/null | head -1 || true)"
-if [ -n "$TEST_BUNDLE" ] && [ -d "$TEST_BUNDLE" ]; then
-    echo "Mirroring resource bundles into $(basename "$TEST_BUNDLE")..."
-    mkdir -p "${TEST_BUNDLE}/Contents/Resources"
-    for bundle in "${RESOURCE_BUNDLES[@]}"; do
-        cp -R "$bundle" "${TEST_BUNDLE}/"
-        cp -R "$bundle" "${TEST_BUNDLE}/Contents/Resources/"
-    done
-    for bundle in "${RESOURCE_BUNDLES[@]}"; do
-        [ -f "${TEST_BUNDLE}/$(basename "$bundle")/Contents/Info.plist" ] \
-            || [ -f "${TEST_BUNDLE}/Contents/Resources/$(basename "$bundle")/Contents/Info.plist" ] \
-            || echo "  ! $(basename "$bundle") not reachable from the test bundle" >&2
-    done
-fi

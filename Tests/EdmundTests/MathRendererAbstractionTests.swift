@@ -39,7 +39,12 @@ struct MathRendererAbstractionTests {
     @MainActor func defaultsToSwiftMath() {
         let coord = MathRendering.shared
         coord.alternate = nil
-        #expect(coord.active === coord.swiftMath)
+        // SwiftMath when its fonts resolved (the packaged app, and CI — which
+        // builds the app bundle before testing), the Unicode approximation when
+        // they didn't. Both are correct answers to "what renders right now";
+        // what matters is that SwiftMath is chosen whenever it *can* run.
+        let expected: MathRenderer = coord.swiftMath.isReady ? coord.swiftMath : coord.unicode
+        #expect(coord.active === expected)
     }
 
     @Test("Coordinator prefers a ready alternate engine")
@@ -57,7 +62,8 @@ struct MathRendererAbstractionTests {
         let fake = FakeRenderer(id: "fake", isReady: false)
         coord.alternate = fake
         defer { coord.alternate = nil }
-        #expect(coord.active === coord.swiftMath)
+        let expected: MathRenderer = coord.swiftMath.isReady ? coord.swiftMath : coord.unicode
+        #expect(coord.active === expected)
     }
 
     @Test("Coordinator falls back to SwiftMath per-equation when the alternate can't render it")

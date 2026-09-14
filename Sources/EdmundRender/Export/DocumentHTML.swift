@@ -52,9 +52,7 @@ public enum DocumentHTML {
 
     /// One substituted asset, and why.
     public enum RenderReason: Equatable, Sendable {
-        /// No engine could produce an image for this equation (only reachable
-        /// when the Unicode approximation is disabled for the caller — see
-        /// `MathRendering.render(renderingErrors:)`).
+        /// The math engine produced nothing for this equation.
         case mathFailed(latex: String)
         /// The engine produced an image that couldn't be turned into a PNG.
         case mathRasterFailed(latex: String)

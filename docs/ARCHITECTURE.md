@@ -437,9 +437,11 @@ Notable subsystems:
   no force-unwraps: Bundle.main's Resources, the executable's directory, the
   SwiftPM build path) and "fonts unavailable" makes `SwiftMathRenderer.isReady`
   false, so `MathRendering` falls back to `UnicodeMathRenderer` instead of
-  trapping. `build-app.sh` copies `*.bundle` to **both** `.app/Contents/Resources`
-  and the `.app` root, and into the Quick Look appex, and verifies
-  `latinmodern-math.otf` actually made it. See issue #12.
+  trapping. `build-app.sh` copies the SwiftMath bundle **once**, to the `.app`
+  root (the one place the generated accessor looks), and into the Quick Look
+  appex's own `Contents/Resources`, and verifies `latinmodern-math.otf` actually
+  made it. Shipping it twice is what inflated v5.28.0's DMG by ~4.4 MB. See
+  issue #12.
 - **Sparkle codesign — must seal the whole bundle**: Sparkle re-validates
   the downloaded update's Apple code signature (`SUUpdateValidator`); a
   bundle that reports as signed but fails `SecStaticCodeCheckValidity` is

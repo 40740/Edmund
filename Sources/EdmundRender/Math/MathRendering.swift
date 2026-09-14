@@ -2,15 +2,27 @@ import AppKit
 
 // MARK: - MathRendering
 //
-// Which math engine is active right now, and the per-equation fallback to the
-// bundled SwiftMath renderer when a non-default one (RaTeX) can't handle a
-// construct — so a single unsupported equation doesn't blank the document.
+// Which math engine is active right now, and the per-equation fallback chain —
+// so a single unsupported equation, or a build whose fonts are unreachable,
+// degrades one equation instead of blanking the document or killing the app.
 // Both back-ends that draw math render through this rather than reaching for a
 // renderer directly.
+//
+// The chain, in quality order:
+//
+//   alternate (RaTeX/WASM, if an extension installed one)
+//     → SwiftMath (bundled, real typesetting)
+//       → UnicodeMathRenderer (readable approximation, cannot fail)
 //
 // `alternate` is the seam the editor's extension host fills in
 // (`EdmundCore/Math/RaTeX`). A preview process never sets it, so a preview
 // resolves to the bundled SwiftMath engine and nothing else is loaded.
+//
+// The final step is new, and it is the difference between "an equation shows as
+// flattened text" and "the app dies" when the fonts aren't where SwiftMath
+// expects them (issue #12). `SwiftMathRenderer.isReady` is false in that case,
+// so the chain simply doesn't include SwiftMath and the approximation answers —
+// there is no code path that reaches `MTFont.fontBundle` with nothing behind it.
 
 public extension Notification.Name {
     /// Posted by `MathRendering.engineDidChange()`. Editors observe this and
@@ -41,17 +53,9 @@ public final class MathRendering {
         return swiftMath.isReady ? swiftMath : unicode
     }
 
-    /// True when no engine with real math fonts is available, so LaTeX is being
-    /// *flattened* rather than typeset — rendered with `unicode` even though it
-    /// is invalid. Callers that report LaTeX errors (the editor tints malformed
-    /// source red instead of rendering it) ask for that explicitly, because a
-    /// flattened `\frac{` looks like an equation and reads like one, which turns
-    /// a typo into a silently wrong document.
-
-
-    /// True when LaTeX is being approximated rather than typeset — i.e. no
+    /// True when LaTeX is being *approximated* rather than typeset — i.e. no
     /// engine with real math fonts is available in this process. Callers surface
-    /// this once (a status/banner) instead of per equation.
+    /// this once (a status line) rather than per equation.
     public var isDegraded: Bool { !swiftMath.isReady }
 
     /// Renders `latex`, falling back through the engines in quality order
@@ -63,11 +67,12 @@ public final class MathRendering {
     /// renders as readable flattened LaTeX, so no document ever shows a hole.
     /// When `false` (the editor, which knows whether the cursor is inside the
     /// equation and reports errors in place) a typo returns `nil` and the caller
-    /// keeps its "show the raw source, tinted red" path — otherwise
-    /// `\frac{` would render as a plausible-looking equation and hide the
-    /// mistake. Only the Unicode engine is subject to this: an engine with real
-    /// fonts already refuses input it cannot typeset, which is the signal the
-    /// caller expects either way.
+    /// keeps its "show the raw source, tinted red" path — otherwise `\frac{`
+    /// would render as a plausible-looking equation and hide the mistake.
+    ///
+    /// Only the Unicode engine is subject to this: an engine with real fonts
+    /// already refuses input it cannot typeset, which is the signal the caller
+    /// expects either way.
     public func render(latex: String, displayMode: Bool,
                        pointSize: CGFloat, color: NSColor,
                        renderingErrors: Bool = true) -> RenderedMath? {
@@ -78,13 +83,15 @@ public final class MathRendering {
         // editor's red-source path survive a missing font bundle: without it, a
         // typo on a degraded install would render as a plausible equation while
         // the same typo on a healthy install shows the error.
-        let primary = active
-        if !(!renderingErrors && primary is UnicodeMathRenderer) {
+        let primary: MathRenderer = active
+        let skipApproximation = !renderingErrors && primary is UnicodeMathRenderer
+        if !skipApproximation {
             if let rendered = primary.render(latex: latex, displayMode: displayMode,
                                              pointSize: pointSize, color: color) {
                 return rendered
             }
         }
+
         // `UnicodeMathRenderer` never returns nil for non-empty input, so this
         // terminates with a drawable result (or `nil` only for empty LaTeX, which
         // is the caller's "show the raw source" case).

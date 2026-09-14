@@ -42,12 +42,14 @@ jobs:
           key: spm-v2-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-v2-${{ runner.os }}-
 
-      # Build the app bundle first: it is what mirrors SwiftPM's per-target
-      # resource bundles (SwiftMath's math fonts, the syntax definitions) into
-      # the test bundle. Probe ordering alone can't find them from a .xctest —
-      # neither its Contents/Resources nor the executable's directory holds them —
-      # and without them every math test silently grades the Unicode fallback
-      # engine instead of SwiftMath (issue #12).
+      # Build the app bundle first. It is what makes the SwiftMath resource
+      # bundle reachable from the test process: `swift test` runs the .xctest
+      # out of a temporary directory, where neither `Bundle.main.resourceURL`
+      # nor the executable's directory holds the per-target resource bundles, so
+      # `MathFonts` resolves nothing and every math test silently grades the
+      # Unicode fallback instead of SwiftMath — a suite that is green about the
+      # wrong engine. Building the app puts the bundles where the probe finds
+      # them, so the tests exercise the layout that ships.
       - name: Build app bundle
         run: ./scripts/build-app.sh
 

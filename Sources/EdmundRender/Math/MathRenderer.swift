@@ -60,12 +60,15 @@ public protocol MathRenderer: AnyObject {
 public final class SwiftMathRenderer: MathRenderer {
     public let id = "swiftmath"
 
-    /// SwiftMath resolves its fonts through `Bundle.module` and force-unwraps
-    /// the result — there is no throwing path, and a missing (or malformed)
-    /// resource bundle traps the process instead of failing the render (issue
-    /// #12). `MathFonts` resolves the same directory without `Bundle.module`, so
-    /// `isReady` is false — and `render` returns `nil` — when the fonts can't be
-    /// reached, letting `MathRendering` fall back instead of crashing.
+    /// `MathFonts.directory` is resolved without `Bundle.module`, so this is
+    /// known *before* any SwiftMath type is constructed. When the fonts aren't
+    /// reachable, `render` returns `nil` and `MathRendering` falls back instead
+    /// of the process dying inside `MTFont.fontBundle` (issue #12).
+    ///
+    /// Reading this is safe; the value is a directory probe resolved once per
+    /// process. It is the *only* SwiftMath-adjacent check the renderer makes, and
+    /// deliberately so: every other field of every SwiftMath type can reach the
+    /// force-unwrapped bundle accessor on the way in.
     public var isReady: Bool { MathFonts.isAvailable }
 
     private final class Cached {
@@ -92,16 +95,23 @@ public final class SwiftMathRenderer: MathRenderer {
 
     public func render(latex: String, displayMode: Bool,
                        pointSize: CGFloat, color: NSColor) -> RenderedMath? {
+        // The cache key needs the color's components, and `redComponent` raises
+        // (an Objective-C exception, not a Swift error) for a color in a
+        // non-RGB colorspace — `.black` is "Generic Gray Gamma 2.2", so reading
+        // its components directly traps. Resolve to device RGB first; if even
+        // that fails, key on the color's description, which is stable per color
+        // and only costs a cache miss, never a crash.
         let key = "\(displayMode ? "D" : "I")|\(String(format: "%.1f", pointSize))|" +
-                  "\(String(format: "%.3f,%.3f,%.3f,%.3f", color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent))|" +
+                  "\(MathRendererSupport.cacheKeyColor(color))|" +
                   latex as NSString
 
         if let cached = cache.object(forKey: key) {
             return RenderedMath(image: cached.image, ascent: cached.ascent, descent: cached.descent)
         }
 
-        // The engine's fonts are resolved before any SwiftMath type is touched,
-        // so an unreachable bundle degrades the equation instead of the process.
+        // Last guard before SwiftMath is touched. `MathFonts.directory` was
+        // resolved without `Bundle.module`, and a `nil` here means the fonts are
+        // genuinely unreachable in this process — the state that used to trap.
         guard MathFonts.isAvailable else { return nil }
 
         let mode: MTMathUILabelMode = displayMode ? .display : .text
@@ -134,5 +144,26 @@ public final class SwiftMathRenderer: MathRenderer {
 
         cache.setObject(Cached(image: image, ascent: ascent, descent: descent), forKey: key)
         return RenderedMath(image: image, ascent: ascent, descent: descent)
+    }
+}
+
+/// Small helpers shared by the engine implementations. Kept out of the classes
+/// so a renderer's cache key is a pure function of its inputs and testable.
+enum MathRendererSupport {
+    /// A stable, component-based string for `color`, safe for any `NSColor`.
+    ///
+    /// `NSColor.redComponent` (and its siblings) *raises* for a color that
+    /// isn't in an RGB colorspace — `.black` is a gray-profile color, and
+    /// reading it directly is an uncaught `NSInvalidArgumentException` that
+    /// takes the process down. Colors reaching this type are normally already
+    /// resolved to device RGB by the editor, but the renderer is public API and
+    /// a document/export path can hand it anything.
+    static func cacheKeyColor(_ color: NSColor) -> String {
+        if let rgb = color.usingColorSpace(.deviceRGB) {
+            return String(format: "%.3f,%.3f,%.3f,%.3f",
+                          rgb.redComponent, rgb.greenComponent,
+                          rgb.blueComponent, rgb.alphaComponent)
+        }
+        return "\(color)"
     }
 }
