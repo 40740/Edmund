@@ -60,12 +60,15 @@ public protocol MathRenderer: AnyObject {
 public final class SwiftMathRenderer: MathRenderer {
     public let id = "swiftmath"
 
-    /// SwiftMath resolves its fonts through `Bundle.module` and force-unwraps
-    /// the result — there is no throwing path, and a missing (or malformed)
-    /// resource bundle traps the process instead of failing the render (issue
-    /// #12). `MathFonts` resolves the same directory without `Bundle.module`, so
-    /// `isReady` is false — and `render` returns `nil` — when the fonts can't be
-    /// reached, letting `MathRendering` fall back instead of crashing.
+    /// `MathFonts.directory` is resolved without `Bundle.module`, so this is
+    /// known *before* any SwiftMath type is constructed. When the fonts aren't
+    /// reachable, `render` returns `nil` and `MathRendering` falls back instead
+    /// of the process dying inside `MTFont.fontBundle` (issue #12).
+    ///
+    /// Reading this is safe; the value is a directory probe resolved once per
+    /// process. It is the *only* SwiftMath-adjacent check the renderer makes, and
+    /// deliberately so: every other field of every SwiftMath type can reach the
+    /// force-unwrapped bundle accessor on the way in.
     public var isReady: Bool { MathFonts.isAvailable }
 
     private final class Cached {
@@ -100,8 +103,9 @@ public final class SwiftMathRenderer: MathRenderer {
             return RenderedMath(image: cached.image, ascent: cached.ascent, descent: cached.descent)
         }
 
-        // The engine's fonts are resolved before any SwiftMath type is touched,
-        // so an unreachable bundle degrades the equation instead of the process.
+        // Last guard before SwiftMath is touched. `MathFonts.directory` was
+        // resolved without `Bundle.module`, and a `nil` here means the fonts are
+        // genuinely unreachable in this process — the state that used to trap.
         guard MathFonts.isAvailable else { return nil }
 
         let mode: MTMathUILabelMode = displayMode ? .display : .text

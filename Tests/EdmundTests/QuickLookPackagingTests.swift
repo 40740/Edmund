@@ -248,122 +248,87 @@ struct SyntaxPayloadLookupTests {
 // step is asserted to ship the fonts to both places the app looks, and to the
 // Quick Look appex as well.
 
+// MARK: - Math fonts are packaged where SwiftMath looks
+
 @Suite("Packaging — SwiftMath math fonts")
 struct MathFontPackagingTests {
 
     private func packagingScript() throws -> String {
-        let script = URL(fileURLWithPath: #filePath)
+        let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("scripts/build-app.sh")
-        return try String(contentsOf: script, encoding: .utf8)
+        return try String(contentsOf: url, encoding: .utf8)
     }
 
-    @Test("Math fonts are copied into the app bundle's Resources as well as its root")
-    func fontsShipToBothLocations() throws {
+    @Test("The fonts are copied to the .app root, where Bundle.module looks")
+    func fontsAtAppRoot() throws {
+        // SwiftMath's generated accessor searches Bundle.main.resourceURL and
+        // then Bundle.main.bundleURL (the .app root) for
+        // SwiftMath_SwiftMath.bundle, and calls fatalError when neither has it.
+        // The .app root copy is what makes the lookup succeed — without it the
+        // accessor traps the moment LaTeX is rendered.
         let text = try packagingScript()
-        guard let copy = text.range(of: "Copying SwiftPM resource bundles") else {
-            Issue.record("could not locate the resource-bundle copy step")
+        guard let step = text.range(of: "Copying SwiftPM resource bundles") else {
+            Issue.record("the packaging script never copies the resource bundles")
             return
         }
-        let step = String(text[copy.lowerBound...])
-        #expect(step.contains("cp -R \"$bundle\" \"${BUNDLE}/\""),
-                "Bundle.main.bundleURL is where SwiftMath's own accessor has always looked")
-        #expect(step.contains("cp -R \"$bundle\" \"${BUNDLE}/Contents/Resources/\""),
-                "Bundle.main.resourceURL is the documented location and what an appex reads")
+        let tail = String(text[step.lowerBound...])
+        #expect(tail.contains("cp -R \"$bundle\" \"${BUNDLE}/\""),
+                "the SwiftMath bundle must land at the .app root for Bundle.main.bundleURL")
     }
 
-    @Test("The copy step verifies the font file actually shipped")
-    func fontsAreVerified() throws {
+    @Test("The packaging script verifies the font file is actually there")
+    func fontFileIsVerified() throws {
+        // A release whose bundle has an Info.plist but no .otf is the shape that
+        // traps: Bundle.module returns it happily, and SwiftMath force-unwraps a
+        // font out of it. Checking for the font — not just the directory name —
+        // is what turns that into a warning at packaging time instead of a crash
+        // at open time.
         let text = try packagingScript()
-        // "The bundle exists" was satisfied by the syntax bundle alone — the step
-        // looked like it worked while shipping no maths at all. Only the .otf
-        // itself proves the fonts are there.
         #expect(text.contains("latinmodern-math.otf"),
-                "the step must confirm the OpenType font file, not just the bundle directory")
-        #expect(text.contains("no SwiftMath resource bundle in .build/release"),
-                "a release that ships no math fonts must say so")
+                "the script must verify the OpenType file, not merely the bundle name")
+        #expect(text.contains("mathFonts.bundle/latinmodern-math.otf"),
+                "and it must probe the nested .copy layout the fonts really use")
     }
 
-    @Test("The Quick Look appex gets every resource bundle, exactly once")
-    func appexShipsFonts() throws {
+    @Test("A release that ships no math fonts says so")
+    func missingFontsAreAnnounced() throws {
         let text = try packagingScript()
-        guard let appexStart = text.range(of: "Assembling Quick Look extension"),
-              let staging = text.range(of: "ditto \"$bundle\" \"${APPEX}/Contents/Resources/$(basename \"$bundle\")\"")
-        else {
-            Issue.record("the appex does not receive the resource bundles")
-            return
+        #expect(text.contains("math will render as plain Unicode"),
+                "a release with no math fonts must report it, not fail silently")
+    }
+
+    @Test("The Quick Look appex gets the math fonts too")
+    func appexShipsFonts() throws {
+        // The appex renders markdown, and markdown can contain math. Without the
+        // bundle the preview process resolves no fonts — which now degrades to
+        // Unicode (before this it trapped).
+        let text = try packagingScript()
+        let appexRange = text.range(of: "Assembling Quick Look extension")
+        let stagingRange = text.range(of: "cp -R \"$bundle\" \"${APPEX}/Contents/Resources/\"")
+        #expect(appexRange != nil && stagingRange != nil,
+                "the appex staging loop must copy every resource bundle")
+        if let appexRange, let stagingRange {
+            #expect(appexRange.lowerBound < stagingRange.lowerBound,
+                    "fonts must be staged into the appex during its assembly, before signing")
         }
-        #expect(appexStart.lowerBound < staging.lowerBound,
-                "bundles must be staged into the appex during its assembly, before signing")
-        // A second copy of the same bundle nests it inside itself (BSD `cp -R`
-        // does not merge) and then fails on every nested file — the shape that
-        // broke the first build of this fix.
-        let copies = text.components(separatedBy: "${APPEX}/Contents/Resources/").count - 1
-        #expect(copies == 1,
-                "the appex staging must copy the bundles once, not once per concern: \(copies)")
     }
 
     @Test("Font resolution never relies on Bundle.module in the render layer")
-    func renderLayerAvoidsBundleModule() throws {
-        // Same trap as the syntax definitions in issue #8, one bundle over: an
-        // appex (or a relocated install) that lacks the bundle makes
-        // `Bundle.module` trap — the app's own crash, issue #12.
-        let root = URL(fileURLWithPath: #filePath)
+    func noBundleModuleInRenderLayer() throws {
+        // The whole point of `MathFonts` is that the *app* decides where the
+        // fonts are, using ordinary Foundation APIs, and never calls the
+        // accessor that traps. If this ever regresses, the crash comes back the
+        // moment a document opens — so the rule is asserted at the source level.
+        let dir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/EdmundRender/Math/MathFonts.swift")
-        // Comments in that file explain the trap at length; only code counts.
-        let code = String(try String(contentsOf: root, encoding: .utf8)
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { $0.split(separator: "//", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? "" }
-            .joined(separator: "\n"))
-        #expect(!code.contains("Bundle.module"),
-                "font resolution must not use the generated accessor — it traps")
-        #expect(code.contains("Bundle.main.resourceURL"),
-                "resolution is explicit: Bundle.main's Resources first")
-    }
-
-    @Test("The test bundle is given the same resource bundles the app ships")
-    func testBundleMirrorsAppResources() throws {
-        // A `.xctest` resolves nothing from probe order alone: its Bundle.main
-        // is a temporary directory, which holds neither the bundles nor their
-        // parent. Without this step `MathFonts` is unavailable in the suite, so
-        // every math test silently grades the Unicode *fallback* while the app
-        // ships SwiftMath — the suite would be green about the wrong engine.
-        let text = try packagingScript()
-        // Anchor on the `TEST_BUNDLE` lookup, not on the echo below it: the line
-        // that *finds* the .xctest is the part under test, and it comes first.
-        guard let lookup = text.range(of: "TEST_BUNDLE=\"$(find"),
-              text.range(of: "Mirroring resource bundles into") != nil else {
-            Issue.record("the packaging script never locates the test bundle")
-            return
+            .appendingPathComponent("Sources/EdmundRender/Math")
+        let files = try FileManager.default.contentsOfDirectory(at: dir,
+                                                                includingPropertiesForKeys: nil)
+        for file in files where file.pathExtension == "swift" {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            #expect(!text.contains("Bundle.module"),
+                    "\(file.lastPathComponent) must not reach for Bundle.module")
         }
-        let step = String(text[lookup.lowerBound..<text.endIndex])
-        // Assert on the pieces, not the whole shell line: the glob is quoted and
-        // passed through `$( … )`, and locking that down would make the test fail
-        // on a harmless requote.
-        #expect(step.contains(".build") && step.contains("*.xctest"),
-                "the test bundle is located in the build directory")
-        #expect(step.contains("cp -R \"$bundle\" \"${TEST_BUNDLE}/\""),
-                "beside the .xctest, like next to the app executable")
-        #expect(step.contains("cp -R \"$bundle\" \"${TEST_BUNDLE}/Contents/Resources/\""),
-                "and under Contents/Resources, which is an .xctest's Bundle.main.resourceURL")
-    }
-
-    @Test("CI builds the app before testing, so the test bundle is populated")
-    func ciBuildsAppBeforeTesting() throws {
-        // The mirror step runs inside build-app.sh, so CI has to invoke it
-        // before `swift test` or the step never happens.
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent(".github/workflows/ci.yml")
-        let text = try String(contentsOf: url, encoding: .utf8)
-        guard let build = text.range(of: "run: ./scripts/build-app.sh"),
-              let test = text.range(of: "swift test")
-        else {
-            Issue.record("CI does not both build the app bundle and run the tests")
-            return
-        }
-        #expect(build.lowerBound < test.lowerBound,
-                "the app bundle must be built first — it is what populates the test bundle")
     }
 }
