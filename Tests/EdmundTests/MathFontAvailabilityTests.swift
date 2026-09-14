@@ -75,7 +75,7 @@ struct MathFontAvailabilityTests {
     }
 
     @Test("Every engine in the chain either renders or says why it can't")
-    func chainIsTotal() {
+    @MainActor func chainIsTotal() {
         // The chain must not have a gap: whichever engine is `active`, the
         // coordinator answers with something drawable for non-empty input, or
         // `nil` — never a trap.
@@ -92,7 +92,7 @@ struct MathFontAvailabilityTests {
     }
 
     @Test("The approximation never renders nothing for non-empty input")
-    func approximationIsAlwaysDrawable() {
+    @MainActor func approximationIsAlwaysDrawable() {
         let unicode = UnicodeMathRenderer()
         for latex in ["x", "x^2", "\\frac{a}{b}", "\\alpha + \\beta", "\\frac{", "$$"] {
             let rendered = unicode.render(latex: latex, displayMode: false,
@@ -102,7 +102,7 @@ struct MathFontAvailabilityTests {
     }
 
     @Test("Flattening is readable, not raw LaTeX")
-    func flatteningIsReadable() {
+    @MainActor func flatteningIsReadable() {
         #expect(UnicodeMathRenderer.flatten("x^2") == "x²")
         #expect(UnicodeMathRenderer.flatten("\\alpha") == "α")
         #expect(UnicodeMathRenderer.flatten("a_1") == "a₁")
@@ -111,7 +111,7 @@ struct MathFontAvailabilityTests {
     }
 
     @Test("Degraded state is reported by the coordinator, not inferred by callers")
-    func degradedStateIsReported() {
+    @MainActor func degradedStateIsReported() {
         // `isDegraded` is the one place that decides whether maths is being
         // *approximated* rather than typeset, so a missing font bundle surfaces
         // as a status line instead of per-equation guesswork.
