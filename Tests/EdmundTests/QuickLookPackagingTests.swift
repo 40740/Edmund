@@ -284,17 +284,23 @@ struct MathFontPackagingTests {
                 "a release that ships no math fonts must say so")
     }
 
-    @Test("The Quick Look appex gets the math fonts too")
+    @Test("The Quick Look appex gets every resource bundle, exactly once")
     func appexShipsFonts() throws {
         let text = try packagingScript()
         guard let appexStart = text.range(of: "Assembling Quick Look extension"),
-              let fontsInAppex = text.range(of: "*SwiftMath*) cp -R \"$bundle\" \"${APPEX}/Contents/Resources/\"")
+              let staging = text.range(of: "ditto \"$bundle\" \"${APPEX}/Contents/Resources/$(basename \"$bundle\")\"")
         else {
-            Issue.record("the appex does not receive the SwiftMath bundle")
+            Issue.record("the appex does not receive the resource bundles")
             return
         }
-        #expect(appexStart.lowerBound < fontsInAppex.lowerBound,
-                "fonts must be staged into the appex during its assembly, before signing")
+        #expect(appexStart.lowerBound < staging.lowerBound,
+                "bundles must be staged into the appex during its assembly, before signing")
+        // A second copy of the same bundle nests it inside itself (BSD `cp -R`
+        // does not merge) and then fails on every nested file — the shape that
+        // broke the first build of this fix.
+        let copies = text.components(separatedBy: "${APPEX}/Contents/Resources/").count - 1
+        #expect(copies == 1,
+                "the appex staging must copy the bundles once, not once per concern: \(copies)")
     }
 
     @Test("Font resolution never relies on Bundle.module in the render layer")

@@ -175,20 +175,15 @@ PLIST
     # and its `Contents/Resources/Syntaxes` layout. Copying before that
     # transformation shipped the original, identifier-less directory — the shape
     # `Bundle.module` traps on.
-    cp -R "$bundle" "${APPEX}/Contents/Resources/"
-done
-
-# The appex renders markdown, and markdown can contain math — so the appex needs
-# the same SwiftMath resource bundle the app does. Without it `MathFonts`
-# resolves nothing in the preview process and `$…$` degrades to the Unicode
-# approximation (before this it trapped — issue #12).
-echo "Copying math fonts into the Quick Look extension..."
-for bundle in .build/release/*.bundle; do
-    [ -e "$bundle" ] || continue
-    [ -f "$bundle/Contents/Info.plist" ] || continue
-    case "$(basename "$bundle")" in
-        *SwiftMath*) cp -R "$bundle" "${APPEX}/Contents/Resources/" ;;
-    esac
+    #
+    # EXACTLY ONCE: BSD `cp -R` does not merge into an existing directory, it
+    # copies the source *inside* it. A second copy of the same bundle — for
+    # instance a separate loop that only wanted the SwiftMath one — therefore
+    # reproduces the whole resource bundle one level deeper
+    # (`…/SwiftMath_SwiftMath.bundle/mathFonts.bundle/KpMath-Light.plist`), and
+    # `cp` then fails on every nested file as the target re-enters the source.
+    # Everything the appex needs is already in this single pass.
+    ditto "$bundle" "${APPEX}/Contents/Resources/$(basename "$bundle")"
 done
 
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.
