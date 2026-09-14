@@ -266,10 +266,21 @@ else
     # The directory must contain the OpenType font itself, not just be a
     # resource bundle with a plist: `MathFonts` reports unavailable when it
     # can't find `latinmodern-math.otf`, and SwiftMath traps if it gets that far.
-    FONT_DIR="$FONT_BUNDLE"
-    [ -f "$FONT_DIR/latinmodern-math.otf" ] || FONT_DIR="$FONT_BUNDLE/Contents/Resources"
-    if [ -f "$FONT_DIR/latinmodern-math.otf" ]; then
-        echo "  → math fonts packaged: $(basename "$bundle")"
+    #
+    # `.copy("mathFonts.bundle")` reproduces that directory verbatim, so the font
+    # really lives at `SwiftMath_SwiftMath.bundle/mathFonts.bundle/…` — one level
+    # deeper than the bundle name suggests. Checking only the bundle's own root
+    # reported "no fonts" for a release that had every one of them, and the only
+    # visible symptom was maths silently degrading to plain Unicode.
+    FONT_FILE=""
+    for candidate in "$FONT_BUNDLE/latinmodern-math.otf" \
+                     "$FONT_BUNDLE/mathFonts.bundle/latinmodern-math.otf" \
+                     "$FONT_BUNDLE/Contents/Resources/latinmodern-math.otf" \
+                     "$FONT_BUNDLE/Contents/Resources/mathFonts.bundle/latinmodern-math.otf"; do
+        if [ -f "$candidate" ]; then FONT_FILE="$candidate"; break; fi
+    done
+    if [ -n "$FONT_FILE" ]; then
+        echo "  → math fonts packaged: $(basename "$FONT_BUNDLE") ($(basename "$(dirname "$FONT_FILE")")/latinmodern-math.otf)"
     else
         echo "  ! $(basename "$FONT_BUNDLE") has no latinmodern-math.otf — math will render as plain Unicode" >&2
     fi

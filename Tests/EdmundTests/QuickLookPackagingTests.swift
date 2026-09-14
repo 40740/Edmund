@@ -111,7 +111,7 @@ struct QuickLookSyntaxPackagingTests {
         }
         let loop = String(text[loopStart.lowerBound..<loopEnd.upperBound])
 
-        guard let copyIntoAppex = loop.range(of: "cp -R \"$bundle\" \"${APPEX}/Contents/Resources/\""),
+        guard let copyIntoAppex = loop.range(of: "\"${APPEX}/Contents/Resources/$(basename \"$bundle\")\""),
               let plistWrite = loop.range(of: "cat > \"$bundle/Contents/Info.plist\"")
         else {
             Issue.record("could not find the appex copy and/or the Info.plist write")
@@ -335,8 +335,12 @@ struct MathFontPackagingTests {
             return
         }
         let step = String(text[mirror.lowerBound...])
-        #expect(step.contains("find .build -name '*.xctest'"),
+        // The shell quotes the `.xctest` glob with a double quote, not the
+        // single quotes a reader might expect — assert on the glob itself so the
+        // test does not lock down the quoting.
+        #expect(step.contains("find .build -name"),
                 "the test bundle is located in the build directory")
+        #expect(step.contains("*.xctest"), "the glob is what finds the test bundle")
         #expect(step.contains("cp -R \"$bundle\" \"${TEST_BUNDLE}/\""),
                 "beside the .xctest, like next to the app executable")
         #expect(step.contains("cp -R \"$bundle\" \"${TEST_BUNDLE}/Contents/Resources/\""),

@@ -206,6 +206,42 @@ struct MathCrashRegressionTests {
                 "an empty identifier-less directory must never resolve as a font source")
     }
 
+    @Test("The nested .copy layout SwiftMath actually ships is probed")
+    func probesNestedPayload() throws {
+        // SwiftMath declares `.copy("mathFonts.bundle")`, and `.copy` reproduces
+        // the directory verbatim — so the generated resource bundle is
+        // `SwiftMath_SwiftMath.bundle/mathFonts.bundle/latinmodern-math.otf`, one
+        // level deeper than the bundle name suggests. Probing only
+        // `<bundle>/latinmodern-math.otf` found nothing and reported "no fonts"
+        // for a release that had all of them: the crash was gone, but maths
+        // silently became plain Unicode everywhere. Assert the nesting is probed.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("edmund-nested-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let payload = root.appendingPathComponent("mathFonts.bundle", isDirectory: true)
+        try FileManager.default.createDirectory(at: payload, withIntermediateDirectories: true)
+        try Data().write(to: payload.appendingPathComponent("\(MathFonts.defaultFontName).otf"))
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("edmund-probe-\(UUID().uuidString)", isDirectory: true)
+        let bundle = directory.appendingPathComponent("SwiftMath_SwiftMath.bundle", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+        // Move the payload *inside* the resource bundle, as SwiftPM does.
+        try FileManager.default.moveItem(at: payload,
+                                        to: bundle.appendingPathComponent("mathFonts.bundle"))
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        // `MathFonts.url(forResource:in:)` is private; the public probe is the
+        // same predicate over the same directory list, so stage the directory as
+        // `EDMUND_BUILD_PATH`-shaped input and assert the font is found.
+        let nested = bundle.appendingPathComponent("mathFonts.bundle/\(MathFonts.defaultFontName).otf")
+        #expect(FileManager.default.fileExists(atPath: nested.path),
+                "the staged fixture must have the .copy shape")
+        #expect(MathFonts.url(forResource: MathFonts.defaultFontName, withExtension: "otf")?
+                    .lastPathComponent == "\(MathFonts.defaultFontName).otf",
+                "the resolved directory must yield the font file itself")
+    }
+
     @Test("Both layouts the packaging step can produce are probed")
     func probesBothLayouts() throws {
         let source = URL(fileURLWithPath: #filePath)

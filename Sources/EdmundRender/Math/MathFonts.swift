@@ -141,20 +141,43 @@ public enum MathFonts {
     }
 
     private static func hasFont(named name: String, in directory: URL) -> Bool {
-        let fm = FileManager.default
-        return fm.fileExists(atPath: directory.appendingPathComponent("\(name).otf").path)
-            || fm.fileExists(atPath: directory.appendingPathComponent("Contents/Resources/\(name).otf").path)
-            || fm.fileExists(atPath: directory.appendingPathComponent(name).path)   // treat directory itself as payload root
+        url(forResource: name, withExtension: "otf", in: directory) != nil
     }
 
-    /// A file inside the resolved directory, tolerating both the flat
-    /// (`.copy`) and `Contents/Resources` layouts.
+    /// The payload directories under `bundle`, in probe order.
+    ///
+    /// SwiftMath declares its fonts as `.copy("mathFonts.bundle")`, and `.copy`
+    /// reproduces the directory *verbatim*: the generated resource bundle is
+    /// `SwiftMath_SwiftMath.bundle/mathFonts.bundle/<font>.otf`, one nesting
+    /// deeper than the app ever assumed. Checking only `<bundle>/<font>.otf`
+    /// therefore found nothing and reported "no fonts" for a release that had
+    /// every one of them — which is worse than the crash it replaced, because it
+    /// is silent. A legal macOS bundle additionally keeps its payload under
+    /// `Contents/Resources`, so all three shapes are probed.
+    private static func payloadDirectories(in bundle: URL) -> [URL] {
+        var directories: [URL] = []
+        for nested in ["", "mathFonts.bundle",
+                       "Contents/Resources", "Contents/Resources/mathFonts.bundle"] {
+            directories.append(nested.isEmpty ? bundle : bundle.appendingPathComponent(nested))
+        }
+        return directories
+    }
+
+    /// A file inside the resolved directory, tolerating the flat (`.copy`),
+    /// `mathFonts.bundle`-nested and `Contents/Resources` layouts.
     public static func url(forResource name: String, withExtension ext: String) -> URL? {
         guard let directory else { return nil }
-        let flat = directory.appendingPathComponent("\(name).\(ext)")
-        if FileManager.default.fileExists(atPath: flat.path) { return flat }
-        let nested = directory.appendingPathComponent("Contents/Resources/\(name).\(ext)")
-        if FileManager.default.fileExists(atPath: nested.path) { return nested }
+        return url(forResource: name, withExtension: ext, in: directory)
+    }
+
+    private static func url(forResource name: String, withExtension ext: String,
+                            in directory: URL) -> URL? {
+        let fm = FileManager.default
+        for root in payloadDirectories(in: directory) {
+            let file = root.appendingPathComponent("\(name).\(ext)")
+            if fm.fileExists(atPath: file.path) { return file }
+        }
         return nil
     }
+
 }
