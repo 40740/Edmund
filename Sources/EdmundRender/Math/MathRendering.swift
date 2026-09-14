@@ -83,8 +83,9 @@ public final class MathRendering {
         // editor's red-source path survive a missing font bundle: without it, a
         // typo on a degraded install would render as a plausible equation while
         // the same typo on a healthy install shows the error.
-        let primary = active
-        if !(!renderingErrors && primary is UnicodeMathRenderer) {
+        let primary: MathRenderer = active
+        let skipApproximation = !renderingErrors && primary is UnicodeMathRenderer
+        if !skipApproximation {
             if let rendered = primary.render(latex: latex, displayMode: displayMode,
                                              pointSize: pointSize, color: color) {
                 return rendered
@@ -94,7 +95,8 @@ public final class MathRendering {
         // `UnicodeMathRenderer` never returns nil for non-empty input, so this
         // terminates with a drawable result (or `nil` only for empty LaTeX, which
         // is the caller's "show the raw source" case).
-        for engine in [swiftMath, unicode] where engine !== primary {
+        let fallbacks: [MathRenderer] = [swiftMath, unicode]
+        for engine in fallbacks where engine !== primary {
             if engine is UnicodeMathRenderer && !renderingErrors { continue }
             guard engine.isReady else { continue }
             if let rendered = engine.render(latex: latex, displayMode: displayMode,

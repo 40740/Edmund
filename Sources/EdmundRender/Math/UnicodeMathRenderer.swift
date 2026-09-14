@@ -1,5 +1,4 @@
 import AppKit
-import SwiftMath
 
 // MARK: - UnicodeMathRenderer
 //
