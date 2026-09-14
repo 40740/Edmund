@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 
@@ -126,13 +127,12 @@ struct MathFontAvailabilityTests {
         // directly, so handing it `.black` took the process down — a latent trap
         // the editor happened to never reach, because it resolves colors to
         // device RGB before rendering.
-        let gray = NSColor.black
-        #expect(!MathRendererSupport.cacheKeyColor(gray).isEmpty)
-        #expect(MathRendererSupport.cacheKeyColor(.black)
-                == MathRendererSupport.cacheKeyColor(.black),
+        let blackKey = MathRendererSupport.cacheKeyColor(NSColor.black)
+        let whiteKey = MathRendererSupport.cacheKeyColor(NSColor.white)
+        #expect(!blackKey.isEmpty, "a gray-profile color still yields a key")
+        #expect(blackKey == MathRendererSupport.cacheKeyColor(NSColor.black),
                 "the key is stable for the same color")
-        #expect(MathRendererSupport.cacheKeyColor(.black)
-                != MathRendererSupport.cacheKeyColor(.white))
+        #expect(blackKey != whiteKey, "different colors get different keys")
     }
 
     @Test("Rendering with a gray-profile color works end to end")
