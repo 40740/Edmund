@@ -81,7 +81,7 @@ struct MathFontAvailabilityTests {
         // `nil` — never a trap.
         let rendered = MathRendering.shared.render(
             latex: "x^2 + y^2 = z^2", displayMode: false,
-            pointSize: 14, color: .black)
+            pointSize: 14, color: .textColor)
         #expect(rendered != nil, "a valid equation always renders, on any install")
         if let rendered {
             #expect(rendered.image.size.width > 0)
@@ -96,7 +96,7 @@ struct MathFontAvailabilityTests {
         let unicode = UnicodeMathRenderer()
         for latex in ["x", "x^2", "\\frac{a}{b}", "\\alpha + \\beta", "\\frac{", "$$"] {
             let rendered = unicode.render(latex: latex, displayMode: false,
-                                          pointSize: 14, color: .black)
+                                          pointSize: 14, color: .textColor)
             #expect(rendered != nil, "\(latex) must produce a drawable image, never a hole")
         }
     }
@@ -116,5 +116,29 @@ struct MathFontAvailabilityTests {
         // *approximated* rather than typeset, so a missing font bundle surfaces
         // as a status line instead of per-equation guesswork.
         #expect(MathRendering.shared.isDegraded == !MathFonts.isAvailable)
+    }
+
+    @Test("A non-RGB color is a cache key, not an exception")
+    func nonRGBColorDoesNotRaise() {
+        // `NSColor.redComponent` raises (an Objective-C exception, which Swift
+        // cannot catch) for a color in a non-RGB colorspace, and `.black` is the
+        // gray profile. The renderer's cache key used to read the components
+        // directly, so handing it `.black` took the process down — a latent trap
+        // the editor happened to never reach, because it resolves colors to
+        // device RGB before rendering.
+        let gray = NSColor.black
+        #expect(!MathRendererSupport.cacheKeyColor(gray).isEmpty)
+        #expect(MathRendererSupport.cacheKeyColor(.black)
+                == MathRendererSupport.cacheKeyColor(.black),
+                "the key is stable for the same color")
+        #expect(MathRendererSupport.cacheKeyColor(.black)
+                != MathRendererSupport.cacheKeyColor(.white))
+    }
+
+    @Test("Rendering with a gray-profile color works end to end")
+    @MainActor func grayProfileColorRenders() {
+        let rendered = MathRendering.shared.render(
+            latex: "x^2", displayMode: false, pointSize: 14, color: .black)
+        #expect(rendered != nil, "a legitimate color must not crash the renderer")
     }
 }
