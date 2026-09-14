@@ -102,13 +102,38 @@ public enum MathFonts {
         return roots.map { $0.appendingPathComponent(resourceBundleName) }
     }
 
+    /// Where a test process can be told the packaged resource bundle lives.
+    ///
+    /// `swift test` runs the suite out of Xcode's `swift-pm` runner, so
+    /// `Bundle.main` is that binary deep inside the toolchain — not the
+    /// `.xctest`, and not anything the packaging step can stage into. Without
+    /// this, `isAvailable` is false for the whole suite and every math test
+    /// silently grades the Unicode fallback while the app ships SwiftMath (the
+    /// failure mode issue #14's tests exist to catch).
+    ///
+    /// It is deliberately an *extra* candidate rather than a widened rule: the
+    /// value must still name a bundle that opens and whose payload resolves
+    /// through the same Foundation call, so it cannot reintroduce the
+    /// "available here, traps there" disagreement. Nothing sets it in a shipped
+    /// app, so production resolution is unchanged.
+    static let bundleOverrideKey = "EDMUND_MATH_FONTS_BUNDLE"
+
+    static func overrideCandidate() -> URL? {
+        guard let path = ProcessInfo.processInfo.environment[bundleOverrideKey],
+              !path.isEmpty
+        else { return nil }
+        return URL(fileURLWithPath: path)
+    }
+
     /// The payload directory, given the candidates SwiftMath's accessor would
     /// consider, in its order. The first usable one wins — so when both layouts
     /// are present (`Contents/Resources`, which Foundation will actually search,
     /// and the flat root, which `swift run` produces) the answer comes from the
     /// same place SwiftMath's lookup will read.
     private static func resolveDirectory() -> URL? {
-        for candidate in candidates() {
+        var all = candidates()
+        if let override = overrideCandidate() { all.append(override) }
+        for candidate in all {
             if let directory = fontDirectory(in: candidate) { return directory }
         }
         return nil

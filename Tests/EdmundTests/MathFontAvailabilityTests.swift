@@ -29,15 +29,17 @@ struct MathFontAvailabilityTests {
 
     @Test("The font directory resolves to a real directory in this process")
     func resolvesInTests() {
-        // `MathFonts` now asks exactly the question SwiftMath's `Bundle.module`
+        // `MathFonts` asks exactly the question SwiftMath's `Bundle.module`
         // asks — the resource bundle at the bundle root, opened the same way —
-        // so this passes only because `build-app.sh` mirrors the resource bundles
-        // into this process's `Bundle.main` before the suite runs. If resolution
-        // regresses, math silently degrades everywhere (that is the design),
-        // which is exactly why it needs a test that notices.
-        print("DIAG bundleURL=\(Bundle.main.bundleURL.path)")
-        print("DIAG resourceURL=\(Bundle.main.resourceURL?.path ?? "nil")")
-        for c in MathFonts.candidates() { print("DIAG candidate=\(c.path) exists=\(FileManager.default.fileExists(atPath: c.path))") }
+        // so in a shipped app this resolves from the .app and nothing else.
+        // See below for why the test process needs its own pointer. If
+        // resolution regresses, math silently degrades everywhere (that is the
+        // design), which is exactly why it needs a test that notices.
+        // `swift test` runs out of Xcode's `swift-pm` runner, so this process's
+        // `Bundle.main` is that toolchain binary — not the .xctest the packaging
+        // step populates. The suite therefore gets the staged location through
+        // `EDMUND_MATH_FONTS_BUNDLE` (set by CI), which `MathFonts` validates
+        // exactly like any other candidate. Nothing sets it in a shipped app.
         #expect(MathFonts.isAvailable, "SwiftMath fonts must resolve in the test process")
         if let directory = MathFonts.directory {
             var isDir: ObjCBool = false
@@ -300,6 +302,28 @@ struct MathCrashRegressionTests {
         try Data().write(to: flatPayload.appendingPathComponent("\(MathFonts.defaultFontName).otf"))
         #expect(MathFonts.fontDirectory(in: flat) != nil,
                 "without a Contents directory the bundle is flat and the root payload resolves")
+    }
+
+    @Test("The test-only override is an extra candidate, not a loosened rule")
+    func overrideIsValidatedLikeAnyCandidate() throws {
+        // The override exists because the test process's Bundle.main is Xcode's
+        // runner binary, so the staged .xctest cannot be reached by the two roots
+        // Bundle.module searches. It must not become a way to make
+        // `isAvailable` true for a bundle SwiftMath cannot use: the value still
+        // goes through `fontDirectory(in:)`, which opens the bundle and asks it
+        // for the payload with the same Foundation call.
+        #expect(MathFonts.bundleOverrideKey == "EDMUND_MATH_FONTS_BUNDLE")
+        #expect(!MathFonts.candidates().contains { $0.path.contains("EDMUND") },
+                "the override is not part of the Bundle.module-shaped candidates")
+
+        // A bundle named correctly but with no payload is still refused.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("edmund-override-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let empty = root.appendingPathComponent("SwiftMath_SwiftMath.bundle", isDirectory: true)
+        try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+        #expect(MathFonts.fontDirectory(in: empty) == nil,
+                "the override is validated, not trusted")
     }
 
     @Test("Only the bundle name Bundle.module looks for is accepted")

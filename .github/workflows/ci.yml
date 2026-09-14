@@ -71,6 +71,13 @@ jobs:
       - name: Test
         run: |
           set -o pipefail
+          # `swift test` runs the suite out of Xcode's `swift-pm` runner, so its
+          # `Bundle.main` is that toolchain binary — not the .xctest the
+          # packaging step just populated. Point `MathFonts` at the staged
+          # copy explicitly; it validates the bundle the same way either way.
+          XCTEST="$(find .build -name '*.xctest' -maxdepth 4 | head -1)"
+          export EDMUND_MATH_FONTS_BUNDLE="${XCTEST}/Contents/Resources/SwiftMath_SwiftMath.bundle"
+          echo "EDMUND_MATH_FONTS_BUNDLE=${EDMUND_MATH_FONTS_BUNDLE}"
           swift test -c release --skip-build -Xswiftc -enable-testing 2>&1 | tee test.log
           exit ${PIPESTATUS[0]}
 
