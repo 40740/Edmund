@@ -2,7 +2,7 @@ import Testing
 import AppKit
 import SwiftMath
 @testable import EdmundCore
-import EdmundRender
+@testable import EdmundRender
 
 // MARK: - Math fonts as a recoverable condition (issue #12)
 //
@@ -295,10 +295,10 @@ struct MathCrashRegressionTests {
         // executable's directory, the working directory, `.build/<config>`) is a
         // place `MathFonts` could report fonts SwiftMath cannot reach — and
         // those roots are what made v5.28.1's guard pass and the trap fire.
-        let roots = Set(MathFonts.candidates().map(\.deletingLastPathComponent))
+        let roots = Set(MathFonts.candidates().map { $0.deletingLastPathComponent() })
         let allowed = Set([Bundle.main.resourceURL, Bundle.main.bundleURL].compactMap { $0 })
         #expect(roots.isSubset(of: allowed),
-                "patched roots: \(roots.sorted { $0.path < $1.path }.map(\.path))")
+                "patched roots: \(roots.map { $0.path }.sorted())")
     }
 
     @Test("The nested .copy layout SwiftMath actually ships is probed")
@@ -338,9 +338,11 @@ struct MathCrashRegressionTests {
         let resolved = MathFonts.fontDirectory(in: bundle)
         #expect(resolved?.lastPathComponent == "mathFonts.bundle",
                 "the resolved payload is the nested mathFonts.bundle, not the bundle root")
-        #expect(resolved.map { FileManager.default.fileExists(
-                    atPath: $0.appendingPathComponent("\(MathFonts.defaultFontName).otf").path) } == true,
-                "and the font file itself must be inside it")
+        let fontInPayload = resolved.map {
+            FileManager.default.fileExists(
+                atPath: $0.appendingPathComponent("\(MathFonts.defaultFontName).otf").path)
+        } ?? false
+        #expect(fontInPayload, "and the font file itself must be inside it")
     }
 
     @Test("The probe asks the same question Bundle.module asks")
