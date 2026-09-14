@@ -48,8 +48,9 @@ jobs:
       # neither its Contents/Resources nor the executable's directory holds them —
       # and without them every math test silently grades the Unicode fallback
       # engine instead of SwiftMath (issue #12).
-      # Build the test bundle FIRST (release, the configuration build-app.sh
-      # packages), then package, then run with --skip-build.
+      # Build the test bundle FIRST (debug — `swift test`'s configuration, and
+      # the one some assertions are written against), then package, then run
+      # with --skip-build.
       #
       # The order is the point, and it is why this is three steps: the packaging
       # step mirrors the per-target resource bundles (SwiftMath's math fonts)
@@ -63,7 +64,7 @@ jobs:
       # this step and the run step or the .xctest is rebuilt and the staged
       # resources are lost again.
       - name: Build tests
-        run: swift build -c release --build-tests -Xswiftc -enable-testing
+        run: swift build --build-tests -Xswiftc -enable-testing
 
       - name: Build app bundle
         run: ./scripts/build-app.sh
@@ -75,10 +76,11 @@ jobs:
           # `Bundle.main` is that toolchain binary — not the .xctest the
           # packaging step just populated. Point `MathFonts` at the staged
           # copy explicitly; it validates the bundle the same way either way.
-          XCTEST="$(find .build -name '*.xctest' -maxdepth 4 | head -1)"
+          # Pinned to the debug configuration so this and `swift test` agree.
+          XCTEST="$(find .build -name '*.xctest' -path '*debug*' -maxdepth 4 | head -1)"
           export EDMUND_MATH_FONTS_BUNDLE="${XCTEST}/Contents/Resources/SwiftMath_SwiftMath.bundle"
           echo "EDMUND_MATH_FONTS_BUNDLE=${EDMUND_MATH_FONTS_BUNDLE}"
-          swift test -c release --skip-build -Xswiftc -enable-testing 2>&1 | tee test.log
+          swift test --skip-build -Xswiftc -enable-testing 2>&1 | tee test.log
           exit ${PIPESTATUS[0]}
 
       # Publish the failing-test lines into the check run's output.summary,

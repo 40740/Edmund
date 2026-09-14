@@ -361,7 +361,11 @@ echo "To install: cp -R ${BUNDLE} /Applications/"
 # .xctest, and under `Contents/Resources` (an .xctest *is* a bundle, so that is
 # its Bundle.main.resourceURL). This mirrors the app rather than papering over
 # it — the tests then exercise the packaged layout, which is what ships.
-TEST_BUNDLE="$(find .build -name '*.xctest' -maxdepth 4 2>/dev/null | head -1 || true)"
+# Pinned to debug: that is `swift test`'s configuration, so it is the .xctest
+# the suite actually runs — and the one CI points EDMUND_MATH_FONTS_BUNDLE at.
+# Both releases and debug build dirs can exist here (this script builds
+# release), and mirroring into the wrong one stages nothing the suite can see.
+TEST_BUNDLE="$(find .build -name '*.xctest' -path '*debug*' -maxdepth 4 2>/dev/null | head -1 || true)"
 if [ -n "$TEST_BUNDLE" ] && [ -d "$TEST_BUNDLE" ]; then
     echo "Mirroring resource bundles into $(basename "$TEST_BUNDLE")..."
     mkdir -p "${TEST_BUNDLE}/Contents/Resources"
