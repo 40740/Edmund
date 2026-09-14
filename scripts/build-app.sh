@@ -118,10 +118,9 @@ install_name_tool -add_rpath "@executable_path/../Frameworks" \
 # point is Foundation's NSExtensionMain via the linker flag in Package.swift.
 # The link now includes the extension marker (Package.swift) so the appex is a
 # real app extension to the rest of the system, not just a .appex-shaped folder.
-# Unlike the app's own SwiftMath bundle (copied to the .app root *after* the
-# seal), the appex's resource bundles go inside Contents/Resources *before* it
-# is signed, so they're sealed legally: an appex's Bundle.module resolves via
-# Bundle.main.resourceURL, which for an .appex is Contents/Resources.
+# The appex gets its own copy of the shared rendering modules' resource bundles
+# further down, *after* it is signed — see the resource-bundle loop below for
+# why they have to sit at the product root in a flat shape.
 echo "Assembling Quick Look extension..."
 QL_NAME="EdmundQuickLook"
 APPEX="${BUNDLE}/Contents/PlugIns/${QL_NAME}.appex"
@@ -129,22 +128,58 @@ mkdir -p "${APPEX}/Contents/MacOS" "${APPEX}/Contents/Resources"
 cp ".build/release/${QL_NAME}" "${APPEX}/Contents/MacOS/${QL_NAME}"
 cp Resources/QuickLookInfo.plist "${APPEX}/Contents/Info.plist"
 
-# The appex carries its own copy of the shared rendering modules' resource
-# bundles (the syntax definitions). SwiftPM's `.copy("Resources/Syntaxes")`
-# produces a bundle that is *only* a `Syntaxes/` folder — no
-# `Contents/Info.plist` — and Foundation's generated `Bundle.module` accessor
-# (SwiftPM ≥ 5.9 on macOS) fails its `bundleIdentifier != nil` precondition on
-# such a bundle. That failure is a trap (EXC_BREAKPOINT / SIGTRAP, not a throw),
-# so an appex shipped in that shape dies the first time a syntax definition is
-# loaded. Make every resource bundle a legal bundle first, then stage it.
+# SwiftPM's resource bundles must keep the shape their *generated accessor*
+# (`Bundle.module`) can read, and the shape is not cosmetic.
+#
+#   • A directory bundle that carries `Contents/` is a v2 bundle: Foundation
+#     resolves its resources relative to `Contents/Resources`. `.copy(...)` lays
+#     the payload out *flat* (at the bundle's own root), so a bundle given a
+#     `Contents/Info.plist` but still holding a flat payload has no resource the
+#     accessor can see — `url(forResource:withExtension:)` returns nil.
+#   • With no `Contents/` at all, `resourceURL` *is* the bundle root and the
+#     flat payload is found.
+#
+# SwiftMath's `MTFont.fontBundle` is
+# `Bundle(url: Bundle.module.url(forResource: "mathFonts", withExtension: "bundle")!)!`
+# — two force unwraps with no throwing path — so the first shape is a hard crash
+# (EXC_BREAKPOINT / SIGTRAP on the main thread) the moment any `$…$` is rendered
+# (issues #12/#13). Writing a `Contents/Info.plist` into *every* resource bundle
+# is what produced it: the bundle looked legal to `codesign`, but its own
+# accessor could no longer find the fonts. Every staged resource bundle is
+# therefore kept flat.
+#
+# A flat bundle can still carry an identity, which is what issue #8 needed for
+# the syntax definitions: a root `Info.plist` *is* read by Foundation on macOS
+# (`Bundle(path:).bundleIdentifier` is non-nil when the root plist declares one).
+# SwiftPM writes a root plist itself, but with only `CFBundleDevelopmentRegion`
+# in it, which is why such a bundle reports a nil identifier — the layout was
+# never the reason. `SyntaxDefinitionStore` only reaches for `Bundle.module`
+# when the bundle is well-formed, and "well-formed" there is exactly
+# `bundleIdentifier != nil`, so the syntax bundle gets a root plist with a real
+# identifier and no `Contents/`.
+echo "Staging SwiftPM resource bundles (flat, as their accessors expect)..."
 for bundle in .build/release/*.bundle; do
     [ -e "$bundle" ] || continue
     echo "  · resource bundle: $(basename "$bundle")"
-    if [ ! -f "$bundle/Contents/Info.plist" ]; then
-        echo "  → adding Info.plist to $(basename "$bundle")"
-        RES_BUNDLE_ID="$(basename "$bundle" .bundle | tr '_' '.')"
-        mkdir -p "$bundle/Contents"
-        cat > "$bundle/Contents/Info.plist" <<PLIST
+    # Repair a bundle staged by an earlier build of this script: a `Contents/`
+    # holding only an `Info.plist` (no `Resources/`) under a flat payload is the
+    # crashing shape, and it lives on in `.build` across builds, so the copy
+    # below would ship it. A real v2 bundle (`Contents/Resources/…`) is left
+    # alone — and the verification at the end of this script would catch it if
+    # the accessor couldn't read it.
+    if [ -d "$bundle/Contents" ] && [ ! -d "$bundle/Contents/Resources" ]; then
+        echo "  → removing Contents/ from $(basename "$bundle") (flattening)"
+        rm -rf "$bundle/Contents"
+    fi
+    case "$(basename "$bundle")" in
+        SwiftMath_*)
+            # No injected plist: SwiftMath never asks for an identifier, and
+            # SwiftPM's own root plist is already there.
+            ;;
+        *)
+            echo "  → writing root Info.plist for $(basename "$bundle")"
+            RES_BUNDLE_ID="$(basename "$bundle" .bundle | tr '_' '.')"
+            cat > "$bundle/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -162,20 +197,8 @@ for bundle in .build/release/*.bundle; do
 </dict>
 </plist>
 PLIST
-        # `.copy` lays the payload out flat (`<bundle>/Syntaxes`); a legal macOS
-        # bundle keeps resources under `Contents/Resources`. Copy rather than
-        # move: the syntax store probes both layouts, and the flat copy is the
-        # one a generated `Bundle.module` accessor looks for.
-        if [ -d "$bundle/Syntaxes" ] && [ ! -d "$bundle/Contents/Resources/Syntaxes" ]; then
-            mkdir -p "$bundle/Contents/Resources"
-            cp -R "$bundle/Syntaxes" "$bundle/Contents/Resources/Syntaxes"
-        fi
-    fi
-    # Copy LAST: the appex must receive the bundle that now has its Info.plist
-    # and its `Contents/Resources/Syntaxes` layout. Copying before that
-    # transformation shipped the original, identifier-less directory — the shape
-    # `Bundle.module` traps on.
-    cp -R "$bundle" "${APPEX}/Contents/Resources/"
+            ;;
+    esac
 done
 
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.
@@ -192,11 +215,17 @@ done
 # before macOS will launch them), then the whole .app. We seal the app while its
 # root contains only Contents/, because codesign refuses to seal a bundle that
 # has extra items at the .app root ("unsealed contents present in the bundle
-# root"). The SwiftMath resource bundle has to live at the .app root at runtime
-# (see below), so we copy it in *after* sealing. That leaves one unsealed item at
-# the root, which `codesign --verify` (CLI) and --strict flag — but Sparkle's
-# actual check is non-strict (SecStaticCodeCheckValidityWithErrors with
-# kSecCSCheckAllArchitectures), which tolerates it. Verified end-to-end.
+# root" — reproducible in one command: codesign exits 1 for both a directory and
+# a symlink placed there). The resource bundles have to live at the product root
+# at runtime (see below), so they are copied in *after* sealing: the .app root
+# for the app, and the .appex root for the extension, which is sealed before its
+# bundles arrive for the same reason.
+#
+# So each product root ends up with unsealed items, which `codesign --verify`
+# (and --strict) flag. Sparkle's actual check is non-strict
+# (SecStaticCodeCheckValidityWithErrors with kSecCSCheckAllArchitectures), and it
+# is the check that governs whether an update installs; the app-root trade-off
+# has been shipped since the resource bundles were first embedded.
 echo "Code signing..."
 # Sign inside-out, then seal the app WITHOUT --deep. --deep on the outer .app
 # would re-sign every nested item with default flags and reset the appex's
@@ -219,16 +248,32 @@ codesign --force --sign - --identifier "com.i7t5.edmund.quicklook" "$APPEX"
 codesign --force --sign - --identifier "com.i7t5.edmd" "$BUNDLE"
 
 # SwiftPM dependencies that ship resources (SwiftMath's math fonts) emit a
-# per-target bundle next to the binary. SwiftMath's generated Bundle.module
-# accessor looks for it at Bundle.main.bundleURL — i.e. the .app root — and only
-# otherwise at a hardcoded absolute .build path that doesn't exist once the app
-# is installed. So it must sit at the .app root; copy it in *after* signing (it
-# can't be sealed there — see above) so the bundle's own seal stays valid.
-# Without this the app crashes the moment it renders any LaTeX.
+# per-target bundle next to the binary. The generated `Bundle.module` accessor
+# looks for it at `Bundle.main.bundleURL` — the product root: the `.app` root
+# for the app, the `.appex` root for the extension — and only otherwise at a
+# hardcoded absolute `.build` path that doesn't exist once the app is installed.
+# So the bundles must sit at both product roots, in their flat shape; copy them
+# in *after* signing (they can't be sealed there — see above) so the bundles'
+# own seals stay valid.
+#
+# Without the `.app` copy the app crashes the moment it renders any LaTeX. The
+# appex needs the identical treatment: it links the same rendering pipeline
+# (DocumentHTML → MathRendering → SwiftMath), so a Space-bar preview of a
+# document with math reaches `MTFont.fontBundle` too, and `Bundle.main` there is
+# the `.appex` — not the enclosing app.
 echo "Copying SwiftPM resource bundles..."
 for bundle in .build/release/*.bundle; do
-    [ -e "$bundle" ] && cp -R "$bundle" "${BUNDLE}/"
+    [ -e "$bundle" ] || continue
+    cp -R "$bundle" "${BUNDLE}/"
+    cp -R "$bundle" "${APPEX}/"
 done
+
+# Fail the build — not the user's first `$E=mc^2$` — if the bundles above aren't
+# where their accessors will look for them. The probe replays the accessor's own
+# lookups (see the script for what each one is); it is cheap and has no state to
+# get out of sync with the packaging, which is the point.
+echo "Verifying resource-bundle layout..."
+./scripts/verify-app-bundle.sh "$BUNDLE"
 
 echo ""
 echo "Done: ${BUNDLE}"
