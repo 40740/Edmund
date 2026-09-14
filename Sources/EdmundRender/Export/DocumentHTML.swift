@@ -175,8 +175,14 @@ public enum DocumentHTML {
     /// anything is absent is a partial copy of the document, not a rendering of it.
     private static func mathPNG(latex: String, displayMode: Bool,
                                 pointSize: CGFloat, color: NSColor) -> (image: ImageRaster.PNGResult, descent: CGFloat)? {
+        // `renderingErrors: true` (the default): a document must render every
+        // equation, so malformed LaTeX comes out as readable flattened text
+        // rather than the raw `<code>` fallback below — a typo in a document
+        // should still look like the equation it was meant to be, and the whole
+        // page stays legible even when no typesetter is available.
         guard let rendered = MathRendering.shared.render(latex: latex, displayMode: displayMode,
-                                                         pointSize: pointSize, color: color) else {
+                                                         pointSize: pointSize, color: color,
+                                                         renderingErrors: true) else {
             // `RenderedMath` is the engine-agnostic result; rasterizing it is the
             // HTML pipeline's job, which is why the PNG step lives here and not
             // with the engine (the editor draws the same `NSImage` directly).

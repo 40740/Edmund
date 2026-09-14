@@ -237,3 +237,88 @@ struct SyntaxPayloadLookupTests {
         #expect(store.availableLanguages().map(\.id).contains("python"))
     }
 }
+
+// MARK: - Math fonts are packaged where SwiftMath looks
+
+@Suite("Packaging — SwiftMath math fonts")
+struct MathFontPackagingTests {
+
+    private func packagingScript() throws -> String {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("scripts/build-app.sh")
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    @Test("The fonts are copied to the .app root, where Bundle.module looks")
+    func fontsAtAppRoot() throws {
+        // SwiftMath's generated accessor searches Bundle.main.resourceURL and
+        // then Bundle.main.bundleURL (the .app root) for
+        // SwiftMath_SwiftMath.bundle, and calls fatalError when neither has it.
+        // The .app root copy is what makes the lookup succeed — without it the
+        // accessor traps the moment LaTeX is rendered.
+        let text = try packagingScript()
+        guard let step = text.range(of: "Copying SwiftPM resource bundles") else {
+            Issue.record("the packaging script never copies the resource bundles")
+            return
+        }
+        let tail = String(text[step.lowerBound...])
+        #expect(tail.contains("cp -R \"$bundle\" \"${BUNDLE}/\""),
+                "the SwiftMath bundle must land at the .app root for Bundle.main.bundleURL")
+    }
+
+    @Test("The packaging script verifies the font file is actually there")
+    func fontFileIsVerified() throws {
+        // A release whose bundle has an Info.plist but no .otf is the shape that
+        // traps: Bundle.module returns it happily, and SwiftMath force-unwraps a
+        // font out of it. Checking for the font — not just the directory name —
+        // is what turns that into a warning at packaging time instead of a crash
+        // at open time.
+        let text = try packagingScript()
+        #expect(text.contains("latinmodern-math.otf"),
+                "the script must verify the OpenType file, not merely the bundle name")
+        #expect(text.contains("mathFonts.bundle/latinmodern-math.otf"),
+                "and it must probe the nested .copy layout the fonts really use")
+    }
+
+    @Test("A release that ships no math fonts says so")
+    func missingFontsAreAnnounced() throws {
+        let text = try packagingScript()
+        #expect(text.contains("math will render as plain Unicode"),
+                "a release with no math fonts must report it, not fail silently")
+    }
+
+    @Test("The Quick Look appex gets the math fonts too")
+    func appexShipsFonts() throws {
+        // The appex renders markdown, and markdown can contain math. Without the
+        // bundle the preview process resolves no fonts — which now degrades to
+        // Unicode (before this it trapped).
+        let text = try packagingScript()
+        let appexRange = text.range(of: "Assembling Quick Look extension")
+        let stagingRange = text.range(of: "cp -R \"$bundle\" \"${APPEX}/Contents/Resources/\"")
+        #expect(appexRange != nil && stagingRange != nil,
+                "the appex staging loop must copy every resource bundle")
+        if let appexRange, let stagingRange {
+            #expect(appexRange.lowerBound < stagingRange.lowerBound,
+                    "fonts must be staged into the appex during its assembly, before signing")
+        }
+    }
+
+    @Test("Font resolution never relies on Bundle.module in the render layer")
+    func noBundleModuleInRenderLayer() throws {
+        // The whole point of `MathFonts` is that the *app* decides where the
+        // fonts are, using ordinary Foundation APIs, and never calls the
+        // accessor that traps. If this ever regresses, the crash comes back the
+        // moment a document opens — so the rule is asserted at the source level.
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/EdmundRender/Math")
+        let files = try FileManager.default.contentsOfDirectory(at: dir,
+                                                                includingPropertiesForKeys: nil)
+        for file in files where file.pathExtension == "swift" {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            #expect(!text.contains("Bundle.module"),
+                    "\(file.lastPathComponent) must not reach for Bundle.module")
+        }
+    }
+}

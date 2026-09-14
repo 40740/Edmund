@@ -219,16 +219,64 @@ codesign --force --sign - --identifier "com.i7t5.edmund.quicklook" "$APPEX"
 codesign --force --sign - --identifier "com.i7t5.edmd" "$BUNDLE"
 
 # SwiftPM dependencies that ship resources (SwiftMath's math fonts) emit a
-# per-target bundle next to the binary. SwiftMath's generated Bundle.module
-# accessor looks for it at Bundle.main.bundleURL — i.e. the .app root — and only
-# otherwise at a hardcoded absolute .build path that doesn't exist once the app
-# is installed. So it must sit at the .app root; copy it in *after* signing (it
-# can't be sealed there — see above) so the bundle's own seal stays valid.
-# Without this the app crashes the moment it renders any LaTeX.
+# per-target bundle next to the binary. SwiftMath's generated `Bundle.module`
+# accessor searches, in order, `Bundle.main.resourceURL` and then
+# `Bundle.main.bundleURL` for `SwiftMath_SwiftMath.bundle`, and calls
+# `fatalError` when neither has it. So the bundle has to sit at the .app *root*
+# (its bundleURL) — that is what this copy is for, and it is why the copy comes
+# *after* signing: an item at the .app root can't be sealed into the app's own
+# signature (codesign refuses a bundle with unsealed root items), and the
+# bundle's own seal would be invalidated by signing it as part of the app.
+#
+# `MathFonts` resolves the same directory itself first, so a packaged copy that
+# under-delivers degrades equations to readable Unicode instead of trapping —
+# but "fonts silently missing from the release" is exactly the class of bug that
+# stayed invisible until a user opened an equation, so it is verified below.
 echo "Copying SwiftPM resource bundles..."
+RESOURCE_BUNDLES=()
 for bundle in .build/release/*.bundle; do
-    [ -e "$bundle" ] && cp -R "$bundle" "${BUNDLE}/"
+    [ -e "$bundle" ] || continue
+    [ -f "$bundle/Contents/Info.plist" ] || continue
+    RESOURCE_BUNDLES+=("$bundle")
+    cp -R "$bundle" "${BUNDLE}/"
 done
+
+FONT_BUNDLE=""
+for bundle in "${RESOURCE_BUNDLES[@]}"; do
+    case "$(basename "$bundle")" in
+        *SwiftMath*) FONT_BUNDLE="$bundle" ;;
+    esac
+done
+if [ -z "$FONT_BUNDLE" ]; then
+    echo "  ! no SwiftMath resource bundle in .build/release — math will render as plain Unicode" >&2
+else
+    # The directory must contain the OpenType font itself, not merely be a
+    # resource bundle with a plist: `MathFonts` reports unavailable when it
+    # can't find `latinmodern-math.otf`, and SwiftMath traps if it gets that far.
+    #
+    # `.copy("mathFonts.bundle")` reproduces that directory verbatim, so the font
+    # really lives at `SwiftMath_SwiftMath.bundle/mathFonts.bundle/…` — one level
+    # deeper than the bundle name suggests. Checking only the bundle's own root
+    # reports "no fonts" for a release that has every one of them, and the only
+    # visible symptom is maths silently degrading to plain Unicode.
+    FONT_FILE=""
+    for candidate in "$FONT_BUNDLE/latinmodern-math.otf" \
+                     "$FONT_BUNDLE/mathFonts.bundle/latinmodern-math.otf" \
+                     "$FONT_BUNDLE/Contents/Resources/latinmodern-math.otf" \
+                     "$FONT_BUNDLE/Contents/Resources/mathFonts.bundle/latinmodern-math.otf"; do
+        if [ -f "$candidate" ]; then FONT_FILE="$candidate"; break; fi
+    done
+    if [ -n "$FONT_FILE" ]; then
+        echo "  → math fonts packaged: $(basename "$FONT_BUNDLE") ($(basename "$(dirname "$FONT_FILE")")/latinmodern-math.otf)"
+    else
+        echo "  ! $(basename "$FONT_BUNDLE") has no latinmodern-math.otf — math will render as plain Unicode" >&2
+    fi
+    # Where the app must put it for SwiftMath's own accessor to find it.
+    if [ -f "${BUNDLE}/$(basename "$FONT_BUNDLE")/Contents/Info.plist" ] \
+       || [ -f "${BUNDLE}/$(basename "$FONT_BUNDLE")/mathFonts.bundle/latinmodern-math.otf" ]; then
+        echo "  → fonts reachable from the app root: $(basename "$FONT_BUNDLE")"
+    fi
+fi
 
 echo ""
 echo "Done: ${BUNDLE}"

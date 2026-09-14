@@ -59,7 +59,17 @@ public protocol MathRenderer: AnyObject {
 @MainActor
 public final class SwiftMathRenderer: MathRenderer {
     public let id = "swiftmath"
-    public var isReady: Bool { true }
+
+    /// `MathFonts.directory` is resolved without `Bundle.module`, so this is
+    /// known *before* any SwiftMath type is constructed. When the fonts aren't
+    /// reachable, `render` returns `nil` and `MathRendering` falls back instead
+    /// of the process dying inside `MTFont.fontBundle` (issue #12).
+    ///
+    /// Reading this is safe; the value is a directory probe resolved once per
+    /// process. It is the *only* SwiftMath-adjacent check the renderer makes, and
+    /// deliberately so: every other field of every SwiftMath type can reach the
+    /// force-unwrapped bundle accessor on the way in.
+    public var isReady: Bool { MathFonts.isAvailable }
 
     private final class Cached {
         let image: NSImage
@@ -92,6 +102,11 @@ public final class SwiftMathRenderer: MathRenderer {
         if let cached = cache.object(forKey: key) {
             return RenderedMath(image: cached.image, ascent: cached.ascent, descent: cached.descent)
         }
+
+        // Last guard before SwiftMath is touched. `MathFonts.directory` was
+        // resolved without `Bundle.module`, and a `nil` here means the fonts are
+        // genuinely unreachable in this process — the state that used to trap.
+        guard MathFonts.isAvailable else { return nil }
 
         let mode: MTMathUILabelMode = displayMode ? .display : .text
         let math = MTMathImage(latex: latex, fontSize: pointSize, textColor: color, labelMode: mode)
