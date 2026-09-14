@@ -1,5 +1,4 @@
-import AppKit
-import SwiftMath
+import Foundation
 
 // MARK: - MathFonts
 //
@@ -25,10 +24,20 @@ import SwiftMath
 // `MTFont.fontBundle.getter`, while restyling the block that contained the
 // equation.
 //
-// So the app resolves the font directory itself — explicit candidates, no
-// `Bundle.module`, no force-unwraps — and treats "fonts unavailable" as a normal
-// state: `SwiftMathRenderer` falls back to a Unicode-approximation renderer and
-// the editor keeps working with every other part of the document intact.
+// So the app resolves the font directory itself — no `Bundle.module`, no
+// force-unwraps — and treats "fonts unavailable" as a normal state:
+// `SwiftMathRenderer` falls back to a Unicode-approximation renderer and the
+// editor keeps working with every other part of the document intact.
+//
+// The resolution must answer *SwiftMath's* question, not a nearby one. v5.28.1
+// probed more places than `Bundle.module` does (the executable's directory, the
+// working directory, `.build/<config>`) and accepted `mathFonts.bundle` as a
+// resource-bundle name. A layout could therefore satisfy that probe while
+// SwiftMath's own lookup reached `fatalError` or a force-unwrap — the guard
+// passed, the process trapped anyway, and issue #14 survived the fix meant to
+// close it. The candidates below are exactly `Bundle.module`'s: one bundle name,
+// at the two roots its generated accessor searches. That is what makes
+// `isAvailable == true` mean "SwiftMath's lookup will succeed".
 
 public enum MathFonts {
 
@@ -47,124 +56,117 @@ public enum MathFonts {
     /// Whether SwiftMath can render in this process.
     public static var isAvailable: Bool { directory != nil }
 
-    /// `mathFonts.bundle` is a *resource bundle*: SwiftPM's `.copy` lays its
-    /// payload out flat (`<bundle>/latinmodern-math.otf`) and Foundation looks
-    /// for it in `Contents/Resources` once `build-app.sh` has made it a legal
-    /// bundle. Both layouts are probed because either can be the one on disk,
-    /// depending on how the app was packaged.
+    /// The resource-bundle name SwiftPM's generated `Bundle.module` accessor
+    /// looks for. SwiftPM derives it from the target that declares the
+    /// resources — `SwiftMath_SwiftMath.bundle`. `mathFonts.bundle` is the
+    /// directory *inside* that bundle (from `.copy("mathFonts.bundle")`), never
+    /// the bundle itself, and accepting that name here is what makes this
+    /// file's lookup disagree with SwiftMath's. Issue #14 in one sentence.
+    static let resourceBundleName = "SwiftMath_SwiftMath.bundle"
+
+    /// The candidates SwiftMath's own accessor considers, in its order.
     ///
-    /// Candidates, in order:
+    /// Deliberately short, and the shortness is the point. SwiftPM generates
+    /// exactly this code for a target with resources (see swift-package-manager,
+    /// `SwiftModuleBuildDescription.generateResourceAccessor`):
     ///
-    ///   1. `Bundle.main.resourceURL` and `Bundle.main.bundleURL`, under
-    ///      `mathFonts.bundle` / `SwiftMath_SwiftMath.bundle` / `SwiftMath.bundle`.
-    ///      This is the app and the Quick Look appex (a `.appex`'s `Bundle.main`
-    ///      *is* the appex).
-    ///   2. The executable's directory and its parent — where `swift run` and
-    ///      `swift test` put the resource bundle.
-    ///   3. `.build/{release,debug}` under the working directory and the repo
-    ///      root (reachable as this file's ancestors). `swift test` runs the
-    ///      .xctest out of a temporary directory, so (2) misses on macOS.
-    ///   4. `EDMUND_BUILD_PATH`, if set — an explicit override for a relocated
-    ///      build, accepted however it was spelled (root, `.build`, or a config
-    ///      directory under it).
+    ///     static let module: Bundle = {
+    ///         let mainPath = Bundle.main.bundleURL
+    ///             .appendingPathComponent("SwiftMath_SwiftMath.bundle").path
+    ///         let buildPath = "<absolute .build path, fixed at compile time>"
+    ///         let preferredBundle = Bundle(path: mainPath)
+    ///         guard let bundle = preferredBundle ?? Bundle(path: buildPath) else {
+    ///             Swift.fatalError("could not load resource bundle: from …")
+    ///         }
+    ///         return bundle
+    ///     }()
     ///
-    /// A candidate only counts when the *font file* is present: an empty
-    /// directory with the bundle's name is exactly the identifier-less shape
-    /// that traps, so its mere existence must not read as "fonts available".
+    /// So on a shipped app there is one location that matters — the resource
+    /// bundle at the *bundle root*, `SwiftMath_SwiftMath.bundle` — and every
+    /// extra location this file used to probe (the executable's directory, the
+    /// working directory, `.build/<config>`) is a place where this file could
+    /// answer "fonts available" while SwiftMath's lookup still reached
+    /// `fatalError`. That is not hypothetical: it is how v5.28.1 shipped a
+    /// guard that passed and a process that trapped (issue #14).
+    ///
+    /// The `buildPath` fallback is an absolute path fixed when *SwiftMath* was
+    /// compiled, which is the CI machine's `.build` directory — never present
+    /// on a user's Mac — so it is not offered here. `Bundle.main.resourceURL`
+    /// comes first because that is where an `.appex` (whose `Bundle.main` is
+    /// the appex itself) legitimately keeps staged resources, and where the app
+    /// copies its own; then the bundle root.
+    static func candidates() -> [URL] {
+        var roots: [URL] = []
+        if let resources = Bundle.main.resourceURL { roots.append(resources) }
+        roots.append(Bundle.main.bundleURL)
+        return roots.map { $0.appendingPathComponent(resourceBundleName) }
+    }
+
+    /// The payload directory, given the candidates SwiftMath's accessor would
+    /// consider, in its order. The first usable one wins — so when both layouts
+    /// are present (`Contents/Resources`, which Foundation will actually search,
+    /// and the flat root, which `swift run` produces) the answer comes from the
+    /// same place SwiftMath's lookup will read.
     private static func resolveDirectory() -> URL? {
-        var candidates: [URL] = []
-
-        // 1. The app bundle's Resources. `build-app.sh` copies SwiftPM's
-        //    per-target resource bundles here, and the appex's own bundles live
-        //    in its Resources too — so Quick Look finds them without anything
-        //    special.
-        let mainResources = Bundle.main.resourceURL
-        let mainBundleURL = Bundle.main.bundleURL
-        for root in [mainResources, mainBundleURL].compactMap({ $0 }) {
-            candidates.append(root.appendingPathComponent("mathFonts.bundle"))
-            candidates.append(root.appendingPathComponent("SwiftMath_SwiftMath.bundle"))
-            candidates.append(root.appendingPathComponent("SwiftMath.bundle"))
-        }
-
-        // 2. Next to the executable. `swift run edmd` and `swift test` execute
-        //    from `.build/<config>` and build the resource bundle right there
-        //    (`.build/<config>/mathFonts.bundle`, plus a
-        //    `SwiftMath_SwiftMath.bundle` alias) — no bundle staging needed.
-        let executable = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
-        for root in [executable.deletingLastPathComponent(),
-                     executable.deletingLastPathComponent().deletingLastPathComponent()] {
-            candidates.append(root.appendingPathComponent("mathFonts.bundle"))
-            candidates.append(root.appendingPathComponent("SwiftMath_SwiftMath.bundle"))
-            candidates.append(root.appendingPathComponent("SwiftMath.bundle"))
-        }
-
-        // 3. Build directories SwiftPM may have used without leaving anything
-        //    next to the binary.
-        //
-        //    `swift test` runs the .xctest bundle out of a temporary directory on
-        //    macOS, and the resource bundle sits in the *build* directory — so
-        //    "next to the executable" and "next to its parent" both miss. Probe
-        //    the conventional `.build/<config>` under the working directory and
-        //    the repo root (reached as `#filePath`'s ancestors), plus an explicit
-        //    override, since a wrong guess here is silent: maths quietly becomes
-        //    the Unicode approximation everywhere including CI.
-        var roots = [
-            URL(fileURLWithPath: FileManager.default.currentDirectoryPath),
-            URL(fileURLWithPath: #filePath)          // Sources/EdmundRender/Math/...
-                .deletingLastPathComponent().deletingLastPathComponent()
-                .deletingLastPathComponent().deletingLastPathComponent(),
-        ]
-        if let override = ProcessInfo.processInfo.environment["EDMUND_BUILD_PATH"] {
-            // Accept the build directory however it was spelled: the repo root,
-            // the build path itself (`.../.build`), or a config directory
-            // (`.../.build/release`) — all three are probed as-is and then with
-            // the conventional suffixes below.
-            let url = URL(fileURLWithPath: override)
-            candidates.append(url.appendingPathComponent("mathFonts.bundle"))
-            candidates.append(url.appendingPathComponent("SwiftMath_SwiftMath.bundle"))
-            roots.append(url)
-        }
-        for root in roots {
-            for config in ["release", "debug", ""] {
-                let base = config.isEmpty ? root.appendingPathComponent(".build")
-                                          : root.appendingPathComponent(".build").appendingPathComponent(config)
-                candidates.append(base.appendingPathComponent("mathFonts.bundle"))
-                candidates.append(base.appendingPathComponent("SwiftMath_SwiftMath.bundle"))
-                candidates.append(base.appendingPathComponent("SwiftMath.bundle"))
-            }
-        }
-
-        for candidate in candidates where hasFont(named: defaultFontName, in: candidate) {
-            return candidate
+        for candidate in candidates() {
+            if let directory = fontDirectory(in: candidate) { return directory }
         }
         return nil
     }
 
+    /// The payload directory SwiftMath's own lookup resolves to, given the
+    /// resource bundle Foundation would open — or `nil` when that lookup cannot
+    /// succeed.
+    ///
+    /// This asks Foundation the same question SwiftMath asks, through the same
+    /// call: open the resource bundle, then `url(forResource:"mathFonts",
+    /// withExtension:"bundle")`. When it returns a directory, SwiftMath's
+    /// `Bundle.module` and its `!`s are known to resolve; when it returns nil,
+    /// they would trap, and the renderer must report unavailable instead.
+    ///
+    /// The subtlety worth naming: adding `Contents/Info.plist` to a resource
+    /// bundle makes CoreFoundation classify it as a version-2 Contents bundle,
+    /// so `url(forResource:)` searches `Contents/Resources` rather than the
+    /// bundle root (`_CFBundleGetBundleVersionForURL` tests `Contents` before
+    /// `Resources`, and the first match decides). A payload left only at the
+    /// root is then invisible to this call — which is exactly the nil that
+    /// `MTFont.fontBundle` force-unwraps. `scripts/build-app.sh` stages the
+    /// payload so both layouts resolve; this file just follows Foundation.
+    static func fontDirectory(in bundleURL: URL) -> URL? {
+        guard let bundle = Bundle(path: bundleURL.path),
+              let payload = bundle.url(forResource: "mathFonts", withExtension: "bundle"),
+              hasFont(named: defaultFontName, in: payload)
+        else { return nil }
+        return payload
+    }
+
+    /// Whether the resource bundle at `url` is one SwiftMath's lookup can use:
+    /// its payload directory resolves. Kept as a named predicate because the
+    /// distinction it encodes — "a legal bundle whose payload this lookup finds"
+    /// as opposed to "some directory with a `.otf` in it somewhere" — is the
+    /// whole of issue #14.
+    static func isUsable(bundleAt url: URL) -> Bool {
+        fontDirectory(in: url) != nil
+    }
+
+    /// A file inside `directory`, tolerating the flat `.copy` layout and the
+    /// `mathFonts.bundle/` nesting `.copy("mathFonts.bundle")` reproduces
+    /// verbatim (SwiftMath's declaration nests one level deeper than the bundle
+    /// name suggests).
     private static func hasFont(named name: String, in directory: URL) -> Bool {
         url(forResource: name, withExtension: "otf", in: directory) != nil
     }
 
     /// The payload directories under `bundle`, in probe order.
-    ///
-    /// SwiftMath declares its fonts as `.copy("mathFonts.bundle")`, and `.copy`
-    /// reproduces the directory *verbatim*: the generated resource bundle is
-    /// `SwiftMath_SwiftMath.bundle/mathFonts.bundle/<font>.otf`, one nesting
-    /// deeper than the app ever assumed. Checking only `<bundle>/<font>.otf`
-    /// therefore found nothing and reported "no fonts" for a release that had
-    /// every one of them — which is worse than the crash it replaced, because it
-    /// is silent. A legal macOS bundle additionally keeps its payload under
-    /// `Contents/Resources`, so all three shapes are probed.
-    private static func payloadDirectories(in bundle: URL) -> [URL] {
-        var directories: [URL] = []
-        for nested in ["", "mathFonts.bundle",
-                       "Contents/Resources", "Contents/Resources/mathFonts.bundle"] {
-            directories.append(nested.isEmpty ? bundle : bundle.appendingPathComponent(nested))
+    static func payloadDirectories(in bundle: URL) -> [URL] {
+        ["", "mathFonts.bundle"].map {
+            $0.isEmpty ? bundle : bundle.appendingPathComponent($0)
         }
-        return directories
     }
 
-    /// A file inside the resolved directory, tolerating the flat (`.copy`),
-    /// `mathFonts.bundle`-nested and `Contents/Resources` layouts.
+    /// A file inside the resolved directory. `nil` when the fonts aren't
+    /// reachable — callers must treat that as "no typesetting engine", never as
+    /// a reason to trap.
     public static func url(forResource name: String, withExtension ext: String) -> URL? {
         guard let directory else { return nil }
         return url(forResource: name, withExtension: ext, in: directory)
@@ -172,10 +174,9 @@ public enum MathFonts {
 
     private static func url(forResource name: String, withExtension ext: String,
                             in directory: URL) -> URL? {
-        let fm = FileManager.default
         for root in payloadDirectories(in: directory) {
             let file = root.appendingPathComponent("\(name).\(ext)")
-            if fm.fileExists(atPath: file.path) { return file }
+            if FileManager.default.fileExists(atPath: file.path) { return file }
         }
         return nil
     }

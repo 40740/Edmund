@@ -170,6 +170,44 @@ PLIST
             mkdir -p "$bundle/Contents/Resources"
             cp -R "$bundle/Syntaxes" "$bundle/Contents/Resources/Syntaxes"
         fi
+
+        # Same trap, one directory deeper — and this is issue #14.
+        #
+        # Adding `Contents/Info.plist` above flips how Foundation classifies the
+        # bundle, and that changes where `url(forResource:)` *looks*. CoreFoundation's
+        # `_CFBundleGetBundleVersionForURL` picks the version by scanning for the
+        # directory names present, and the order of its branches is load-bearing:
+        # for a non-framework directory it checks `Contents` FIRST, then
+        # `Resources`. A bundle that has both is therefore a version-2 "modern
+        # Contents bundle", whose resource directory is `<bundle>/Contents/Resources`
+        # — *not* the bundle root.
+        #
+        # So the moment this script added `Contents/Info.plist` to
+        # `SwiftMath_SwiftMath.bundle` (to make it a legal bundle), that bundle
+        # stopped being a flat bundle. Its payload lives at
+        # `<bundle>/mathFonts.bundle/…`, but `url(forResource:"mathFonts",
+        # withExtension:"bundle")` now searched `<bundle>/Contents/Resources`,
+        # found nothing, returned nil — and SwiftMath's `MTFont.fontBundle`
+        # force-unwraps that. nil + `!` is SIGTRAP (EXC_BREAKPOINT), which is
+        # exactly the crash in issue #14. Adding a legal `Info.plist` to fix one
+        # trap is what created the other.
+        #
+        # The fix is not to remove the Info.plist — a legal bundle is what
+        # `Bundle(path:)` and code signing both want — but to put the payload
+        # where the resource directory now points. Mirror every copied payload
+        # subdirectory under `Contents/Resources`, so both classifications find
+        # it: the flat layout keeps `swift run`/`swift test` and any generated
+        # `Bundle.module` accessor working, and the mirrored one serves
+        # `Bundle(path:)` on a Contents bundle.
+        if [ -d "$bundle/Contents" ]; then
+            mkdir -p "$bundle/Contents/Resources"
+            for payload in "$bundle"/*/; do
+                name="$(basename "$payload")"
+                [ "$name" = "Contents" ] && continue
+                [ -d "$bundle/Contents/Resources/$name" ] && continue
+                cp -R "$payload" "$bundle/Contents/Resources/$name"
+            done
+        fi
     fi
     # Copy LAST: the appex must receive the bundle that now has its Info.plist
     # and its `Contents/Resources/Syntaxes` layout. Copying before that
@@ -263,26 +301,44 @@ done
 if [ -z "$FONT_BUNDLE" ]; then
     echo "  ! no SwiftMath resource bundle in .build/release — math will render as plain Unicode" >&2
 else
-    # The directory must contain the OpenType font itself, not just be a
-    # resource bundle with a plist: `MathFonts` reports unavailable when it
-    # can't find `latinmodern-math.otf`, and SwiftMath traps if it gets that far.
+    # Verify the layout SwiftMath's *own* lookup will use, not merely that a font
+    # exists somewhere. That distinction is the whole of issue #14: the release
+    # that crashed had every font on disk and still trapped, because they were in
+    # the wrong directory for the bundle classification Foundation had chosen.
     #
-    # `.copy("mathFonts.bundle")` reproduces that directory verbatim, so the font
-    # really lives at `SwiftMath_SwiftMath.bundle/mathFonts.bundle/…` — one level
-    # deeper than the bundle name suggests. Checking only the bundle's own root
-    # reported "no fonts" for a release that had every one of them, and the only
-    # visible symptom was maths silently degrading to plain Unicode.
+    # `Bundle(path:)` on `<app>/SwiftMath_SwiftMath.bundle` reads that bundle's
+    # `Contents/Info.plist` (added above), so it is a version-2 Contents bundle
+    # and `url(forResource:)` searches `Contents/Resources`. The font must
+    # therefore be reachable at
+    # `SwiftMath_SwiftMath.bundle/Contents/Resources/mathFonts.bundle/…`, which
+    # is what the mirroring step above now stages. The flat
+    # `SwiftMath_SwiftMath.bundle/mathFonts.bundle/…` layout is still accepted
+    # because `swift run` / `swift test` build the bundle without a Contents
+    # directory, and there the bundle *is* flat.
+    FONT_BUNDLE_NAME="$(basename "$FONT_BUNDLE")"
     FONT_FILE=""
-    for candidate in "$FONT_BUNDLE/latinmodern-math.otf" \
+    for candidate in "$FONT_BUNDLE/Contents/Resources/mathFonts.bundle/latinmodern-math.otf" \
                      "$FONT_BUNDLE/mathFonts.bundle/latinmodern-math.otf" \
                      "$FONT_BUNDLE/Contents/Resources/latinmodern-math.otf" \
-                     "$FONT_BUNDLE/Contents/Resources/mathFonts.bundle/latinmodern-math.otf"; do
+                     "$FONT_BUNDLE/latinmodern-math.otf"; do
         if [ -f "$candidate" ]; then FONT_FILE="$candidate"; break; fi
     done
     if [ -n "$FONT_FILE" ]; then
-        echo "  → math fonts packaged: $(basename "$FONT_BUNDLE") ($(basename "$(dirname "$FONT_FILE")")/latinmodern-math.otf)"
+        echo "  → math fonts packaged: ${FONT_BUNDLE_NAME} ($(basename "$(dirname "$FONT_FILE")")/latinmodern-math.otf)"
     else
         echo "  ! $(basename "$FONT_BUNDLE") has no latinmodern-math.otf — math will render as plain Unicode" >&2
+    fi
+
+    # The font that SwiftMath actually reaches is the one under the resource
+    # directory it will search. Assert *that* copy specifically: a release with
+    # only the flat layout stages the same trap issue #14 was, and the flat
+    # layout is what every previous check here was satisfied by.
+    if [ -f "$FONT_BUNDLE/Contents/Info.plist" ] \
+       && [ ! -f "$FONT_BUNDLE/Contents/Resources/mathFonts.bundle/latinmodern-math.otf" ] \
+       && [ ! -f "$FONT_BUNDLE/Contents/Resources/latinmodern-math.otf" ]; then
+        echo "  ! ${FONT_BUNDLE_NAME} is a Contents bundle (has Contents/Info.plist) but its" >&2
+        echo "    Contents/Resources has no mathFonts payload — url(forResource:) returns nil" >&2
+        echo "    and MTFont.fontBundle force-unwraps it (SIGTRAP, issue #14)" >&2
     fi
 fi
 

@@ -3,6 +3,57 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.29.0] - 2026-09-14
+
+### Fixed
+- **打开含 `$…$` 的 md 文件仍然闪退（EXC_BREAKPOINT / SIGTRAP）——v5.28.1 的守卫没拦住，这次是打包层把字体放错了目录。**
+
+  v5.28.1 在调用 SwiftMath 之前加了 `MathFonts.isAvailable` 守卫，用户实测**照样闪退**，且栈与 v5.27.0 逐帧一致：
+
+  ```
+  specialized static MTFont.fontBundle.getter
+    ← MTFont.__allocating_init(fontWithName:size:)
+    ← MTFontManager.font(withName:size:)
+    ← MTMathImage.init(latex:fontSize:textColor:labelMode:)
+    ← SwiftMathRenderer.render(…)
+  ```
+
+  **崩溃报告里有一条决定性证据**：`MTMathImage.init` 位于栈的第 3 帧。若 `MathFonts.isAvailable == false`，`SwiftMathRenderer.render` 会在 `guard` 处 `return nil`，**永远到不了** `MTMathImage.init`。它到了，说明守卫**放行了**——而 `MTFont.fontBundle` 仍然 trap。
+
+  也就是说，问题有两层，v5.28.1 两层各修错了一半：
+
+  1. **两套查找问的不是同一个问题**。`MathFonts` 探的位置比 SwiftMath 的 `Bundle.module` 宽（可执行文件旁、工作目录、`.build/<config>`），还额外接受 `mathFonts.bundle` / `SwiftMath.bundle` 这些 `Bundle.module` 从不会生成的名字。于是存在“`MathFonts` 说有、SwiftMath 找没有”的布局 → 守卫放行 → 撞 trap。
+
+  2. **打包层把字体放到了一个 Foundation 不会去搜的目录**——这是本次的真正根因，也是为什么换了三版修法都没好。
+
+  **真根因（本次定死）**：`build-app.sh` 为了让资源包成为**合法 bundle**，会给它补 `Contents/Info.plist`。而 CoreFoundation 正是**用目录名来判定 bundle 的版本**——`_CFBundleGetBundleVersionForURL` 扫描目录里有哪些名字，且分支顺序是有意的：
+
+  ```
+  else {                      // 非 framework
+      if (foundSupportFiles2) localVersion = 2;   // 有 Contents  → 版本 2
+      else if (foundResources) localVersion = 0;  // 有 Resources → 版本 0
+      …
+  }
+  ```
+
+  一个资源包一旦同时有 `Contents/`，就会被判为**版本 2 的“现代 Contents bundle”**，其资源目录是 `<bundle>/Contents/Resources`，**不再是 bundle 根**。而 SwiftMath 的 `.copy("mathFonts.bundle")` 把字体放在 `<bundle>/mathFonts.bundle/…`（根目录）。于是：
+
+  ```swift
+  Bundle.module.url(forResource: "mathFonts", withExtension: "bundle")!   // → nil
+  ```
+
+  nil 被外面那层 `!` 接收 → `SIGTRAP`。**补 `Info.plist` 治好了“非法 bundle”那一个 trap，同时造出了“资源目录变了”这第二个 trap。** v5.27.0（包没拷到根）和 v5.28.1（包合法但资源目录变了）崩在同一个地方，原因不同。
+
+  **修复**：
+
+  - `scripts/build-app.sh`：打包资源包时，把 `.copy` 的载荷**同时镜像到 `<bundle>/Contents/Resources/` 下**。两种判定都能命中——扁平布局继续服务 `swift run` / `swift test` 和 `Bundle.module` 的生成访问器，镜像布局服务 `Bundle(path:)` 打开的 Contents bundle。校验也改成断言**真正会被搜到的那个副本**存在（此前只断言“某个 .otf 在某处”，这正是它漏掉本次 bug 的原因）。
+  - `MathFonts`（`Sources/EdmundRender/Math/MathFonts.swift`）：探测规则**收窄到与 `Bundle.module` 完全一致**——同一个包名（`SwiftMath_SwiftMath.bundle`）、同样两个根（`Bundle.main.resourceURL` → `Bundle.main.bundleURL`），并**用同一个 Foundation 调用**（`Bundle(path:)` + `url(forResource:"mathFonts", withExtension:"bundle")`）去问，而不是自己沿目录树猜。删掉全部额外位置与别名。找不到 = `isAvailable == false` = 正常降级，`render` 在触碰任何 SwiftMath 类型之前就返回。
+  - 测试：新增“Contents bundle 的载荷必须在 `Contents/Resources` 下才可见”的回归测试（用真实 fixture 复现 nil → trap 的形状）、“探测只认 `Bundle.module` 会认的那个包名”、“每个探测根都是 `Bundle.module` 会搜的根”；并把旧测试里“必须探得比 Bundle.module 多”的断言反过来。
+
+  **诚实说明**：不加第二道防线。`SIGTRAP` 捕不到，跑在它之后的代码都不是安全网；“先试渲染一次”的探针要构造 `MTMathImage`，即**恰好是那个会死的调用**。唯一的保证是让打包、`MathFonts`、SwiftMath 三者指向同一个目录，本版把这三者对齐了。
+
+  开销：渲染路径**零新增**。字体目录在首次使用时解析一次并缓存（两个候选、两次 `Bundle` 查询），此后渲染只走缓存；`Bundle.main` 的查询不触磁盘遍历。打包脚本只在构建期多一次 `cp`。
+
 ## [5.28.0] - 2026-09-14
 
 ### Fixed

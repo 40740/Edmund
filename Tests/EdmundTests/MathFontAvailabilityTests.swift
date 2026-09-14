@@ -29,11 +29,12 @@ struct MathFontAvailabilityTests {
 
     @Test("The font directory resolves to a real directory in this process")
     func resolvesInTests() {
-        // The test binary runs out of a temporary directory, so this only passes
-        // because `MathFonts` probes more than Bundle.main — the executable's
-        // neighbours and the SwiftPM build path. If resolution regresses, math
-        // silently degrades everywhere (that is the design), which is exactly
-        // why it needs a test that notices.
+        // `MathFonts` now asks exactly the question SwiftMath's `Bundle.module`
+        // asks — the resource bundle at the bundle root, opened the same way —
+        // so this passes only because `build-app.sh` mirrors the resource bundles
+        // into this process's `Bundle.main` before the suite runs. If resolution
+        // regresses, math silently degrades everywhere (that is the design),
+        // which is exactly why it needs a test that notices.
         #expect(MathFonts.isAvailable, "SwiftMath fonts must resolve in the test process")
         if let directory = MathFonts.directory {
             var isDir: ObjCBool = false
@@ -229,6 +230,77 @@ struct MathCrashRegressionTests {
                 "an empty identifier-less directory must never resolve as a font source")
     }
 
+    @Test("A Contents bundle must carry its payload under Contents/Resources")
+    func contentsBundleNeedsMirroredPayload() throws {
+        // Issue #14, reduced to a fixture. CoreFoundation classifies a directory
+        // by which of `Contents` / `Resources` it contains, and its branch order
+        // tests `Contents` first (_CFBundleGetBundleVersionForURL). A resource
+        // bundle that has `Contents/Info.plist` is therefore a version-2
+        // Contents bundle, and `url(forResource:)` searches
+        // `<bundle>/Contents/Resources` — *not* the bundle root.
+        //
+        // So a bundle shaped like the one v5.28.1 shipped — a legal `Info.plist`
+        // plus a payload at the root, and nothing mirrored into
+        // `Contents/Resources` — makes `Bundle.module.url(forResource:
+        // "mathFonts", withExtension: "bundle")` return nil, which
+        // `MTFont.fontBundle` force-unwraps into SIGTRAP. That is the crash.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("edmund-contents-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let bundle = root.appendingPathComponent("SwiftMath_SwiftMath.bundle", isDirectory: true)
+        let contents = bundle.appendingPathComponent("Contents", isDirectory: true)
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        try Data().write(to: contents.appendingPathComponent("Info.plist"))
+
+        // The flat `.copy` layout, exactly as SwiftPM emits it…
+        let payload = bundle.appendingPathComponent("mathFonts.bundle", isDirectory: true)
+        try FileManager.default.createDirectory(at: payload, withIntermediateDirectories: true)
+        try Data().write(to: payload.appendingPathComponent("\(MathFonts.defaultFontName).otf"))
+
+        // …is *not* what Foundation looks at once `Contents` exists.
+        #expect(MathFonts.fontDirectory(in: bundle) == nil,
+                "a Contents bundle searches Contents/Resources — the root payload is invisible")
+
+        // Mirror it the way `build-app.sh` does, and the same lookup resolves.
+        let mirrored = contents.appendingPathComponent("Resources/mathFonts.bundle", isDirectory: true)
+        try FileManager.default.createDirectory(at: mirrored, withIntermediateDirectories: true)
+        try Data().write(to: mirrored.appendingPathComponent("\(MathFonts.defaultFontName).otf"))
+        #expect(MathFonts.fontDirectory(in: bundle) != nil,
+                "mirroring the payload under Contents/Resources makes the lookup succeed")
+
+        // And a bundle with no `Contents` at all is flat, so the root layout is
+        // what `Bundle.module` finds — the SwiftPM-native shape.
+        let flat = root.appendingPathComponent("flat.bundle", isDirectory: true)
+        let flatPayload = flat.appendingPathComponent("mathFonts.bundle", isDirectory: true)
+        try FileManager.default.createDirectory(at: flatPayload, withIntermediateDirectories: true)
+        try Data().write(to: flatPayload.appendingPathComponent("\(MathFonts.defaultFontName).otf"))
+        #expect(MathFonts.fontDirectory(in: flat) != nil,
+                "without a Contents directory the bundle is flat and the root payload resolves")
+    }
+
+    @Test("Only the bundle name Bundle.module looks for is accepted")
+    func onlyRecognisesTheGeneratedBundleName() {
+        #expect(MathFonts.resourceBundleName == "SwiftMath_SwiftMath.bundle")
+        for candidate in MathFonts.candidates() {
+            #expect(candidate.lastPathComponent == "SwiftMath_SwiftMath.bundle",
+                    "probe: \(candidate.path) — SwiftMath's accessor would never look here")
+        }
+    }
+
+    @Test("Every probe root is one Bundle.module searches")
+    func probeRootsAreTheFrameworkRoots() {
+        // SwiftPM's accessor searches exactly two roots, in this order: the
+        // bundle's resource directory, then the bundle itself. A third root (the
+        // executable's directory, the working directory, `.build/<config>`) is a
+        // place `MathFonts` could report fonts SwiftMath cannot reach — and
+        // those roots are what made v5.28.1's guard pass and the trap fire.
+        let roots = Set(MathFonts.candidates().map(\.deletingLastPathComponent))
+        let allowed = Set([Bundle.main.resourceURL, Bundle.main.bundleURL].compactMap { $0 })
+        #expect(roots.isSubset(of: allowed),
+                "patched roots: \(roots.sorted { $0.path < $1.path }.map(\.path))")
+    }
+
     @Test("The nested .copy layout SwiftMath actually ships is probed")
     func probesNestedPayload() throws {
         // SwiftMath declares `.copy("mathFonts.bundle")`, and `.copy` reproduces
@@ -254,27 +326,41 @@ struct MathCrashRegressionTests {
                                         to: bundle.appendingPathComponent("mathFonts.bundle"))
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        // `MathFonts.url(forResource:in:)` is private; the public probe is the
-        // same predicate over the same directory list, so stage the directory as
-        // `EDMUND_BUILD_PATH`-shaped input and assert the font is found.
+        // A bundle with no `Contents` directory is flat, so Foundation's
+        // `url(forResource:)` looks at the bundle root — which is exactly where
+        // `.copy("mathFonts.bundle")` puts the payload. Resolve it the way
+        // SwiftMath does and assert the nesting is understood.
         let nested = bundle.appendingPathComponent("mathFonts.bundle/\(MathFonts.defaultFontName).otf")
         #expect(FileManager.default.fileExists(atPath: nested.path),
                 "the staged fixture must have the .copy shape")
-        #expect(MathFonts.url(forResource: MathFonts.defaultFontName, withExtension: "otf")?
-                    .lastPathComponent == "\(MathFonts.defaultFontName).otf",
-                "the resolved directory must yield the font file itself")
+        #expect(MathFonts.isUsable(bundleAt: bundle),
+                "a legal-looking bundle whose nested payload resolves is usable")
+        let resolved = MathFonts.fontDirectory(in: bundle)
+        #expect(resolved?.lastPathComponent == "mathFonts.bundle",
+                "the resolved payload is the nested mathFonts.bundle, not the bundle root")
+        #expect(resolved.map { FileManager.default.fileExists(
+                    atPath: $0.appendingPathComponent("\(MathFonts.defaultFontName).otf").path) } == true,
+                "and the font file itself must be inside it")
     }
 
-    @Test("Both layouts the packaging step can produce are probed")
-    func probesBothLayouts() throws {
+    @Test("The probe asks the same question Bundle.module asks")
+    func probesExactlyWhatSwiftMathProbes() throws {
+        // The regression this guards is issue #14 itself: v5.28.1 probed *more*
+        // places than SwiftMath does, so a layout could satisfy the probe while
+        // SwiftMath's own lookup trapped. The probe must name one bundle and
+        // ask for the payload through Foundation, exactly as SwiftMath does.
         let source = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/EdmundRender/Math/MathFonts.swift")
         let text = try String(contentsOf: source, encoding: .utf8)
-        #expect(text.contains("Contents/Resources/"),
-                "SwiftPM's `.copy` output is flat; a legal bundle's payload nests under Contents/Resources")
-        #expect(text.contains("executablePath"),
-                "swift run / swift test build the bundle next to the executable, not in Bundle.main")
+        #expect(text.contains(#"resourceBundleName = "SwiftMath_SwiftMath.bundle""#),
+                "the only resource-bundle name Bundle.module looks for")
+        #expect(text.contains(#"bundle.url(forResource: "mathFonts", withExtension: "bundle")"#),
+                "the payload is found through the same Foundation call SwiftMath makes")
+        #expect(!text.contains("executablePath"),
+                "the executable's directory is not a root Bundle.module searches — it was the disagreement")
+        #expect(!text.contains(#""SwiftMath.bundle""#),
+                "SwiftMath.bundle is not a name Bundle.module ever generates")
     }
 
     @Test("No force-unwrapped Bundle.module access in the math pipeline")
