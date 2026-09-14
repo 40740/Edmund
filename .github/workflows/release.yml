@@ -85,51 +85,29 @@ jobs:
               exit 1
           fi
 
-          # 1. The app must satisfy the check that decides whether it launches.
+          # 1. The seal has to match the bytes, on the strictest check. This is
+          #    the thing that decides whether the app launches at all; "damaged"
+          #    is its failure message, and it is what v5.29.0 shipped because a
+          #    resource was written into the bundle after `codesign` ran.
           #
-          #    `codesign --verify --strict` on the whole app is the strongest
-          #    form, but it will always fail *here* for one known and accepted
-          #    reason: the SwiftMath resource bundle staged at the `.app` root is
-          #    not described by the seal, because `codesign` refuses to seal any
-          #    loose item at a bundle root. That is the shape v5.28.1 shipped and
-          #    that the user confirms launches, so what must hold is:
-          #
-          #      * everything the seal does describe matches the bytes on disk —
-          #        a change *inside* `Contents/` after signing is exactly the
-          #        v5.29.0 "damaged" failure — and
-          #      * the only thing the strict check reports is that one root item.
-          #
-          #    So assert both: the non-strict check (what Gatekeeper uses to
-          #    launch) must pass, and the strict check's complaints must be
-          #    limited to the app root.
-          if ! codesign --verify --verbose=2 "$APP"; then
-              echo "codesign --verify FAILED on the shipped app." >&2
-              hdiutil detach "$MOUNT" >/dev/null || true
-              exit 1
-          fi
-          echo "codesign --verify: OK"
-
-          STRICT_OUT="$(codesign --verify --strict --verbose=2 "$APP" 2>&1 || true)"
-          # The accepted complaint names the app bundle itself (the loose root
-          # item); anything inside Contents/ is a real seal mismatch.
-          UNEXPECTED="$(printf '%s\n' "$STRICT_OUT" | grep -E 'Contents/' || true)"
-          if [ -n "$UNEXPECTED" ]; then
-              echo "codesign --verify --strict reports problems inside Contents/:" >&2
-              printf '%s\n' "$UNEXPECTED" >&2
+          #    Nothing may sit at the `.app` root either: `codesign` rejects
+          #    loose items there on both the strict and the non-strict check. All
+          #    resources live under `Contents/Resources`, staged before the seal.
+          if ! codesign --verify --strict --verbose=2 "$APP"; then
+              echo "codesign --verify --strict FAILED on the shipped app." >&2
               echo "A resource written after the seal is the usual cause; Gatekeeper" >&2
               echo "reports that to users as 'Edmund.app is damaged'." >&2
               hdiutil detach "$MOUNT" >/dev/null || true
               exit 1
           fi
-          echo "codesign --verify --strict: only the known root item is unsealed"
+          echo "codesign --verify --strict: OK"
 
           # 2. Every location a math-font lookup reads must hold the payload.
           #    A missing one is either a SIGTRAP on the first `$…$` document or a
           #    silent degrade to Unicode in Quick Look.
           FONT_BUNDLE="SwiftMath_SwiftMath.bundle"
-          PAYLOAD="mathFonts.bundle/latinmodern-math.otf"
+          PAYLOAD="Contents/Resources/mathFonts.bundle/latinmodern-math.otf"
           for location in \
-              "$APP/$FONT_BUNDLE/$PAYLOAD" \
               "$APP/Contents/Resources/$FONT_BUNDLE/$PAYLOAD" \
               "$APP/Contents/PlugIns/EdmundQuickLook.appex/Contents/Resources/$FONT_BUNDLE/$PAYLOAD"; do
               if [ ! -f "$location" ]; then
@@ -139,23 +117,26 @@ jobs:
                   exit 1
               fi
           done
-          echo "math payloads: present at .app root, Contents/Resources and appex Contents/Resources"
+          echo "math payloads: present in .app Contents/Resources and appex Contents/Resources"
 
-          # 3. The bundle must stay *flat*. A `Contents/` directory next to the
-          #    root payload makes Foundation search `Contents/Resources` and
-          #    miss it — the configuration that resolves to nil and traps.
+          # 3. The payload must land where the bundle's classification says to
+          #    search. Writing `Contents/Info.plist` makes each resource bundle a
+          #    version-2 Contents bundle, so `url(forResource:)` reads its own
+          #    `Contents/Resources` — the mirrored copy. A bundle that "has the
+          #    fonts" at its root but nothing under `Contents/Resources` is the
+          #    shape that resolves to nil and traps (issue #14), so assert the
+          #    path the lookup actually uses, in every shipped copy.
           for bundle in \
-              "$APP/$FONT_BUNDLE" \
               "$APP/Contents/Resources/$FONT_BUNDLE" \
               "$APP/Contents/PlugIns/EdmundQuickLook.appex/Contents/Resources/$FONT_BUNDLE"; do
-              if [ -d "$bundle/Contents" ]; then
-                  echo "resource bundle carries a Contents/ directory, which hides its root payload:" >&2
+              if [ ! -f "$bundle/$PAYLOAD" ]; then
+                  echo "resource bundle does not expose its payload to url(forResource:):" >&2
                   echo "  ${bundle#$MOUNT/}" >&2
                   hdiutil detach "$MOUNT" >/dev/null || true
                   exit 1
               fi
           done
-          echo "resource bundles are flat: no Contents/ to hide the payload"
+          echo "resource bundles expose their payload under Contents/Resources"
 
           hdiutil detach "$MOUNT" >/dev/null
 

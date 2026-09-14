@@ -93,21 +93,18 @@ public enum MathFonts {
     /// compiled, which is the CI machine's `.build` directory — never present
     /// on a user's Mac — so it is not offered here.
     ///
-    /// ORDER IS THE WHOLE POINT, and it is `bundleURL` first. SwiftMath's
-    /// accessor appends the bundle name to `Bundle.main.bundleURL` — the *root*
-    /// of the .app, or of the .appex — and only that. `resourceURL` is offered
-    /// as a second candidate because an `.appex`'s `Bundle.main.bundleURL` is
-    /// the appex while its staged resources live under `Contents/Resources`, so
-    /// there the two coincide in effect. But `bundleURL` must be tried first:
-    /// if it is not, a layout that satisfies this file through `resourceURL`
-    /// while SwiftMath's lookup misses at `bundleURL` is exactly the
-    /// "available here, traps there" disagreement that survived v5.28.1 and
-    /// re-appeared in v5.29.0 (issue #14).
+    /// `Bundle.main.resourceURL` comes first, and for a shipped app that is the
+    /// only root that can answer: the resource bundle lives under
+    /// `Contents/Resources`, because `codesign` cannot seal a loose item at the
+    /// `.app` root, and an unsealed root item makes Gatekeeper refuse to launch
+    /// the app ("Edmund.app is damaged", issue #14). So the app's resolution has
+    /// to start where the bundle actually is. `Bundle.main.bundleURL` follows
+    /// for the flat shapes `swift run` / `swift test` produce, where the
+    /// resource bundle sits beside the binary.
     static func candidates() -> [URL] {
-        var roots: [URL] = [Bundle.main.bundleURL]
-        if let resources = Bundle.main.resourceURL, resources != Bundle.main.bundleURL {
-            roots.append(resources)
-        }
+        var roots: [URL] = []
+        if let resources = Bundle.main.resourceURL { roots.append(resources) }
+        roots.append(Bundle.main.bundleURL)
         return roots.map { $0.appendingPathComponent(resourceBundleName) }
     }
 

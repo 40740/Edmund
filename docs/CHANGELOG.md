@@ -6,42 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ## [5.29.1] - 2026-09-14
 
 ### Fixed
-- **v5.29.0 之后 macOS 报「Edmund.app 已损坏，无法打开」，而且公式闪退的根因并没有真正修掉 —— 只是换了一个位置。已发布 DMG 解开核对后重做整条打包路径。**
+- **v5.29.0 装上后 macOS 报「Edmund.app 已损坏，无法打开」——字体被写进了签名之后才成型的包里。**
 
-  用户装 v5.29.0 后 App 根本起不来 —— **没有崩溃报告可读**。我把已发布的 DMG 解开（按 APFS 目录记录逐层枚举 + 两处 `CodeResources` 逐条比对），并对照 v5.28.1（用户实测**能装、能开**的那版）逐条量了两者的形状差异。结论修正了上一版的诊断。
+  用户装 v5.29.0 后 App 根本起不来，**所以这次没有崩溃报告可读**。我把已发布的 DMG 解开（按 APFS 目录记录逐层枚举 + `CodeSignature/CodeResources` 逐条核对），和 v5.28.1（用户实测**能装、能开**的那版）做了逐项对照。
 
-  **v5.28.1 的形状（能装、能开，只是公式崩）：**
+  **「已损坏」不是下载坏了，是签名与字节不符。** `_CodeSignature/CodeResources` 是 `codesign` 运行时对整包做的**快照**。v5.28.1 的顺序是「先签名、再把资源包拷进 app 根」——那一步写在 `Contents/` 之外，签名描述的子树没被动过；v5.29.0 把同一份拷贝放进了 `Contents/Resources/`，于是**在已封存的子树里写入了新字节**，封存清单描述的文件不再与磁盘一致。Gatekeeper 在启动前校验并直接拒绝启动：连「仍要打开」都没有入口。实测里 `codesign --verify`（连非严格模式）都会报 `unsealed contents present in the bundle root`。
 
-  ```
-  SwiftMath_SwiftMath.bundle/
-    Info.plist                    ← 根上的扁平标识符
-    mathFonts.bundle/*.otf        ← 载荷也在根上
-    （没有 Contents/）
-  ```
+  **字体的摆放位置本身是对的**，v5.29.0 的 `Contents/Resources/SwiftMath_SwiftMath.bundle/Contents/Resources/mathFonts.bundle/…` 正是 `url(forResource:)` 会读的那一条路径（资源包带 `Contents/Info.plist` ⇒ 版本 2 Contents bundle ⇒ 搜索自己的 `Contents/Resources`）。所以这次**只修打包顺序与位置**，不动 SwiftMath 侧的解析。
 
-  没有 `Contents/` ⇒ Foundation 把它当**扁平 bundle**，`url(forResource:)` 搜的正是 bundle 根，`.copy` 的载荷就在那儿 ⇒ 能解析；而且根上只有 `Info.plist` 和一个载荷目录，`codesign` 也认这种形状 ⇒ **能封存**。
-
-  **问题是后来加了 `Contents/`。** 为了让 bundle 有标识符，脚本改成写 `Contents/Info.plist`。而 CoreFoundation 正是**按目录名判版本**（`_CFBundleGetBundleVersionForURL` 的非 framework 分支**先判 `Contents`**，源码注释写着这个顺序 "is important"）。一旦有了 `Contents/`：
-
-  - 资源目录变成 `Contents/Resources`，**不再**是 bundle 根；
-  - 根上的载荷于是**看不见** ⇒ `url(forResource:)` 返回 nil ⇒ `MTFont.fontBundle` 的 `!` 触发 SIGTRAP。
-
-  v5.29.0 为了配合这个新分类，把载荷**移动**到 `Contents/Resources` 并从根上删掉，于是：
-
-  1. **「已损坏」**：`_CodeSignature/CodeResources` 是**签名那一刻**的目录快照。在 `codesign` 之后才把资源包写进 bundle，封存描述的字节就不在原地了。Gatekeeper 在启动前校验并拒绝启动 —— 这不是「下载坏了」（所以没有崩溃报告，也没有「仍要打开」的入口）。
-  2. **闪退没修掉**：SwiftMath 自己的 `Bundle.module` 把包名拼在 **`Bundle.main.bundleURL`（app 根）** 上，找不到就回退到**编译期写死的 `.build/...` 路径**（CI 机器的，用户机器上不存在），失败路径是 `fatalError`。根上那份被删了，而 `MathFonts` 因为先看 `resourceURL` 而**仍然报告「字体可用」** ⇒ 守卫放行、SwiftMath 自己 trap。**同一个崩溃，换了一层。**
-
-  **修法：回到扁平 bundle —— 标识符放在“根” `Info.plist` 里，而不是 `Contents/` 下。**
+  **修法：**
 
   - `scripts/build-app.sh`
-    - 资源包只写**根** `Info.plist`（既有标识符，又不引入 `Contents/`，于是分类不变、载荷位置与查找位置天然一致）。脚本会**拒绝**任何带 `Contents/` 的资源包，避免再次悄悄颠倒分类。
-    - 资源包同时落到 **app 根**（SwiftMath 的 `Bundle.module` 唯一会搜的根）与 **`Contents/Resources`**（`MathFonts` 与 appex 形状读的位置）；appex 另得一份在 **appex 根**（`.appex` 的 `Bundle.main` 就是它自己）。三个读者都指向同一份可解析的载荷。
-    - **所有 staging 移到 `codesign` 之前**，嵌套包先签、容器后签。封存之后再写文件 = 「已损坏」。
-    - 校验同步收紧：断言三处载荷都在、且包必须是扁平的。
-  - `Sources/EdmundRender/Math/MathFonts.swift`：候选根改为 **`Bundle.main.bundleURL` 优先**、其次 `resourceURL`。顺序是正确性条件 —— 先看 `resourceURL` 正是「这边说有、那边 trap」的来源。
-  - `.github/workflows/release.yml`：新增**发布门禁** —— 真实挂载产物 DMG，跑 `codesign --verify --strict`，断言三处字体载荷、并断言资源包是扁平的。**v5.29.0 会在这一步直接失败**；这个形状（能构建、能发布、装上去打不开）此前整条流水线没有任何一处能发现。
-  - 回归测试：`flatBundleWithRootPlistResolves`（扁平形状）、`bundleRootComesFirst`（查找顺序）、`appexGetsFlatBundleAtItsRoot`、`nothingIsStagedAfterSealing`（封存后不得再写），并把「必须写 `Contents/Info.plist`」的旧断言反过来。
-  - 修正文档与 skills 里两处会**主动误导**的化石说法：「封存后再拷资源包属预期、`codesign --verify` 抱怨可以忽略」。正是这条建议造就了那个打不开的版本。
+    - 把资源包的拷贝**移到 `codesign` 之前**，且**只放进 `Contents/Resources`**。app 根不再是落点：`codesign` 不接受 app 根下的游离项（严格与非严格都会报 `unsealed contents present in the bundle root`），写在那里同样会让 App 起不来。
+    - 校验同步收紧：断言 `.app` 的 `Contents/Resources` 与 appex 的 `Contents/Resources` 里那份 `Contents/Resources/mathFonts.bundle/latinmodern-math.otf` 确实存在，并断言 **app 根没有**任何字体包。
+  - `.github/workflows/release.yml`：新增**发布门禁** —— 真实挂载产物 DMG，跑 `codesign --verify --strict`（这次必须整体通过），再断言两处载荷路径与「app 根无游离项」。**v5.29.0 会在这一步直接失败**；这个形状（能构建、能发布、装上去打不开）此前整条流水线没有任何一处能发现。
+  - 回归测试：`nothingIsStagedAfterSealing`（封存后不得再写）、`nothingIsStagedAtTheAppRoot`（app 根不得有游离项）、`payloadIsMirroredIntoTheContentsBundle`（载荷必须在 `Contents/Resources` 下，因为那才是查找会读的位置）。
+  - 文档与 skills 里「封存后再拷资源包属预期、`codesign --verify` 抱怨可忽略」的说法全部改掉 —— 正是这条建议造就了那个打不开的版本。
 
   **边界（如实说明）**：仍然是 ad-hoc 签名 + 未公证，首次打开仍需过 Gatekeeper 的「未验证开发者」那一关（右键打开 / 系统设置里「仍要打开」，README 已写）。本次修掉的是**另一件事**：「已损坏」= 系统认为包被篡改，与「未验证开发者」是两条不同路径，前者连「仍要打开」都没有入口。
 

@@ -299,21 +299,21 @@ first releases. **STATUS: all settled**, with one time bomb (PAT expiry).
    (`5e54b40`, 2026-06-29, issue #158). Sparkle re-validates the Apple code
    signature at install (`SUUpdateValidator` → `SecStaticCodeCheckValidity`);
    the build signed only the main binary, never sealed the bundle, so a valid
-   EdDSA signature didn't save it. Fix: seal the whole `.app` — not just the
-   binary — **after** every resource is staged.
+   EdDSA signature didn't save it. Fix: `codesign --deep` the whole `.app`,
+   **after** every resource is staged under `Contents/Resources`.
    ⚠️ **The original version of this note said "seal first, copy the SwiftMath
    bundle in AFTER sealing; the lone unsealed root item trips strict
    `codesign --verify` but not Sparkle's non-strict check — do not 'fix' the
-   ordering." That advice was wrong and it caused the v5.29.0 regression
-   (issue #14).** A loose item at the `.app` root is one thing; a *nested
-   resource bundle* staged there before sealing is sealable and is described
-   in `CodeResources`. Staging *after* the seal leaves the seal describing
-   bytes that are not where it says, and Gatekeeper refuses to **launch** such
-   a bundle — before Sparkle and before any app code runs — so the user sees
-   *"Edmund.app is damaged and can't be opened"* and there is no crash report
-   to read. The check that matters is `codesign --verify --strict`, and
-   `release.yml` now runs it against the mounted DMG. Never stage into a
-   bundle after sealing it.
+   ordering." That advice was wrong, and it caused the v5.29.0 regression
+   (issue #14).** A loose item at the `.app` root fails `codesign --verify`
+   in *both* the strict and the non-strict form ("unsealed contents present
+   in the bundle root"), so Gatekeeper refuses to launch the app; and writing
+   into an already-sealed bundle leaves `_CodeSignature/CodeResources`
+   describing bytes that are not where it says, which Gatekeeper reports as
+   *"Edmund.app is damaged and can't be opened"* — with no crash report,
+   because nothing ran. The check that matters is
+   `codesign --verify --strict`, and `release.yml` now runs it against the
+   mounted DMG. Never stage into an app after sealing it.
 3. **Appcast push to protected `main` rejected, `GH006`** (`e56a4dd`,
    2026-06-28, PR #140). `GITHUB_TOKEN` isn't admin; `enforce_admins: false`
    means an admin PAT bypasses the required check. Fix: fine-grained admin PAT

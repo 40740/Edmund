@@ -156,22 +156,20 @@ check and every update dies with "The update is improperly signed and could
 not be validated" — which is exactly what broke the v0.1.0 → 0.1.1 update
 when the old script signed only the bare binary.
 
-`build-app.sh` therefore stages **everything first**, then signs inside-out:
+`build-app.sh` stages everything first, then signs inside-out:
 
-1. stage every `.bundle` — app root, `Contents/Resources`, appex root and the
-   appex's `Contents/Resources` (SwiftMath's `Bundle.module` looks at
-   `Bundle.main.bundleURL`, which is the app root for the app and the appex
-   root for the extension; without them the app crashes on the first LaTeX
-   render and Quick Look degrades silently). Each bundle is **flat** — a root
-   `Info.plist`, no `Contents/` — because a `Contents/` directory makes
-   Foundation search `Contents/Resources` and hide the root payload,
+1. stage every `.bundle` — the app's under `Contents/Resources`, and the
+   appex's under the appex's `Contents/Resources`. Nothing goes at the `.app`
+   root: `codesign` rejects loose items there ("unsealed contents present in
+   the bundle root") in *both* the strict and the non-strict check,
 2. `codesign --force --deep --sign - Sparkle.framework` (nested XPC helpers
    must be signed before macOS will launch them),
-3. each nested resource bundle, then the appex, then the whole `.app`.
+3. `codesign --force --deep --sign - --identifier "com.i7t5.edmd"` on the
+   whole `.app`.
 
-**Consequence: `codesign --verify --strict` must PASS, and `release.yml` gates
-the release on it against the mounted DMG.** Do not stage anything into the
-app after signing it: a file added to a sealed bundle leaves
+Consequence: **`codesign --verify --strict` must PASS**, and `release.yml`
+gates the release on it against the mounted DMG. Do not stage anything into
+the app after signing it: a file added to a sealed bundle leaves
 `_CodeSignature/CodeResources` describing bytes that are no longer there, and
 Gatekeeper refuses to **launch** it — *"Edmund.app is damaged and can't be
 opened"*, with no crash report because nothing ran (v5.29.0, issue #14). An

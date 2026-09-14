@@ -87,61 +87,32 @@ swift test --filter Callout    # one suite
    be signed before macOS will launch them), then the whole `.app` (ad-hoc,
    `--deep`, identifier `com.i7t5.edmd`). Sealing the *bundle* — not just the
    binary — is what Sparkle's update validator requires.
-6. **Before sealing**: stage `.build/release/*.bundle` into the `.app`
-   **root** *and* `Contents/Resources` (and the appex root).
+6. **Before sealing**: stage `.build/release/*.bundle` into
+   `Contents/Resources`, and the appex's copy into the appex's
+   `Contents/Resources`.
 
-Why step 6 is before the seal, and why both locations:
+Why before the seal, and why `Contents/Resources`:
 
-- SwiftMath's generated `Bundle.module` accessor hardcodes
-  `Bundle.main.bundleURL` — the `.app` root — with only a hardcoded absolute
-  `.build` path baked in at *its* compile time (the CI machine's) as
-  fallback. Failure is `fatalError`, wrapped in another `!` by
-  `MTFont.fontBundle`. So the bundle *must* sit at the root, or the app dies
-  the moment it renders any LaTeX.
-- This repo's `MathFonts` resolves the same bundle independently. If the two
-  disagree about which location answers, `MathFonts.isAvailable` can be
-  `true` while SwiftMath's own lookup still traps — that is issue #14, and it
-  survived two releases because the guard and the lookup asked different
-  questions. Both locations get a payload, and `MathFonts` probes
-  `bundleURL` **first** to match SwiftMath's order.
-- `codesign` refuses to seal a bundle with *unsealed loose* items at the
-  `.app` root, but a **nested resource bundle** at the root is sealable and
-  is described in `CodeResources`. So stage it, *then* seal.
+- Nothing may sit at the `.app` root. `codesign` rejects loose items there
+  ("unsealed contents present in the bundle root") in *both* the strict and
+  the non-strict check — so a resource placed there is not "tolerated", it
+  makes Gatekeeper refuse to launch the app.
+- Everything must be written **before** `codesign`. `_CodeSignature/
+  CodeResources` is a snapshot; a later write leaves it describing bytes
+  that are not where it says, and Gatekeeper reports that as *"Edmund.app
+  is damaged and can't be opened"* — with no crash report, because the app
+  never starts (v5.29.0, issue #14).
+- `Contents/Resources` is `Bundle.main.resourceURL`, the root this app's
+  `MathFonts` probes, and it is inside the sealed bundle so the signature
+  covers it legitimately.
 
-**Every resource bundle must stay flat — a *root* `Info.plist`, no
-`Contents/`.** The packaging step adds the `Info.plist` (`Bundle.module`'s
-accessor asserts `bundleIdentifier != nil`), and where it goes decides
-whether the payload is findable:
-
-- No `Contents/` → Foundation treats the directory as a flat bundle and
-  `url(forResource:)` searches the bundle root, which is where `.copy` put
-  the payload. Identifier and payload agree; `codesign` seals it happily.
-- A `Contents/` directory → CoreFoundation's `_CFBundleGetBundleVersionForURL`
-  classifies it as a version-2 Contents bundle (non-framework branch tests
-  `Contents` *before* `Resources`, on purpose), so the resource directory
-  moves to `Contents/Resources` and a root payload becomes **invisible**:
-  nil from `url(forResource:)`, `SIGTRAP` from `MTFont.fontBundle`.
-
-Writing `Contents/Info.plist` is what started issue #14 — it bought the
-identifier at the cost of flipping the classification, and every later fix
-was compensating for that. Use a root `Info.plist`.
-
-Staging after the seal is not "tolerated": it ships a bundle whose
-`_CodeSignature/CodeResources` no longer matches its bytes, and Gatekeeper
-refuses to launch it — *"Edmund.app is damaged and can't be opened"*, with no
-crash report (v5.29.0, issue #14). `release.yml` mounts the DMG and runs
-`codesign --verify --strict` to gate on this.
+A previous version of this note said "seal first, copy after — the one
+unsealed root item is tolerated because Sparkle's check is non-strict".
+That was wrong and it caused the unopenable release.
 
 **Missing SwiftMath bundle = instant crash the moment the app renders any
 LaTeX.** App launches fine, opens documents fine, dies on the first math
-block. If you see that crash, check `ls build/Edmund.app/*.bundle` first —
-and check that the payload resolves *inside* it, not merely that the
-directory exists.
-
-**A bundle edited after it was sealed = "damaged", and the app never
-starts.** No crash report, because there is no crash. If a user reports
-"the app is damaged", mount the *shipped* DMG and run
-`codesign --verify --strict "Edmund.app"`.
+block. If you see that crash, check `ls build/Edmund.app/*.bundle` first.
 
 ## 4. Debug bundle fast path (EdmundDbg.app)
 

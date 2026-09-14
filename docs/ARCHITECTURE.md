@@ -447,33 +447,18 @@ Notable subsystems:
   only the main binary (no `_CodeSignature/CodeResources`) — **every
   Sparkle update failed** (the v0.1.0→0.1.1 error). Fix: `build-app.sh`
   seals the whole `.app` **after** every resource is staged, so the seal
-  describes exactly what ships.
-- **Resource bundles must stay *flat*, and nothing may be written into a
-  signed bundle afterwards.** SwiftPM's `.copy("mathFonts.bundle")` /
-  `.copy("Resources/Syntaxes")` produce a directory with the payload at its
-  root and no `Info.plist`; `Bundle.module`'s generated accessor asserts
-  `bundleIdentifier != nil`, so the packaging step adds one — as a **root**
-  `Info.plist`. That is deliberate, and it is the fix for issue #14:
-  - With **no** `Contents/` directory, Foundation treats the directory as a
-    flat bundle and `url(forResource:)` searches the bundle root — exactly
-    where `.copy` put the payload. The identifier and the payload agree.
-  - With a `Contents/` directory present, CoreFoundation's
-    `_CFBundleGetBundleVersionForURL` classifies it as a version-2 Contents
-    bundle (its non-framework branch tests `Contents` *before* `Resources`,
-    deliberately), so the resource directory becomes `Contents/Resources` and
-    a root-level payload becomes **invisible** — `url(forResource:)` returns
-    nil and `MTFont.fontBundle` force-unwraps it into `SIGTRAP`.
-  - `codesign` seals the flat shape fine (root `Info.plist` + the payload
-    directory). It rejects `Contents/` **plus** a loose root payload as
-    "unsealed contents present in the bundle root" — which is why the flat
-    shape is the only one that satisfies both the seal and the lookups.
-  Staging after the seal is never acceptable: `_CodeSignature/CodeResources`
-  is a snapshot, so a later write leaves it describing bytes that are not
-  where it says, and Gatekeeper refuses to **launch** the bundle. That is
-  the *"Edmund.app is damaged and can't be opened"* report (v5.29.0, issue
-  #14) — not a broken download, and with no crash report, because nothing
-  ran. `release.yml` mounts the shipped DMG and runs
-  `codesign --verify --strict` plus payload assertions to gate on it.
+  describes exactly what ships. Resources live under `Contents/Resources`;
+  nothing is placed at the `.app` root, because `codesign` rejects loose
+  items there ("unsealed contents present in the bundle root") in both the
+  strict and the non-strict check. A previous note here claimed a post-seal
+  root copy was "expected and fine" because "Sparkle's check is non-strict
+  and tolerates it" — **that was wrong, and v5.29.0 shipped its
+  consequences** (issue #14): writing into the sealed tree leaves
+  `_CodeSignature/CodeResources` describing bytes that are not where it
+  says, and Gatekeeper refuses to *launch* the app, before any of its code
+  runs. The user sees *"Edmund.app is damaged and can't be opened"* with no
+  crash report, because there is no crash. `codesign --verify --strict` is
+  the check, and `release.yml` now runs it against the mounted DMG.
   Developer ID + notarization would be cleaner; ad-hoc is the current limit
   (first launch still needs the "unverified developer" bypass — **not** the
   same thing as "damaged").
