@@ -283,3 +283,33 @@ fi
 echo ""
 echo "Done: ${BUNDLE}"
 echo "To install: cp -R ${BUNDLE} /Applications/"
+
+# ── Mirror the SwiftPM resource bundles into the test bundle ─────────────────
+#
+# `swift test` builds `EdmundPackageTests.xctest`, whose Bundle.main is a
+# temporary directory — neither `Contents/Resources` nor the executable's parent
+# holds the per-target resource bundles, so `MathFonts` resolves nothing in the
+# test process. That is the *correct* production behaviour (the editor degrades
+# to readable Unicode rather than trapping, issue #12), but in the suite it makes
+# every math assertion depend on which engine happened to win: the app would
+# render an equation and the test would not. `Bundle.module` isn't an option —
+# it traps on the identifier-less shape it can't find, which is the bug.
+#
+# So the test bundle gets exactly what the .app gets: the bundles beside the
+# .xctest, and under `Contents/Resources` (an .xctest *is* a bundle, so that is
+# its Bundle.main.resourceURL). This mirrors the app rather than papering over
+# it — the tests then exercise the packaged layout, which is what ships.
+TEST_BUNDLE="$(find .build -name '*.xctest' -maxdepth 4 2>/dev/null | head -1 || true)"
+if [ -n "$TEST_BUNDLE" ] && [ -d "$TEST_BUNDLE" ]; then
+    echo "Mirroring resource bundles into $(basename "$TEST_BUNDLE")..."
+    mkdir -p "${TEST_BUNDLE}/Contents/Resources"
+    for bundle in "${RESOURCE_BUNDLES[@]}"; do
+        cp -R "$bundle" "${TEST_BUNDLE}/"
+        cp -R "$bundle" "${TEST_BUNDLE}/Contents/Resources/"
+    done
+    for bundle in "${RESOURCE_BUNDLES[@]}"; do
+        [ -f "${TEST_BUNDLE}/$(basename "$bundle")/Contents/Info.plist" ] \
+            || [ -f "${TEST_BUNDLE}/Contents/Resources/$(basename "$bundle")/Contents/Info.plist" ] \
+            || echo "  ! $(basename "$bundle") not reachable from the test bundle" >&2
+    done
+fi

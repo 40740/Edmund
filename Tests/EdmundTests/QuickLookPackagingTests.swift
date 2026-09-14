@@ -315,4 +315,43 @@ struct MathFontPackagingTests {
         #expect(code.contains("Bundle.main.resourceURL"),
                 "resolution is explicit: Bundle.main's Resources first")
     }
+
+    @Test("The test bundle is given the same resource bundles the app ships")
+    func testBundleMirrorsAppResources() throws {
+        // A `.xctest` resolves nothing from probe order alone: its Bundle.main
+        // is a temporary directory, which holds neither the bundles nor their
+        // parent. Without this step `MathFonts` is unavailable in the suite, so
+        // every math test silently grades the Unicode *fallback* while the app
+        // ships SwiftMath — the suite would be green about the wrong engine.
+        let text = try packagingScript()
+        guard let mirror = text.range(of: "Mirroring resource bundles into") else {
+            Issue.record("the packaging script never hands the resource bundles to the test bundle")
+            return
+        }
+        let step = String(text[mirror.lowerBound...])
+        #expect(step.contains("find .build -name '*.xctest'"),
+                "the test bundle is located in the build directory")
+        #expect(step.contains("cp -R \"$bundle\" \"${TEST_BUNDLE}/\""),
+                "beside the .xctest, like next to the app executable")
+        #expect(step.contains("cp -R \"$bundle\" \"${TEST_BUNDLE}/Contents/Resources/\""),
+                "and under Contents/Resources, which is an .xctest's Bundle.main.resourceURL")
+    }
+
+    @Test("CI builds the app before testing, so the test bundle is populated")
+    func ciBuildsAppBeforeTesting() throws {
+        // The mirror step runs inside build-app.sh, so CI has to invoke it
+        // before `swift test` or the step never happens.
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".github/workflows/ci.yml")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        guard let build = text.range(of: "run: ./scripts/build-app.sh"),
+              let test = text.range(of: "swift test")
+        else {
+            Issue.record("CI does not both build the app bundle and run the tests")
+            return
+        }
+        #expect(build.lowerBound < test.lowerBound,
+                "the app bundle must be built first — it is what populates the test bundle")
+    }
 }
