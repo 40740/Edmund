@@ -348,18 +348,21 @@ echo "To install: cp -R ${BUNDLE} /Applications/"
 
 # ── Mirror the SwiftPM resource bundles into the test bundle ─────────────────
 #
-# `swift test` builds `EdmundPackageTests.xctest`, whose Bundle.main is a
-# temporary directory — neither `Contents/Resources` nor the executable's parent
-# holds the per-target resource bundles, so `MathFonts` resolves nothing in the
-# test process. That is the *correct* production behaviour (the editor degrades
-# to readable Unicode rather than trapping, issue #12), but in the suite it makes
-# every math assertion depend on which engine happened to win: the app would
-# render an equation and the test would not. `Bundle.module` isn't an option —
-# it traps on the identifier-less shape it can't find, which is the bug.
+# The suite runs out of Xcode's `swift-pm` runner, so `Bundle.main` in the test
+# process is that toolchain binary — neither `Contents/Resources` nor the
+# executable's parent holds the per-target resource bundles, and staging them
+# into the `.xctest` cannot be seen through `Bundle.main` at all. CI therefore
+# points `MathFonts` at the copy staged here with `EDMUND_MATH_FONTS_BUNDLE`
+# (see the `Test` step), which is validated exactly like any other candidate.
+#
+# Without this, `MathFonts` is unavailable in the suite, so every math
+# assertion depends on which engine happened to win: the app renders an
+# equation and the test does not. `Bundle.module` isn't an option — it traps on
+# the identifier-less shape it can't find, which is the bug.
 #
 # So the test bundle gets exactly what the .app gets: the bundles beside the
 # .xctest, and under `Contents/Resources` (an .xctest *is* a bundle, so that is
-# its Bundle.main.resourceURL). This mirrors the app rather than papering over
+# its own resource directory). This mirrors the app rather than papering over
 # it — the tests then exercise the packaged layout, which is what ships.
 # Pinned to debug: that is `swift test`'s configuration, so it is the .xctest
 # the suite actually runs — and the one CI points EDMUND_MATH_FONTS_BUNDLE at.
