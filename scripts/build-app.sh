@@ -294,8 +294,20 @@ for bundle in .build/release/*.bundle; do
     [ -e "$bundle" ] || continue
     [ -f "$bundle/Contents/Info.plist" ] || continue
     RESOURCE_BUNDLES+=("$bundle")
+    # The .app root: this is `Bundle.main.bundleURL`, which is one of the two
+    # roots `Bundle.module` searches and therefore where a resource bundle the
+    # app must find has to be.
     cp -R "$bundle" "${BUNDLE}/"
-    cp -R "$bundle" "${BUNDLE}/Contents/Resources/"
+    # The app's own Contents/Resources too, EXCEPT the SwiftMath bundle. A
+    # resource bundle the app opens itself (Edmund_EdmundMarkdown.bundle, whose
+    # Syntaxes the highlighter reads) is searched there, so it needs to be
+    # present; SwiftMath's fonts are megabytes and are already reachable at the
+    # root, and staging a second copy in each of the app and the appex took the
+    # DMG from 13 MB to 17 MB for no lookup that needs it.
+    case "$(basename "$bundle")" in
+        *SwiftMath*) ;;
+        *) cp -R "$bundle" "${BUNDLE}/Contents/Resources/" ;;
+    esac
 done
 
 FONT_BUNDLE=""
