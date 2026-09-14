@@ -1,4 +1,4 @@
-# Edmund 527 是现在用的版本 基本上属于完美！
+# Edmund 530 是现在用的版本 基本上属于完美！
 
 ![macOS Version Compatibility](https://img.shields.io/badge/platform-macOS%2014.0%2B-0064e1?style=flat-square&color=0064e1)
 ![GitHub License](https://img.shields.io/github/license/i7t5/edmund?style=flat-square&color=772678)
