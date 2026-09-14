@@ -171,6 +171,29 @@ struct MathEngineFallbackTests {
     @MainActor func degradedFlag() {
         #expect(MathRendering.shared.isDegraded == !MathFonts.isAvailable)
     }
+
+    @Test("The approximation never answers a parse error when the caller reports them")
+    @MainActor func approximationIsNotAnErrorHandler() {
+        // A document must always render *something* — a page with a hole in it is
+        // a partial copy of the document (`renderingErrors: true`, the default).
+        // The editor is different: it reports malformed LaTeX by showing the
+        // source tinted red, and that branch is only reachable if a typo yields
+        // no overlay. Before this distinction, `\frac{` drew as a plausible
+        // flattened equation and the error state became dead code.
+        let coord = MathRendering.shared
+        let invalid = "\\frac{"
+        let color = NSColor(red: 0, green: 0, blue: 0, alpha: 1)
+        #expect(coord.render(latex: invalid, displayMode: false, pointSize: 16,
+                             color: color, renderingErrors: true) != nil,
+                "documents fall back to readable text, never to a hole")
+        if MathFonts.isAvailable {
+            // With real fonts the invalid input is refused by SwiftMath and must
+            // not be answered by the approximation either.
+            #expect(coord.render(latex: invalid, displayMode: false, pointSize: 16,
+                                 color: color, renderingErrors: false) == nil,
+                    "the editor must be able to tell 'invalid' from 'rendered'")
+        }
+    }
 }
 
 @Suite("Math — no unguarded Bundle.module reach in the math path")

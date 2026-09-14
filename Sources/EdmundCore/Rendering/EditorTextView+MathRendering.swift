@@ -23,8 +23,14 @@ extension EditorTextView {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             color = self.foregroundColor.usingColorSpace(.deviceRGB) ?? self.foregroundColor
         }
+        // `renderingErrors: false`: the editor reports malformed LaTeX by
+        // showing the source tinted red (see EditorTextView+Rendering), and it
+        // can only do that if a typo yields no overlay. Letting the Unicode
+        // approximation answer for `\frac{` would draw a plausible-looking
+        // equation over the user's mistake and make that branch unreachable.
         guard let rendered = MathRendering.shared.render(latex: latex, displayMode: display,
-                                                          pointSize: fontSize, color: color) else {
+                                                          pointSize: fontSize, color: color,
+                                                          renderingErrors: false) else {
             return nil
         }
 
